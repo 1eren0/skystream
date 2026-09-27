@@ -215,6 +215,8 @@
   "liveStreams": "लाइव स्ट्रीम",
   "debug": "डिबग",
   "extensionsUpdated": "{count, plural, =1{1 एक्सटेंशन अपडेट किया गया} other{{count} एक्सटेंशन अपडेट किए गए}}",
+  "extensionsNewRepositories": "{count, plural, =1{{source} में 1 नई रिपॉजिटरी} other{{source} में {count} नई रिपॉजिटरी}}",
+  "extensionsNewPlugins": "{count, plural, =1{{repository} में 1 नया प्लगिन} other{{repository} में {count} नए प्लगिन}}",
   "invalidNavigation": "अमान्य नेविगेशन। कृपया वापस जाएं।",
   "startOver": "शुरू से शुरू करें",
   "goBack": "पीछे जाएं",

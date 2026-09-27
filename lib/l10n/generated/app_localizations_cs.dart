@@ -787,6 +787,32 @@ class AppLocalizationsCs extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nových repozitářů v $source',
+      many: '$count nového repozitáře v $source',
+      few: '$count nové repozitáře v $source',
+      one: 'Nový repozitář v $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nových pluginů v $repository',
+      many: '$count nového pluginu v $repository',
+      few: '$count nové pluginy v $repository',
+      one: 'Nový plugin v $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Neplatná navigace.';
 
   @override

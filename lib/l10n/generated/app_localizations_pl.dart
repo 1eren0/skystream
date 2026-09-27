@@ -784,6 +784,32 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nowego repozytorium w $source',
+      many: '$count nowych repozytoriów w $source',
+      few: '$count nowe repozytoria w $source',
+      one: 'Nowe repozytorium w $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nowej wtyczki w $repository',
+      many: '$count nowych wtyczek w $repository',
+      few: '$count nowe wtyczki w $repository',
+      one: 'Nowa wtyczka w $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Nieprawidłowa nawigacja.';
 
   @override

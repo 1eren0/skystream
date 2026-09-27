@@ -766,6 +766,26 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source에 새 저장소 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository에 새 플러그인 $count개',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => '잘못된 경로입니다. 뒤로 돌아가 주세요.';
 
   @override

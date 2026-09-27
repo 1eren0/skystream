@@ -767,6 +767,26 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source に新しいリポジトリが $count 件',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository に新しいプラグインが $count 件',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => '無効なナビゲーションです。戻ってください。';
 
   @override

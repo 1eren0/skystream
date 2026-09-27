@@ -790,6 +790,32 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нового репозиторію в $source',
+      many: '$count нових репозиторіїв у $source',
+      few: '$count нові репозиторії в $source',
+      one: '$count новий репозиторій у $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нового плагіна в $repository',
+      many: '$count нових плагінів у $repository',
+      few: '$count нові плагіни в $repository',
+      one: '$count новий плагін у $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Невірна навігація.';
 
   @override

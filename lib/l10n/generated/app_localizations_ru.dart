@@ -790,6 +790,32 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нового репозитория в $source',
+      many: '$count новых репозиториев в $source',
+      few: '$count новых репозитория в $source',
+      one: '$count новый репозиторий в $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нового плагина в $repository',
+      many: '$count новых плагинов в $repository',
+      few: '$count новых плагина в $repository',
+      one: '$count новый плагин в $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Неверная навигация.';
 
   @override

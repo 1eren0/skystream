@@ -763,6 +763,26 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source 中有 $count 个新仓库',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository 中有 $count 个新插件',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => '导航无效。请返回。';
 
   @override
@@ -2482,6 +2502,26 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
       count,
       locale: localeName,
       other: '$count 個擴充功能已更新',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source 中有 $count 個新儲存庫',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository 中有 $count 個新外掛程式',
     );
     return '$_temp0';
   }

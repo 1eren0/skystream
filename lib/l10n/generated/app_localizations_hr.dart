@@ -782,6 +782,30 @@ class AppLocalizationsHr extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count novih repozitorija u $source',
+      few: '$count nova repozitorija u $source',
+      one: '$count novi repozitorij u $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count novih plagina u $repository',
+      few: '$count nova plagina u $repository',
+      one: '$count novi plagin u $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Neispravna navigacija.';
 
   @override

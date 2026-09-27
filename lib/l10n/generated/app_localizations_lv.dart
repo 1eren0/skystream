@@ -790,6 +790,28 @@ class AppLocalizationsLv extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source: $count jauni repozitoriji',
+      one: '$source: $count jauns repozitorijs',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository: $count jauni spraudņi',
+      one: '$repository: $count jauns spraudnis',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Nederīga navigācija.';
 
   @override

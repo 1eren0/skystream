@@ -790,6 +790,30 @@ class AppLocalizationsRo extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count de depozite noi în $source',
+      few: '$count depozite noi în $source',
+      one: 'Depozit nou în $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count de pluginuri noi în $repository',
+      few: '$count pluginuri noi în $repository',
+      one: 'Plugin nou în $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Navigare invalidă.';
 
   @override

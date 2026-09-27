@@ -786,6 +786,28 @@ class AppLocalizationsPa extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source ਵਿੱਚ $count ਨਵੀਆਂ ਰਿਪੋਜ਼ਟਰੀਆਂ',
+      one: '$source ਵਿੱਚ 1 ਨਵੀਂ ਰਿਪੋਜ਼ਟਰੀ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository ਵਿੱਚ $count ਨਵੀਆਂ ਪਲੱਗਇਨਾਂ',
+      one: '$repository ਵਿੱਚ 1 ਨਵੀਂ ਪਲੱਗਇਨ',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'ਅਵੈਧ ਨੇਵੀਗੇਸ਼ਨ। ਕਿਰਪਾ ਕਰਕੇ ਵਾਪਸ ਜਾਓ।';
 
   @override

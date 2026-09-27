@@ -793,6 +793,28 @@ class AppLocalizationsTa extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source-இல் $count புதிய ரிப்போசிட்டரிகள்',
+      one: '$source-இல் 1 புதிய ரிப்போசிட்டரி',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository-இல் $count புதிய செருகுநிரல்கள்',
+      one: '$repository-இல் 1 புதிய செருகுநிரல்',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation =>
       'தவறான வழிசெலுத்தல். தயவுசெய்து பின்னோக்கிச் செல்லவும்.';
 

@@ -18,6 +18,7 @@ import '../../explore/presentation/widgets/media_horizontal_list.dart';
 import '../../explore/presentation/view_all_screen.dart';
 import '../../../shared/widgets/desktop_scroll_wrapper.dart';
 import '../../../shared/widgets/loading_indicator.dart';
+import '../../../shared/widgets/no_scrollbar_behavior.dart';
 import '../../extensions/providers/extensions_controller.dart';
 import '../../../core/extensions/models/extension_plugin.dart';
 
@@ -44,20 +45,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
-}
-
-/// Hides the platform scrollbar — replaced by a gradient edge hint.
-class _NoScrollbarBehavior extends ScrollBehavior {
-  const _NoScrollbarBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
-  }
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
@@ -455,7 +442,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     return Stack(
       children: [
         ScrollConfiguration(
-          behavior: const _NoScrollbarBehavior(),
+          behavior: const NoScrollbarBehavior(),
           child: scrollView,
         ),
         Positioned(

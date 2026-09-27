@@ -795,6 +795,28 @@ class AppLocalizationsKn extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source-ನಲ್ಲಿ $count ಹೊಸ ರೆಪೊಸಿಟರಿಗಳು',
+      one: '$source-ನಲ್ಲಿ 1 ಹೊಸ ರೆಪೊಸಿಟರಿ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository-ನಲ್ಲಿ $count ಹೊಸ ಪ್ಲಗಿನ್‌ಗಳು',
+      one: '$repository-ನಲ್ಲಿ 1 ಹೊಸ ಪ್ಲಗಿನ್',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'ಅಮಾನ್ಯ ನ್ಯಾವಿಗೇಶನ್. ದಯವಿಟ್ಟು ಹಿಂತಿರುಗಿ.';
 
   @override

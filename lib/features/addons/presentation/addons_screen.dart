@@ -25,6 +25,7 @@ import '../../explore/presentation/widgets/media_horizontal_list.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import '../../../shared/widgets/loading_indicator.dart';
+import '../../../shared/widgets/no_scrollbar_behavior.dart';
 
 /// Stremio Add-ons settings destination — management and discovery.
 class AddonsScreen extends ConsumerWidget {
@@ -156,20 +157,6 @@ class AddonsScreen extends ConsumerWidget {
   }
 }
 
-/// Hides the platform scrollbar — replaced by a gradient edge hint.
-class _NoScrollbarBehavior extends ScrollBehavior {
-  const _NoScrollbarBehavior();
-
-  @override
-  Widget buildScrollbar(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    return child;
-  }
-}
-
 class AddonCatalogsTabView extends ConsumerStatefulWidget {
   final ScrollController? scrollController;
   final FocusNode? firstActionFocusNode;
@@ -193,8 +180,24 @@ class _AddonCatalogsTabViewState extends ConsumerState<AddonCatalogsTabView>
   bool _createdInternalScrollController = false;
   final ValueNotifier<bool> _showBottomFade = ValueNotifier(false);
 
+  /// Catalogs that came back with nothing in them, by [BrowsableCatalog.key].
+  ///
+  /// Taken out of the list rather than left in it as zero-height rows.
+  /// [SliverList] places the rows it rebuilds on the way back up by dead
+  /// reckoning, and near-zero rows at that edge set it correcting its own
+  /// scroll offset every frame: a drag upward was cancelled as fast as it was
+  /// made, and the list jittered and bounced instead of scrolling. A bridge
+  /// add-on - CNCVerse and the like - has dozens of catalogs and many of them
+  /// empty, which is where it showed. A refresh asks them all again.
+  final Set<String> _emptyCatalogs = <String>{};
+
   @override
   bool get wantKeepAlive => true;
+
+  void _dropEmptyCatalog(String key) {
+    if (!mounted || _emptyCatalogs.contains(key)) return;
+    setState(() => _emptyCatalogs.add(key));
+  }
 
   @override
   void initState() {
@@ -232,7 +235,7 @@ class _AddonCatalogsTabViewState extends ConsumerState<AddonCatalogsTabView>
     return Stack(
       children: [
         ScrollConfiguration(
-          behavior: const _NoScrollbarBehavior(),
+          behavior: const NoScrollbarBehavior(),
           child: scrollView,
         ),
         Positioned(
@@ -301,13 +304,15 @@ class _AddonCatalogsTabViewState extends ConsumerState<AddonCatalogsTabView>
     }
 
     final firstCatalog = catalogs.first;
-    final listCatalogs = catalogs.length > 1
-        ? catalogs.skip(1).toList()
-        : catalogs;
+    final listCatalogs = [
+      for (final entry in catalogs.length > 1 ? catalogs.skip(1) : catalogs)
+        if (!_emptyCatalogs.contains(entry.key)) entry,
+    ];
 
     return _withGradientEdgeHint(
       RefreshIndicator(
         onRefresh: () async {
+          setState(_emptyCatalogs.clear);
           ref.read(addonClientProvider).clearCache();
           for (final entry in catalogs) {
             ref.invalidate(
@@ -370,10 +375,27 @@ class _AddonCatalogsTabViewState extends ConsumerState<AddonCatalogsTabView>
 
             // 3. Catalog Rows using MediaHorizontalList
             SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                if (index >= listCatalogs.length) return null;
-                return _CatalogRow(entry: listCatalogs[index]);
-              }, childCount: listCatalogs.length),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index >= listCatalogs.length) return null;
+                  final entry = listCatalogs[index];
+                  return _CatalogRow(
+                    key: ValueKey(entry.key),
+                    entry: entry,
+                    onEmpty: _dropEmptyCatalog,
+                  );
+                },
+                childCount: listCatalogs.length,
+                // Keyed, so dropping an empty row moves the rows after it
+                // instead of rebuilding each of them into its neighbour's
+                // slot, where it would start loading all over again.
+                findChildIndexCallback: (key) {
+                  final index = listCatalogs.indexWhere(
+                    (entry) => ValueKey(entry.key) == key,
+                  );
+                  return index < 0 ? null : index;
+                },
+              ),
             ),
 
             SliverPadding(
@@ -539,7 +561,13 @@ Widget _buildListShimmer(BuildContext context) {
 
 class _CatalogRow extends ConsumerWidget {
   final BrowsableCatalog entry;
-  const _CatalogRow({required this.entry});
+
+  /// Called with [BrowsableCatalog.key] once the catalog turns out to be
+  /// empty, so the list can drop the row - see
+  /// `_AddonCatalogsTabViewState._emptyCatalogs` for why it must not stay.
+  final ValueChanged<String> onEmpty;
+
+  const _CatalogRow({super.key, required this.entry, required this.onEmpty});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -579,7 +607,14 @@ class _CatalogRow extends ConsumerWidget {
           );
         }
         final items = result.items;
-        if (items.isEmpty) return const SizedBox.shrink();
+        if (items.isEmpty) {
+          // After the frame: the list rebuilds without this row, and that is
+          // not something to do from inside its build.
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => onEmpty(entry.key),
+          );
+          return const SizedBox.shrink();
+        }
 
         final mediaList = items.map((e) => e.toMultimediaItem()).toList();
         final previewMap = {for (final item in items) item.id: item};

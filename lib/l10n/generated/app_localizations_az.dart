@@ -788,6 +788,28 @@ class AppLocalizationsAz extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source: $count yeni repozitoriya',
+      one: '$source: 1 yeni repozitoriya',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository: $count yeni plagin',
+      one: '$repository: 1 yeni plagin',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation =>
       'Naviqasiya yanlışdır. Zəhmət olmasa geri qayıt.';
 

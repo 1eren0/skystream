@@ -15,6 +15,7 @@ import 'vlc_player_controller_internals.dart';
 import 'vlc_player_error.dart';
 import 'vlc_player_value.dart';
 import 'vlc_video_fit.dart';
+import 'vlc_video_geometry.dart';
 
 /// Playlist repeat behavior used by `VlcPlayerController.setPlaylist`.
 enum VlcPlaylistLoopMode {
@@ -127,6 +128,19 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
   /// Use this when the item needs HTTP headers, VLC media options, or an
   /// initial seek position. This clears any active playlist.
   Future<void> setMedia(VlcMediaSource source, {bool autoPlay = false});
+
+  /// Caps the reported [VlcPlayerValue.duration] at [cap], for a media whose
+  /// length libVLC gets wrong; null lifts the cap from the next report on.
+  ///
+  /// libVLC reports an HLS master's length as that of the longest playlist it
+  /// has loaded, alternative renditions included, selected or not. A subtitle
+  /// file wrapped as one segment that claims 99,999 seconds therefore makes a
+  /// fifty-minute episode read 27:46:39. A host that has measured the video's
+  /// own playlist passes that length here.
+  ///
+  /// The cap only ever shortens: a shorter report, or an unknown one, is
+  /// published as it is. It applies at once and lasts until the next media.
+  void setDurationCap(Duration? cap);
 
   /// Loads a playlist and selects [initialIndex].
   ///
@@ -392,6 +406,14 @@ class _VlcPlayerController extends VlcPlayerController
   Timer? _eventThrottleTimer;
   VlcPlayerValue? _pendingThrottledValue;
 
+  /// The host's measured length for the current media - see [setDurationCap].
+  Duration? _durationCap;
+
+  /// What the widget last asked libVLC to crop or stretch to; see
+  /// [setVideoGeometry]. Lives on the controller rather than the native player
+  /// so a player created later - a reattach - starts with it.
+  VlcVideoGeometry _videoGeometry = VlcVideoGeometry.none;
+
   /// Counts down [stallIndicatorDelay] from the first snapshot whose position
   /// matched the one before it. Armed only while the engine claims to be
   /// running, and disarmed by any movement of the clock.
@@ -465,6 +487,11 @@ class _VlcPlayerController extends VlcPlayerController
       'vlc_player/events/$viewId',
     ).receiveBroadcastStream().listen(_handleEvent, onError: _handleEventError);
     _ensureLifecycleListener();
+    // Ahead of the media, so its first frame is already the right shape. A
+    // new native player has no crop and no aspect of its own, so a fit that
+    // needs neither costs no call.
+    if (_videoGeometry != VlcVideoGeometry.none) await _sendVideoGeometry();
+    _ensureNotDisposed();
 
     final pendingMediaSource = _pendingMediaSource;
     if (pendingMediaSource != null) {
@@ -519,6 +546,11 @@ class _VlcPlayerController extends VlcPlayerController
       'vlc_player/events/$viewId',
     ).receiveBroadcastStream().listen(_handleEvent, onError: _handleEventError);
     _ensureLifecycleListener();
+    // Ahead of the media, so its first frame is already the right shape. A
+    // new native player has no crop and no aspect of its own, so a fit that
+    // needs neither costs no call.
+    if (_videoGeometry != VlcVideoGeometry.none) await _sendVideoGeometry();
+    _ensureNotDisposed();
 
     final pendingMediaSource = _pendingMediaSource;
     if (pendingMediaSource != null) {
@@ -707,6 +739,48 @@ class _VlcPlayerController extends VlcPlayerController
       _pendingAutoPlay = previousAutoPlay;
       rethrow;
     }
+  }
+
+  @override
+  void setDurationCap(Duration? cap) {
+    // Measured off the main path, so it can land after the host let go.
+    if (_isDisposed) return;
+    _durationCap = cap;
+    final pending = _pendingThrottledValue;
+    if (pending != null) _pendingThrottledValue = _capDuration(pending);
+    final capped = _capDuration(value);
+    if (capped != value) value = capped;
+  }
+
+  @override
+  @internal
+  void setVideoGeometry(VlcVideoGeometry geometry) {
+    if (_isDisposed || geometry == _videoGeometry) return;
+    _videoGeometry = geometry;
+    if (_viewId != null) unawaited(_sendVideoGeometry());
+  }
+
+  /// Best effort: a backend that does not know the call still plays, only
+  /// with subtitles laid out for the whole picture.
+  Future<void> _sendVideoGeometry() async {
+    final viewId = _viewId;
+    if (viewId == null) return;
+    final geometry = _videoGeometry;
+    try {
+      await _invokeNative<void>('setVideoGeometry', <String, Object?>{
+        'viewId': viewId,
+        'crop': geometry.crop,
+        'aspectRatio': geometry.aspectRatio,
+      });
+    } catch (error) {
+      if (kDebugMode) debugPrint('vlc_player: setVideoGeometry failed: $error');
+    }
+  }
+
+  VlcPlayerValue _capDuration(VlcPlayerValue next) {
+    final cap = _durationCap;
+    if (cap == null || next.duration <= cap) return next;
+    return next.copyWith(duration: cap);
   }
 
   @override
@@ -905,6 +979,8 @@ class _VlcPlayerController extends VlcPlayerController
     // startup spinner's job, not this one's.
     _hasPlayedSinceMedia = false;
     _cancelStallTimer();
+    // A measured length belongs to the media it was measured on.
+    _durationCap = null;
     // Opening while the app is away must not start audio nobody can stop:
     // there is no notification and no lock-screen control behind this yet.
     // The policy's claim is staked here so the return trip resumes it.
@@ -1272,7 +1348,7 @@ class _VlcPlayerController extends VlcPlayerController
     }
     final previousValue = _pendingThrottledValue ?? value;
     final nextValue = _observeStall(
-      VlcPlayerValue.fromEvent(event, previousValue),
+      _capDuration(VlcPlayerValue.fromEvent(event, previousValue)),
     );
     _setValueFromEvent(previousValue, nextValue);
     _applyInterruption(previousValue.interruption, nextValue.interruption);

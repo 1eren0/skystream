@@ -788,6 +788,28 @@ class AppLocalizationsHu extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source: $count új tároló',
+      one: '$source: 1 új tároló',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository: $count új bővítmény',
+      one: '$repository: 1 új bővítmény',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Érvénytelen navigáció.';
 
   @override

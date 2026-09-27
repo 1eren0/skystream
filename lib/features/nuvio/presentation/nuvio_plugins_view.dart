@@ -252,7 +252,7 @@ class _NuvioPluginsViewState extends ConsumerState<NuvioPluginsView> {
                                 ),
                               ),
                               Text(
-                                'Checks each repository (max once every ${NuvioRepository.autoUpdateInterval.inHours}h).',
+                                'Checks every repository each time the app opens.',
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: cs.onSurfaceVariant,
                                 ),

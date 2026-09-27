@@ -327,7 +327,7 @@
       }
     }
   },
-  "removeRepoWarning": "This will remove the repository and uninstall ALL its plugin.",
+  "removeRepoWarning": "This will remove the repository and uninstall ALL its plugins.",
   "addRepository": "Add Repository",
   "repoUrlOrShortcode": "Repository URL or Shortcode",
   "assetPlugin": "Asset Plugin",
@@ -366,6 +366,30 @@
   "liveStreams": "Live Streams",
   "debug": "DEBUG",
   "extensionsUpdated": "{count, plural, =1{Updated 1 extension} other{Updated {count} extensions}}",
+  "extensionsNewRepositories": "{count, plural, =1{New repository in {source}} other{{count} new repositories in {source}}}",
+  "@extensionsNewRepositories": {
+    "description": "Title of a toast shown after launch: a repository collection the user follows (a repository that lists other repositories, like the one the 'universe' shortcode adds) listed repositories it had not listed before, and the app added them. {source} is the collection's name, or a few names separated by commas; names are proper nouns and never translated. The toast's body lists the new repositories' names.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "extensionsNewPlugins": "{count, plural, =1{New plugin in {repository}} other{{count} new plugins in {repository}}}",
+  "@extensionsNewPlugins": {
+    "description": "Title of a toast shown after launch: a repository the user has added lists plugins it did not list before. They are available to install, not installed. {repository} is the repository's name, or a few names separated by commas; names are proper nouns and never translated. The toast's body lists the new plugins' names.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "repository": {
+        "type": "String"
+      }
+    }
+  },
   "invalidNavigation": "Invalid navigation. Please go back.",
   "startOver": "Start Over",
   "goBack": "Go Back",

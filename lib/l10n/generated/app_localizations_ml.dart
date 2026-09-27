@@ -795,6 +795,28 @@ class AppLocalizationsMl extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source-ൽ $count പുതിയ റിപ്പോസിറ്ററികൾ',
+      one: '$source-ൽ 1 പുതിയ റിപ്പോസിറ്ററി',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository-ൽ $count പുതിയ പ്ലഗിനുകൾ',
+      one: '$repository-ൽ 1 പുതിയ പ്ലഗിൻ',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'അസാധുവായ നാവിഗേഷൻ. ദയവായി തിരികെ പോവുക.';
 
   @override

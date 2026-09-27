@@ -786,6 +786,28 @@ class AppLocalizationsHi extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source में $count नई रिपॉजिटरी',
+      one: '$source में 1 नई रिपॉजिटरी',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository में $count नए प्लगिन',
+      one: '$repository में 1 नया प्लगिन',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'अमान्य नेविगेशन। कृपया वापस जाएं।';
 
   @override

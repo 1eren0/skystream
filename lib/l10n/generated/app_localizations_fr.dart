@@ -793,6 +793,28 @@ class AppLocalizationsFr extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nouveaux dépôts dans $source',
+      one: 'Nouveau dépôt dans $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nouveaux plugins dans $repository',
+      one: 'Nouveau plugin dans $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation =>
       'Navigation invalide. Veuillez revenir en arrière.';
 

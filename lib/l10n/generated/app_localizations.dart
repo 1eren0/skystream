@@ -1440,7 +1440,7 @@ abstract class AppLocalizations {
   /// No description provided for @removeRepoWarning.
   ///
   /// In en, this message translates to:
-  /// **'This will remove the repository and uninstall ALL its plugin.'**
+  /// **'This will remove the repository and uninstall ALL its plugins.'**
   String get removeRepoWarning;
 
   /// No description provided for @addRepository.
@@ -1586,6 +1586,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{Updated 1 extension} other{Updated {count} extensions}}'**
   String extensionsUpdated(num count);
+
+  /// Title of a toast shown after launch: a repository collection the user follows (a repository that lists other repositories, like the one the 'universe' shortcode adds) listed repositories it had not listed before, and the app added them. {source} is the collection's name, or a few names separated by commas; names are proper nouns and never translated. The toast's body lists the new repositories' names.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{New repository in {source}} other{{count} new repositories in {source}}}'**
+  String extensionsNewRepositories(int count, String source);
+
+  /// Title of a toast shown after launch: a repository the user has added lists plugins it did not list before. They are available to install, not installed. {repository} is the repository's name, or a few names separated by commas; names are proper nouns and never translated. The toast's body lists the new plugins' names.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{New plugin in {repository}} other{{count} new plugins in {repository}}}'**
+  String extensionsNewPlugins(int count, String repository);
 
   /// No description provided for @invalidNavigation.
   ///

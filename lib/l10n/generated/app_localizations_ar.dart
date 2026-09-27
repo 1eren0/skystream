@@ -790,6 +790,34 @@ class AppLocalizationsAr extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مستودع جديد في $source',
+      many: '$count مستودعًا جديدًا في $source',
+      few: '$count مستودعات جديدة في $source',
+      two: 'مستودعان جديدان في $source',
+      one: 'مستودع جديد في $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count إضافة جديدة في $repository',
+      many: '$count إضافة جديدة في $repository',
+      few: '$count إضافات جديدة في $repository',
+      two: 'إضافتان جديدتان في $repository',
+      one: 'إضافة جديدة في $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'انتقال غير صالح. يرجى العودة.';
 
   @override
@@ -2543,6 +2571,34 @@ class AppLocalizationsArApc extends AppLocalizationsAr {
       many: 'تحدثوا $count إضافة',
       few: 'تحدثوا $count إضافات',
       one: 'تحدثت إضافة وحدة',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مستودع جديد في $source',
+      many: '$count مستودع جديد في $source',
+      few: '$count مستودعات جديدة في $source',
+      two: 'مستودعين جداد في $source',
+      one: 'مستودع جديد في $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count إضافة جديدة في $repository',
+      many: '$count إضافة جديدة في $repository',
+      few: '$count إضافات جديدة في $repository',
+      two: 'إضافتين جداد في $repository',
+      one: 'إضافة جديدة في $repository',
     );
     return '$_temp0';
   }

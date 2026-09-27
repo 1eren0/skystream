@@ -789,6 +789,28 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source: $count yeni depo',
+      one: '$source: 1 yeni depo',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository: $count yeni eklenti',
+      one: '$repository: 1 yeni eklenti',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Geçersiz navigasyon. Lütfen geri gidin.';
 
   @override

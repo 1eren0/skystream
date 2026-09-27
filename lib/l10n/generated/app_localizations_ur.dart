@@ -788,6 +788,28 @@ class AppLocalizationsUr extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source میں $count نئی ریپوزٹریز',
+      one: '$source میں 1 نئی ریپوزٹری',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository میں $count نئے پلگ ان',
+      one: '$repository میں 1 نیا پلگ ان',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'غلط نیویگیشن۔ براہ کرم پیچھے جائیں۔';
 
   @override

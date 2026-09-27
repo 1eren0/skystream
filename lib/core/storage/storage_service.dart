@@ -722,6 +722,20 @@ class StorageService {
 
   static const String _kExtensionRepoUrls = 'extension_repo_urls';
 
+  /// String-valued extension keys a reset that keeps the repositories keeps
+  /// too: the collections the user follows, and what each repository has
+  /// been seen to list. Values are `ExtensionsController`'s own keys; this
+  /// layer does not import a feature.
+  static const List<String> _kExtensionRepoStrings = <String>[
+    'extension_collections',
+    'extension_seen_plugins',
+  ];
+
+  /// The repositories the user removed, so the collections still followed
+  /// after a reset do not bring them back.
+  static const String _kExtensionRemovedRepoUrls =
+      'extension_removed_repo_urls';
+
   /// Closes a box if we have one and then deletes it from disk. The delete is
   /// deliberately not conditional on the close succeeding.
   ///
@@ -761,6 +775,8 @@ class StorageService {
 
       // If keepRepos is true, preserve SkyStream extensions, Nuvio plugins, and Stremio addons
       List<String>? savedExtensionRepos;
+      List<String>? savedRemovedExtensionRepos;
+      final savedExtensionRepoStrings = <String, String>{};
       List<String>? savedDisabledExtensions;
       List<String>? savedPinnedExtensions;
       List<String>? savedNuvioRepos;
@@ -771,6 +787,13 @@ class StorageService {
 
       if (keepRepos) {
         savedExtensionRepos = prefs.getStringList(_kExtensionRepoUrls);
+        savedRemovedExtensionRepos = prefs.getStringList(
+          _kExtensionRemovedRepoUrls,
+        );
+        for (final key in _kExtensionRepoStrings) {
+          final value = prefs.getString(key);
+          if (value != null) savedExtensionRepoStrings[key] = value;
+        }
         savedDisabledExtensions = prefs.getStringList('disabled_extensions');
         savedPinnedExtensions = prefs.getStringList('pinned_extensions');
         savedNuvioRepos = prefs.getStringList('nuvio_repos_v1');
@@ -791,6 +814,15 @@ class StorageService {
       if (keepRepos) {
         if (savedExtensionRepos != null) {
           await prefs.setStringList(_kExtensionRepoUrls, savedExtensionRepos);
+        }
+        if (savedRemovedExtensionRepos != null) {
+          await prefs.setStringList(
+            _kExtensionRemovedRepoUrls,
+            savedRemovedExtensionRepos,
+          );
+        }
+        for (final entry in savedExtensionRepoStrings.entries) {
+          await prefs.setString(entry.key, entry.value);
         }
         if (savedDisabledExtensions != null) {
           await prefs.setStringList('disabled_extensions', savedDisabledExtensions);

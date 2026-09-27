@@ -215,6 +215,8 @@
   "liveStreams": "ಲೈವ್ ಸ್ಟ್ರೀಮ್‌ಗಳು",
   "debug": "ಡಿಬಗ್",
   "extensionsUpdated": "{count, plural, =1{1 ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಅಪ್‌ಡೇಟ್ ಮಾಡಲಾಗಿದೆ} other{{count} ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳು ಅಪ್‌ಡೇಟ್ ಮಾಡಲಾಗಿದೆ}}",
+  "extensionsNewRepositories": "{count, plural, =1{{source}-ನಲ್ಲಿ 1 ಹೊಸ ರೆಪೊಸಿಟರಿ} other{{source}-ನಲ್ಲಿ {count} ಹೊಸ ರೆಪೊಸಿಟರಿಗಳು}}",
+  "extensionsNewPlugins": "{count, plural, =1{{repository}-ನಲ್ಲಿ 1 ಹೊಸ ಪ್ಲಗಿನ್} other{{repository}-ನಲ್ಲಿ {count} ಹೊಸ ಪ್ಲಗಿನ್‌ಗಳು}}",
   "invalidNavigation": "ಅಮಾನ್ಯ ನ್ಯಾವಿಗೇಶನ್. ದಯವಿಟ್ಟು ಹಿಂತಿರುಗಿ.",
   "startOver": "ಮೊದಲಿನಿಂದ ಪ್ರಾರಂಭಿಸಿ",
   "goBack": "ಹಿಂದೆ ಹೋಗಿ",

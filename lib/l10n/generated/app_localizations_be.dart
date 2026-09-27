@@ -788,6 +788,32 @@ class AppLocalizationsBe extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count новага рэпазіторыя ў $source',
+      many: '$count новых рэпазіторыяў у $source',
+      few: '$count новыя рэпазіторыі ў $source',
+      one: '$count новы рэпазіторый у $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count новага плагіна ў $repository',
+      many: '$count новых плагінаў у $repository',
+      few: '$count новыя плагіны ў $repository',
+      one: '$count новы плагін у $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Памылка навігацыі. Вярніцеся назад.';
 
   @override

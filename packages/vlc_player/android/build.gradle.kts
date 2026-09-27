@@ -63,6 +63,16 @@ android {
         minSdk = 24
     }
 
+    // libVLC's crop, which libvlc-android does not expose in Java: see
+    // src/main/cpp/vlc_player_geometry.c. The NDK version comes from the host's
+    // root build, which pins one for every subproject.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true

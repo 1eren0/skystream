@@ -35,6 +35,7 @@ import 'package:vlc_player/vlc_player.dart';
 
 import '../../../../../core/domain/entity/multimedia_item.dart';
 import '../../../../../l10n/generated/app_localizations.dart';
+import '../../../domain/side_car_subtitles.dart';
 import '../../widgets/hotstar_player_style.dart';
 import '../torrent_file_sheet.dart';
 import 'player_episodes_tab.dart';
@@ -101,6 +102,7 @@ Future<void> showPlayerPanel(
   ValueChanged<TorrentFile>? onPickFile,
   ValueChanged<BuildContext>? onOpened,
   EpisodeProgressLookup? episodeProgress,
+  SideCarSubtitles? sideCars,
 }) {
   return Navigator.of(context).push<void>(
     _PlayerPanelRoute(
@@ -117,6 +119,7 @@ Future<void> showPlayerPanel(
           onPickEpisode: onPickEpisode,
           onPickFile: onPickFile,
           episodeProgress: episodeProgress,
+          sideCars: sideCars,
           onClose: () => Navigator.of(routeContext).pop(),
         );
       },
@@ -193,6 +196,7 @@ class PlayerPanel extends StatefulWidget {
     this.onPickEpisode,
     this.onPickFile,
     this.episodeProgress,
+    this.sideCars,
     super.key,
   });
 
@@ -218,6 +222,12 @@ class PlayerPanel extends StatefulWidget {
   /// [data]: a closure has no `==`, and [PanelData]'s equality is what keeps
   /// the panel still under the screen's republishes.
   final EpisodeProgressLookup? episodeProgress;
+
+  /// The subtitle files SkyStream draws, for the Subtitles tab to list beside
+  /// the video's own tracks. A listenable of its own rather than part of
+  /// [data], because a file's progress is not something to republish the
+  /// whole panel over.
+  final SideCarSubtitles? sideCars;
 
   @override
   State<PlayerPanel> createState() => _PlayerPanelState();
@@ -642,6 +652,7 @@ class _PlayerPanelState extends State<PlayerPanel> {
               ? tracks.info?.audioTracks ?? const <VlcMediaTrackInfo>[]
               : tracks.info?.subtitleTracks ?? const <VlcMediaTrackInfo>[],
           target: data.subtitleTarget,
+          sideCars: widget.sideCars,
           isTv: widget.isTv,
           autofocus: autofocus,
           onTracksChanged: _reloadTracks,

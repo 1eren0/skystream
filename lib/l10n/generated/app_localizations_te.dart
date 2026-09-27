@@ -791,6 +791,28 @@ class AppLocalizationsTe extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source-లో $count కొత్త రిపోజిటరీలు',
+      one: '$source-లో 1 కొత్త రిపోజిటరీ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository-లో $count కొత్త ప్లగిన్లు',
+      one: '$repository-లో 1 కొత్త ప్లగిన్',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'చెల్లని నావిగేషన్. దయచేసి వెనక్కి వెళ్ళండి.';
 
   @override

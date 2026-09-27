@@ -694,7 +694,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get removeRepoWarning =>
-      'This will remove the repository and uninstall ALL its plugin.';
+      'This will remove the repository and uninstall ALL its plugins.';
 
   @override
   String get addRepository => 'Add Repository';
@@ -779,6 +779,28 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other: 'Updated $count extensions',
       one: 'Updated 1 extension',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new repositories in $source',
+      one: 'New repository in $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new plugins in $repository',
+      one: 'New plugin in $repository',
     );
     return '$_temp0';
   }

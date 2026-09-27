@@ -776,6 +776,28 @@ class AppLocalizationsHe extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count מאגרים חדשים ב-$source',
+      one: 'מאגר חדש ב-$source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count פלאגינים חדשים ב-$repository',
+      one: 'פלאגין חדש ב-$repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'ניווט לא תקין.';
 
   @override

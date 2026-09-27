@@ -784,6 +784,28 @@ class AppLocalizationsMk extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нови складишта во $source',
+      one: '$count ново складиште во $source',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count нови приклучоци во $repository',
+      one: '$count нов приклучок во $repository',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'Невалидна навигација. Ве молиме вратете се.';
 
   @override

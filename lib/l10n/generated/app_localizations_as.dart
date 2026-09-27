@@ -785,6 +785,28 @@ class AppLocalizationsAs extends AppLocalizations {
   }
 
   @override
+  String extensionsNewRepositories(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$source-ত $count টা নতুন ৰিপোজিটৰী',
+      one: '$source-ত ১ টা নতুন ৰিপোজিটৰী',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String extensionsNewPlugins(int count, String repository) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$repository-ত $count টা নতুন প্লাগইন',
+      one: '$repository-ত ১ টা নতুন প্লাগইন',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get invalidNavigation => 'অবৈধ নেভিগেশ্যন। অনুগ্ৰহ কৰি পাছলৈ যাওক।';
 
   @override

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:skystream/features/player/domain/entity/subtitle_model.dart';
 import 'package:skystream/features/player/domain/subtitle_search_target.dart';
 import 'package:skystream/features/player/presentation/subtitle_search_provider.dart';
@@ -99,14 +100,22 @@ class _RecordingProvider extends SubtitleProvider {
 /// and the file system replaced: the download either "lands" at [path] or
 /// fails, and every request is recorded.
 class _StubDownload extends SubtitleSearch {
-  _StubDownload(this.downloads, this.path);
+  _StubDownload(this.downloads, this.path, this.episodes);
 
   final List<OnlineSubtitle> downloads;
   final String? path;
 
+  /// The season and episode each download was asked for.
+  final List<(int?, int?)> episodes;
+
   @override
-  Future<String?> downloadAndPrepare(OnlineSubtitle subtitle) async {
+  Future<String?> downloadAndPrepare(
+    OnlineSubtitle subtitle, {
+    int? season,
+    int? episode,
+  }) async {
     downloads.add(subtitle);
+    episodes.add((season, episode));
     return path;
   }
 }
@@ -123,22 +132,31 @@ OnlineSubtitle _result(String id) => OnlineSubtitle(
 T? _focused<T extends Widget>() => FocusManager.instance.primaryFocus?.context
     ?.findAncestorWidgetOfExactType<T>();
 
-/// The title text of the [ListTile] holding primary focus, or null.
-String? _focusedTile() => (_focused<ListTile>()?.title as Text?)?.data;
-
-/// How many traversable focus stops sit inside [element].
-int _focusStopsIn(Element element) {
-  var stops = 0;
-  void visit(Element child) {
-    final widget = child.widget;
-    if (widget is Focus && widget.canRequestFocus && !widget.skipTraversal) {
-      stops++;
+/// The first text inside the control holding primary focus - a result's
+/// release name, a language chip's label - or null.
+String? _focusedText() {
+  final context = FocusManager.instance.primaryFocus?.context;
+  if (context == null) return null;
+  String? found;
+  void visit(Element element) {
+    if (found != null) return;
+    final widget = element.widget;
+    if (widget is Text) {
+      found = widget.data;
+      return;
     }
-    child.visitChildren(visit);
+    element.visitChildren(visit);
   }
 
-  element.visitChildren(visit);
-  return stops;
+  (context as Element).visitChildren(visit);
+  return found;
+}
+
+/// Whether the text [finder] finds sits inside a focus stop: a control a
+/// remote lands on, rather than words it steps past.
+bool _insideStop(Finder finder) {
+  final node = Focus.maybeOf(finder.evaluate().single);
+  return node != null && node.canRequestFocus && !node.skipTraversal;
 }
 
 Future<void> _down(WidgetTester tester) async {
@@ -190,6 +208,7 @@ void main() {
     ({
       _RecordingProvider provider,
       List<OnlineSubtitle> downloads,
+      List<(int?, int?)> episodes,
       FakeVlcEngine engine,
       List<bool?> popped,
     })
@@ -217,13 +236,14 @@ void main() {
     addTearDown(() => SubtitleSearch.debugProviders = null);
 
     final downloads = <OnlineSubtitle>[];
+    final episodes = <(int?, int?)>[];
     final popped = <bool?>[];
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           playerSettingsProvider.overrideWithBuild((_, _) => settings),
           subtitleSearchProvider.overrideWith(
-            () => _StubDownload(downloads, downloadPath),
+            () => _StubDownload(downloads, downloadPath, episodes),
           ),
         ],
         child: MaterialApp(
@@ -262,6 +282,7 @@ void main() {
     return (
       provider: recorder,
       downloads: downloads,
+      episodes: episodes,
       engine: engine,
       popped: popped,
     );
@@ -370,17 +391,21 @@ void main() {
         );
         expect(find.text(_result('title').name), findsOneWidget);
 
-        // Field, search button, language row, one result: the note is none.
         expect(
-          _focusStopsIn(find.byType(VlcSubtitleSearchSheet).evaluate().single),
-          4,
+          _insideStop(find.text(l10n.subtitleSearchTitleFallback)),
+          isFalse,
           reason: 'the note is text a remote steps past, not a stop',
         );
+        expect(_insideStop(find.text(_result('title').name)), isTrue);
         expect(_focused<IconButton>(), isNotNull);
         await _down(tester);
-        expect(_focusedTile(), l10n.language);
+        expect(
+          _focusedText(),
+          'English',
+          reason: 'into the languages on the one searched in',
+        );
         await _down(tester);
-        expect(_focusedTile(), _result('title').name);
+        expect(_focusedText(), _result('title').name);
       },
     );
 
@@ -389,10 +414,7 @@ void main() {
 
       expect(find.text(l10n.subtitleSearchTitleFallback), findsNothing);
       expect(find.text(l10n.subtitleSearchSeasonFallback), findsNothing);
-      expect(
-        _focusStopsIn(find.byType(VlcSubtitleSearchSheet).evaluate().single),
-        4,
-      );
+      expect(find.text(_result('1').name), findsOneWidget);
     });
 
     testWidgets('a season-wide list says it is the season, and never blames '
@@ -428,8 +450,8 @@ void main() {
       expect(find.text(l10n.subtitleSearchTitleFallback), findsNothing);
       expect(find.text(_result('season').name), findsOneWidget);
       expect(
-        _focusStopsIn(find.byType(VlcSubtitleSearchSheet).evaluate().single),
-        4,
+        _insideStop(find.text(l10n.subtitleSearchSeasonFallback)),
+        isFalse,
         reason: 'the season note is text a remote steps past, not a stop',
       );
     });
@@ -545,6 +567,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(sheet.downloads.map((s) => s.id), <String>['1']);
+      expect(sheet.episodes, <(int?, int?)>[
+        (2, 5),
+      ], reason: 'the episode on screen picks its file out of a season pack');
       final added = sheet.engine.callsTo('addSubtitle');
       expect(added, hasLength(1));
       expect(
@@ -601,19 +626,159 @@ void main() {
       expect(refused.map((call) => call.method), contains('addSubtitle'));
       expect(find.text(l10n.subtitleDownloadFailed), findsOneWidget);
       expect(
-        find.byType(LinearProgressIndicator),
+        find.byType(CircularProgressIndicator),
         findsNothing,
         reason: 'the download is over, refused or not',
       );
       expect(sheet.popped, isEmpty);
       expect(find.byType(VlcSubtitleSearchSheet), findsOneWidget);
       expect(
-        tester
-            .widget<ListTile>(find.widgetWithText(ListTile, _result('1').name))
-            .enabled,
+        _insideStop(find.text(_result('1').name)),
         isTrue,
         reason: 'an unfocusable list on a remote has no exit but Back',
       );
+
+      // And it takes the next press.
+      final before = sheet.downloads.length;
+      await tester.tap(find.text(_result('1').name));
+      await tester.pumpAndSettle();
+      expect(sheet.downloads.length, before + 1);
+    });
+  });
+
+  group('every control answers a remote, a keyboard, a mouse and a tap', () {
+    testWidgets('a language chip searches again in its language, pressed or '
+        'selected from a remote', (tester) async {
+      final sheet = await pumpSheet(tester, target: _episode);
+      expect(sheet.provider.calls.single.language, 'en');
+
+      // From the search button into the row, then one along.
+      await _down(tester);
+      expect(_focusedText(), 'English');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(_focusedText(), 'Hindi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(sheet.provider.calls, hasLength(2));
+      expect(sheet.provider.calls.last.language, 'hi');
+
+      // And the same with a tap.
+      await tester.tap(find.text('Bengali'));
+      await tester.pumpAndSettle();
+      expect(sheet.provider.calls.last.language, 'bn');
+    });
+
+    testWidgets('up and down leave the field on a remote', (tester) async {
+      await pumpSheet(tester);
+      expect(_focused<TextField>(), isNotNull);
+
+      await _down(tester);
+      expect(_focusedText(), 'English');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(_focused<TextField>(), isNotNull);
+    });
+
+    testWidgets('down from the back button is the field', (tester) async {
+      await pumpSheet(tester, target: _episode);
+      final back = MaterialLocalizations.of(
+        tester.element(find.byType(VlcSubtitleSearchSheet)),
+      ).backButtonTooltip;
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(_focused<IconButton>()?.tooltip, back);
+
+      await _down(tester);
+      expect(_focused<TextField>(), isNotNull);
+    });
+
+    testWidgets('a result takes Enter as well as a tap', (tester) async {
+      final sheet = await pumpSheet(
+        tester,
+        target: _episode,
+        downloadPath: '/tmp/subs/The.Show.S02E05.srt',
+      );
+
+      await _down(tester);
+      await _down(tester);
+      expect(_focusedText(), _result('1').name);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(sheet.downloads.map((s) => s.id), <String>['1']);
+      expect(sheet.popped, <bool?>[true]);
+    });
+
+    testWidgets('Tab walks every control, results included', (tester) async {
+      await pumpSheet(tester, target: _episode, isTv: false);
+
+      final seen = <String?>{};
+      for (var i = 0; i < 80; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        final button = _focused<IconButton>();
+        seen.add(
+          button?.tooltip ??
+              (_focused<TextField>() != null ? 'field' : _focusedText()),
+        );
+        if (_focusedText() == _result('1').name) break;
+      }
+
+      final back = MaterialLocalizations.of(
+        tester.element(find.byType(VlcSubtitleSearchSheet)),
+      );
+      expect(seen, contains(back.backButtonTooltip));
+      expect(seen, contains('field'));
+      expect(seen, contains(back.clearButtonTooltip));
+      expect(seen, contains(l10n.search));
+      expect(seen, containsAll(<String>['English', 'Hindi']));
+      expect(seen, contains(_result('1').name));
+    });
+
+    testWidgets('the back button closes it', (tester) async {
+      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
+      final back = MaterialLocalizations.of(
+        tester.element(find.byType(VlcSubtitleSearchSheet)),
+      ).backButtonTooltip;
+
+      await tester.tap(find.byTooltip(back));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VlcSubtitleSearchSheet), findsNothing);
+      expect(sheet.popped, hasLength(1));
+    });
+
+    testWidgets('Escape closes it', (tester) async {
+      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VlcSubtitleSearchSheet), findsNothing);
+      expect(sheet.popped, hasLength(1));
+    });
+
+    testWidgets('Clear empties the field and takes the ids with it', (
+      tester,
+    ) async {
+      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
+      final clear = MaterialLocalizations.of(
+        tester.element(find.byType(VlcSubtitleSearchSheet)),
+      ).clearButtonTooltip;
+
+      await tester.tap(find.byTooltip(clear));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'The Show'), findsNothing);
+      expect(find.byTooltip(clear), findsNothing, reason: 'nothing to clear');
+
+      // An empty field with the ids gone is nothing to search for.
+      await tester.tap(find.byTooltip(l10n.search));
+      await tester.pumpAndSettle();
+      expect(sheet.provider.calls, hasLength(1), reason: 'only the open');
     });
   });
 
@@ -629,7 +794,7 @@ void main() {
         settle: false,
       );
 
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(Shimmer), findsOneWidget);
       expect(
         _focused<IconButton>(),
         isNotNull,
@@ -642,7 +807,7 @@ void main() {
 
       await _down(tester);
       await _down(tester);
-      expect(_focusedTile(), _result('1').name);
+      expect(_focusedText(), _result('1').name);
     });
 
     testWidgets('an unseeded sheet starts in the field', (tester) async {
