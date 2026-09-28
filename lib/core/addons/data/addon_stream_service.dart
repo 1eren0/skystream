@@ -213,12 +213,6 @@ class AddonStreamService {
           .where((a) => a.manifest?.hasResource('stream') ?? false)
           .toList(growable: false);
 
-  static int _compare(AddonStreamSource a, AddonStreamSource b) {
-    final byScore = b.score.compareTo(a.score);
-    if (byScore != 0) return byScore;
-    return a.addonName.compareTo(b.addonName);
-  }
-
   /// Emits a snapshot every time an add-on answers, so links appear as they
   /// arrive instead of after the slowest add-on.
   Stream<AddonStreamProgress> resolve({
@@ -289,10 +283,13 @@ class AddonStreamService {
 
     final updates = StreamController<AddonStreamProgress>();
 
+    // Best first, with links to some other film the add-on found last.
+    List<AddonStreamSource> ranked() =>
+        rankAddonStreams(streams, title: effective.title, year: effective.year);
+
     AddonStreamProgress snapshot({bool loading = true}) {
-      streams.sort(_compare);
       return AddonStreamProgress(
-        streams: List.of(streams),
+        streams: ranked(),
         statuses: statuses.values.toList(),
         completedCount: completed,
         totalCount: providers.length,
@@ -495,9 +492,8 @@ class AddonStreamService {
     yield snapshot();
     yield* updates.stream;
 
-    streams.sort(_compare);
     yield AddonStreamProgress(
-      streams: streams,
+      streams: ranked(),
       statuses: statuses.values.toList(),
       completedCount: completed,
       totalCount: providers.length,

@@ -157,7 +157,74 @@ Future<List<AddonMetaPreview>> addonSearch(Ref ref, String query) async {
       if (seen.add('${item.type}:${item.id}')) out.add(item);
     }
   }
-  return out;
+  return rankAddonSearchResults(out, trimmed);
+}
+
+/// [results] merged from every searchable catalog, closest to [query] first.
+///
+/// Each catalog ranks its own answers, but they arrive one catalog after
+/// another: "India vs Afghanistan" opened on Cinemeta's loose matches
+/// ("India's Got Latent") while the match itself, in a bridge's live-events
+/// catalog, sat behind them, past the suggestions shown. So the name itself
+/// comes first, then the search as a phrase in a name, then names with every
+/// word of it, then names sharing more of its words; the last word may be
+/// half typed, and ties keep the catalogs' order.
+List<AddonMetaPreview> rankAddonSearchResults(
+  List<AddonMetaPreview> results,
+  String query,
+) {
+  final wanted = _searchWords(query);
+  if (wanted.isEmpty) return results;
+  final phrase = wanted.join(' ');
+  final ranks = [
+    for (final item in results) _searchRank(item.name, wanted, phrase),
+  ];
+  final order = [for (var i = 0; i < results.length; i++) i]
+    ..sort((a, b) {
+      final (tierA, wordsA, lettersA) = ranks[a];
+      final (tierB, wordsB, lettersB) = ranks[b];
+      if (tierA != tierB) return tierA.compareTo(tierB);
+      if (wordsA != wordsB) return wordsB.compareTo(wordsA);
+      if (lettersA != lettersB) return lettersB.compareTo(lettersA);
+      return a.compareTo(b);
+    });
+  return [for (final i in order) results[i]];
+}
+
+final RegExp _searchSeparators = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+List<String> _searchWords(String text) => [
+  for (final word in text.toLowerCase().split(_searchSeparators))
+    if (word.isNotEmpty) word,
+];
+
+/// How closely [name] answers a search for [wanted]: a tier, lower is closer,
+/// then how many of the searched words it has and how many letters they are.
+(int, int, int) _searchRank(String name, List<String> wanted, String phrase) {
+  final words = _searchWords(name);
+  final text = words.join(' ');
+  var matched = 0;
+  var letters = 0;
+  for (var i = 0; i < wanted.length; i++) {
+    final word = wanted[i];
+    final typing = i == wanted.length - 1;
+    if (words.any((w) => w == word || (typing && w.startsWith(word)))) {
+      matched++;
+      letters += word.length;
+    }
+  }
+  final tier = text == phrase
+      ? 0
+      : ' $text '.contains(' $phrase ')
+      ? 1
+      : ' $text'.contains(' $phrase')
+      ? 2
+      : matched == wanted.length
+      ? 3
+      : matched > 0
+      ? 4
+      : 5;
+  return (tier, matched, letters);
 }
 
 /// Meta for one item: the add-on it came from first, then any other meta
@@ -190,12 +257,23 @@ Future<AddonMeta?> addonMeta(
   for (final addon in ordered) {
     final manifest = addon.manifest!;
     if (!manifest.supportsId('meta', id)) continue;
+    // The add-on whose catalog listed the title is the one that knows its
+    // id, and a scraping bridge's meta is a scrape: CNCVerse took 9 to 29 s
+    // to describe what its own search had listed. The others get the time a
+    // plain meta add-on needs.
+    final ceiling = addon.manifestUrl == preferredAddonUrl
+        ? AddonClient.scrapeTimeout
+        : const Duration(seconds: 12);
     for (final requestType in manifest.requestTypesFor('meta', type)) {
       try {
         final meta = await client
             .meta(addon, type: requestType, id: id)
-            .timeout(const Duration(seconds: 12));
+            .timeout(ceiling);
         if (meta != null) return meta;
+      } on TimeoutException {
+        // A slow host, not a wrong type: asking as the next type would only
+        // wait as long again.
+        break;
       } catch (_) {
         continue;
       }

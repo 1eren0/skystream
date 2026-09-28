@@ -547,3 +547,119 @@ List<String> addonStreamProviderLabels(Iterable<AddonStreamSource> streams) {
   out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   return out;
 }
+
+/// [streams] best first: by [AddonStreamSource.score], except that links which
+/// look like a different film go after every other link.
+///
+/// Scraper bridges search their sites by title and sometimes take the wrong
+/// page: asked for The Vvaan (2026), CNCVerse's FourKHDHub answered with 4K
+/// links to The Twilight Saga: Breaking Dawn - Part 2, and the score alone
+/// made one of them the top pick. Those links name the film they are for. An
+/// add-on that names the film asked for in some of its links has, in the
+/// others, named another, so those go last, still listed. An add-on that names
+/// no film, and a [title] with no word distinctive enough to look for, leave
+/// the score to decide. A link that carries the film's [year] counts as naming
+/// it: that keeps a release under a translated title ("Duna - Parte Dois
+/// 2024") where it was.
+List<AddonStreamSource> rankAddonStreams(
+  Iterable<AddonStreamSource> streams, {
+  String? title,
+  int? year,
+}) {
+  final ranked = streams.toList();
+  final scores = Map<AddonStreamSource, int>.identity();
+  for (final stream in ranked) {
+    scores[stream] = stream.score;
+  }
+
+  final suspects = Set<AddonStreamSource>.identity();
+  final words = _titleWords(title);
+  if (words.isNotEmpty) {
+    final naming = <String>{};
+    final unnamed = <AddonStreamSource>[];
+    for (final stream in ranked) {
+      if (stream._names(words, year)) {
+        naming.add(stream.addonId);
+      } else {
+        unnamed.add(stream);
+      }
+    }
+    suspects.addAll(unnamed.where((s) => naming.contains(s.addonId)));
+  }
+
+  ranked.sort((a, b) {
+    final bySuspicion = (suspects.contains(a) ? 1 : 0).compareTo(
+      suspects.contains(b) ? 1 : 0,
+    );
+    if (bySuspicion != 0) return bySuspicion;
+    final byScore = scores[b]!.compareTo(scores[a]!);
+    if (byScore != 0) return byScore;
+    return a.addonName.compareTo(b.addonName);
+  });
+  return ranked;
+}
+
+/// Words that name nothing in particular: they turn up in titles and in any
+/// release's name alike.
+const Set<String> _commonWords = {
+  'the',
+  'and',
+  'for',
+  'with',
+  'from',
+  'part',
+  'movie',
+  'film',
+  'full',
+  'hindi',
+  'dubbed',
+  'season',
+  'episode',
+  'series',
+  'complete',
+  'dual',
+  'audio',
+};
+
+final RegExp _word = RegExp(r'[\p{L}\p{N}]+', unicode: true);
+
+/// The distinctive words of [text], lower-case.
+Set<String> _wordsOf(String text) => {
+  for (final match in _word.allMatches(text.toLowerCase()))
+    if (match[0]!.length >= 3 && !_commonWords.contains(match[0])) match[0]!,
+};
+
+/// The words a link must share to name the film called [title].
+///
+/// A scraper bridge's catalog names the release rather than the film ("The
+/// Vvaan (2026) V2 HQ-HDTC Hindi (LiNE) 1080p | Full Movie"): the film is what
+/// comes before its year or first bracket.
+Set<String> _titleWords(String? title) {
+  if (title == null) return const {};
+  final name = title
+      .replaceFirst(RegExp(r'^\s*(\[[^\]]*\]\s*)+'), '')
+      .split(RegExp(r'[(\[{|]|\b(?:19|20)\d\d\b'))
+      .first;
+  return _wordsOf(name);
+}
+
+extension on AddonStreamSource {
+  /// Whether this link names the film: one of [words] in its labels, file
+  /// name or path, or the film's [year].
+  bool _names(Set<String> words, int? year) {
+    var path = '';
+    final link = url;
+    if (link != null) {
+      try {
+        path = Uri.decodeFull(Uri.parse(link).path);
+      } on FormatException {
+        // Not a URL to read a name from; the labels still say.
+      } on ArgumentError {
+        // A malformed escape in the path; the same.
+      }
+    }
+    final text = '$_text $path';
+    if (_wordsOf(text).any(words.contains)) return true;
+    return year != null && RegExp('\\b$year\\b').hasMatch(text);
+  }
+}

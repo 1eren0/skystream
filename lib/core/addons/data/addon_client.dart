@@ -128,6 +128,10 @@ class AddonClient {
   /// "TimeoutException after 0:00:18". Streams get their own budget.
   static const Duration _stream = Duration(seconds: 45);
 
+  /// How long a bridge may take to scrape a /meta answer together. CNCVerse
+  /// took 9 to 29 s to describe titles its own search had listed.
+  static const Duration scrapeTimeout = Duration(seconds: 40);
+
   Options _options(Duration timeout) => Options(
     receiveTimeout: timeout,
     sendTimeout: timeout,
@@ -246,7 +250,15 @@ class AddonClient {
     if (forceRefresh) _cache.invalidatePrefix('meta:$url');
 
     return _cache.run('meta:$url', metaTtl, () async {
-      final json = await _getJson(url, cancelToken: cancelToken);
+      // The caller decides how long it waits, up to [scrapeTimeout]. The
+      // request itself runs a little past that, so it is always the caller's
+      // ceiling that ends the wait, and a slow answer still lands in the
+      // cache for the next attempt.
+      final json = await _getJson(
+        url,
+        timeout: _stream,
+        cancelToken: cancelToken,
+      );
       final meta = json?['meta'];
       if (meta is! Map) return null;
       return AddonMeta.fromJson(
