@@ -93,21 +93,50 @@ StallAction stallActionFor({
 /// are walked last rather than dropped: a slow host, or one that refuses the
 /// probe's HEAD and ranged GET, reads as dead and still streams. Before
 /// everything else, though, they would each cost the full stall deadline.
+///
+/// [cannotSeek] are the candidates whose servers ignore byte ranges, for a
+/// walk that resumes mid-film: one of them would start it again from the
+/// top. Walked after the rest, but before the ones found dead - a film from
+/// the start still beats none.
 int? nextFailoverIndex({
   required int from,
   required int total,
   required Set<int> tried,
   Set<int> unreachable = const <int>{},
+  Set<int> cannotSeek = const <int>{},
 }) {
   if (total <= 0) return null;
+  int? fromTheStart;
   int? lastResort;
   for (var step = 1; step <= total; step++) {
     final candidate = (from + step) % total;
     if (tried.contains(candidate)) continue;
-    if (!unreachable.contains(candidate)) return candidate;
-    lastResort ??= candidate;
+    if (unreachable.contains(candidate)) {
+      lastResort ??= candidate;
+    } else if (cannotSeek.contains(candidate)) {
+      fromTheStart ??= candidate;
+    } else {
+      return candidate;
+    }
   }
-  return lastResort;
+  return fromTheStart ?? lastResort;
+}
+
+/// The source to resume on: [preferred], unless the check found its server
+/// ignores byte ranges - libVLC would start it from the top, losing the
+/// viewer's place - and has vouched for one that can seek.
+///
+/// Only a settled answer moves it: a probe still out may yet say the same.
+int resumeSourceIndex({
+  required int preferred,
+  required int total,
+  required Map<int, ProbeOutcome> probes,
+}) {
+  if (probes[preferred] != ProbeOutcome.unseekable) return preferred;
+  for (var index = 0; index < total; index++) {
+    if (probes[index] == ProbeOutcome.healthy) return index;
+  }
+  return preferred;
 }
 
 /// Where to go when the source at [except] turns out unreachable while it
@@ -118,17 +147,23 @@ int? nextFailoverIndex({
 /// candidate is as unproven as the one just abandoned. Null means there is
 /// nowhere proven to go, and the caller should keep opening rather than
 /// abandon a source on the probe's word alone - it is wrong about slow hosts.
+///
+/// One that can be sought in comes first; one whose server ignores byte
+/// ranges plays too, only from its start.
 int? firstReachableIndex({
   required int total,
   required Map<int, ProbeOutcome> probes,
   required Set<int> failed,
   required int except,
 }) {
+  int? fromTheStart;
   for (var index = 0; index < total; index++) {
     if (index == except || failed.contains(index)) continue;
-    if (probes[index] == ProbeOutcome.healthy) return index;
+    final probe = probes[index];
+    if (probe == ProbeOutcome.healthy) return index;
+    if (probe == ProbeOutcome.unseekable) fromTheStart ??= index;
   }
-  return null;
+  return fromTheStart;
 }
 
 /// What the decoder is doing behind a clock that *is* advancing.

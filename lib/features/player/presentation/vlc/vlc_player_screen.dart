@@ -491,6 +491,18 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   RememberedTrack? _rememberedAudio;
   RememberedTrack? _rememberedSubtitle;
 
+  /// The subtitle [_restoreTracks] came to put back and did not find: the new
+  /// media had not listed it yet - a reopened MKV lists its audio first. It
+  /// is looked for again on each change to the list ([_maybeRestoreSubtitle])
+  /// until it is on, or until the viewer picks for themselves.
+  RememberedTrack? _subtitleToRestore;
+
+  /// The track list revision the last look for [_subtitleToRestore] read.
+  int? _subtitleRestoreRevision;
+
+  /// Set while a look for [_subtitleToRestore] is in flight.
+  bool _restoringSubtitle = false;
+
   /// The ids the last snapshot reported, so a change can be spotted without
   /// asking the engine for its track list on every tick.
   int? _seenAudioTrackId;
@@ -766,7 +778,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           // Read-ahead, which is the knob the caching one was mistaken for:
           // it buys resilience and cheap seeks without delaying a stream that
           // starts mid-playback. KiB is libVLC's unit.
-          prefetchBufferKiB: _bufferMb * 1024,
+          prefetchBufferKiB: (() { debugPrint('TEMP-INSTR prefetchBufferKiB=8192 (proxy test)'); return 8192; })(),
           userAgent: kDefaultBrowserUserAgent,
           // libVLC does adapt, but its estimator starts pessimistic and can
           // sit on a low rendition for a long stretch, so pin the highest.
@@ -977,8 +989,19 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       unawaited(_loadSkipSegments(currentEpisode));
 
       // A row picked while the resume lookup was finishing is the viewer's
-      // choice, and it outranks the resolver's.
-      final first = _pickedBeforeOpen ?? resolved.index;
+      // choice, and it outranks the resolver's. The resolver's is moved off a
+      // source that cannot seek when there is a place to pick up from: it
+      // would play from the top. Only the lookup knows that, and it answers
+      // after the race.
+      final first =
+          _pickedBeforeOpen ??
+          (_resumePosition > Duration.zero
+              ? resumeSourceIndex(
+                  preferred: resolved.index,
+                  total: resolved.streams.length,
+                  probes: _probes,
+                )
+              : resolved.index);
       _pickedBeforeOpen = null;
       _awaitingFirstOpen = false;
       await _openAttempt(first, startAt: _resumePosition);
@@ -1079,6 +1102,8 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _autoPickPending = !_subtitlesOffPending && _rememberedSubtitle == null;
     _autoPickLook = null;
     _viewerChoseSubtitle = false;
+    _subtitleToRestore = null;
+    _subtitleRestoreRevision = null;
     // Whatever the viewer was listening to and reading goes back on once the
     // new media has published its tracks. A reopen restores the position; it
     // has no business also changing the language.
@@ -1466,11 +1491,54 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           // be undone by the standing rule.
           _subtitlesOffPending = false;
           await _controller.setSubtitleTrack(match.id);
+        } else {
+          // Most likely not listed yet: the audio being on is what brought
+          // this look, and it can come before the subtitles are read. Looked
+          // for again as the list fills in.
+          _subtitleToRestore = subtitle;
+          _subtitleRestoreRevision = _controller.value.trackRevision;
         }
       }
     } on Object {
       // A refusal leaves the engine's own choice, which is where a viewer
       // would have been without any of this.
+    }
+  }
+
+  /// Looks again for the subtitle [_restoreTracks] could not find, once for
+  /// each change to the track list.
+  void _maybeRestoreSubtitle(VlcPlayerValue value) {
+    final wanted = _subtitleToRestore;
+    if (wanted == null || _restoringSubtitle) return;
+    if (value.trackRevision == _subtitleRestoreRevision) return;
+    _subtitleRestoreRevision = value.trackRevision;
+    _restoringSubtitle = true;
+    unawaited(
+      _restoreSubtitle(wanted).whenComplete(() => _restoringSubtitle = false),
+    );
+  }
+
+  /// Puts [wanted] on if the list now has it. Stands down for a newer media,
+  /// for the viewer's own pick, and for a subtitle file on screen.
+  Future<void> _restoreSubtitle(RememberedTrack wanted) async {
+    final generation = _generation;
+    bool superseded() =>
+        _disposed ||
+        generation != _generation ||
+        _subtitleToRestore != wanted ||
+        _viewerChoseSubtitle ||
+        _sideCars.active != null;
+    try {
+      final tracks = await _controller.getSubtitleTracks();
+      if (superseded()) return;
+      final match = matchRememberedTrack(tracks, wanted);
+      if (match == null) return;
+      _subtitleToRestore = null;
+      // See [_restoreTracks].
+      _subtitlesOffPending = false;
+      await _controller.setSubtitleTrack(match.id);
+    } on Object {
+      // As in [_restoreTracks]: the engine's own choice stands.
     }
   }
 
@@ -1697,8 +1765,18 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           // dropped: the probe is wrong about slow hosts.
           unreachable: <int>{
             for (final entry in _probes.entries)
-              if (entry.value == ProbeOutcome.unhealthy) entry.key,
+              if (entry.value == ProbeOutcome.unhealthy ||
+                  entry.value == ProbeOutcome.notVideo)
+                entry.key,
           },
+          // Picking up where playback stopped: a source that cannot seek would
+          // start it again from the top.
+          cannotSeek: startAt > Duration.zero
+              ? <int>{
+                  for (final entry in _probes.entries)
+                    if (entry.value == ProbeOutcome.unseekable) entry.key,
+                }
+              : const <int>{},
         );
     if (next == null) {
       // Say what actually went wrong: a single-source channel refused for DRM
@@ -1727,14 +1805,10 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     final attempt = _generation;
     _onProbe(generation, index, ProbeOutcome.trying);
     unawaited(
-      isReachable(stream).then(
-        (reached) {
-          _onProbe(
-            generation,
-            index,
-            reached ? ProbeOutcome.healthy : ProbeOutcome.unhealthy,
-          );
-          if (!reached) _abandonUnreachable(attempt, index);
+      probeSource(stream).then(
+        (outcome) {
+          _onProbe(generation, index, outcome);
+          if (!outcome.reached) _abandonUnreachable(attempt, index);
         },
         onError: (Object _) =>
             _onProbe(generation, index, ProbeOutcome.unhealthy),
@@ -2448,6 +2522,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // theirs.
     _viewerChoseSubtitle = true;
     _autoPickPending = false;
+    _subtitleToRestore = null;
     final isTv = _form == PlayerFormFactor.tv;
     await showPlayerPanel(
       context,
@@ -2924,6 +2999,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // state says.
     _applySubtitleDefault(value);
     _rememberTracks(value);
+    _maybeRestoreSubtitle(value);
     _maybePickPreferredSubtitle(value);
     final recorder = _recorder;
     if (recorder == null) return;
@@ -2953,7 +3029,14 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // the state enum - decides whether this counts as progress. libVLC reports
     // `buffering` throughout healthy playback on some builds, and gating on the
     // enum meant progress, scrobbling and completion never fired at all.
-    final advanced = value.position != _lastSeenPosition;
+    //
+    // Zero is never progress: it is libVLC saying the media has played nothing
+    // yet, which is all it reports while a source opens. A resume seeds the
+    // last position with its saved place, and the drop from there to zero read
+    // as the position moving - the loading screen went, over a black screen,
+    // before anything had been drawn.
+    final advanced =
+        value.position != _lastSeenPosition && value.position > Duration.zero;
     _lastSeenPosition = value.position;
     final running =
         value.state != VlcPlaybackState.paused &&
@@ -3383,8 +3466,11 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // second Back arriving mid-animation would pop the player out from under
     // the closing panel.
     if (!(ModalRoute.of(sheet)?.isCurrent ?? false)) return false;
-    _sheetContext = null;
-    Navigator.of(sheet).pop();
+    // maybePop rather than pop: the panel may be a step in - on the online
+    // search - and Back from a step is a step back, which the panel's own
+    // PopScope answers. From its tabs the pop goes through and closes it,
+    // and [_openPanel] lets go of [_sheetContext] once it has.
+    unawaited(Navigator.of(sheet).maybePop());
     return true;
   }
 

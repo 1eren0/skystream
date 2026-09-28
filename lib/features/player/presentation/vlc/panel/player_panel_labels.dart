@@ -22,10 +22,12 @@ String sourceReachabilityLabel(
 ) => switch (reachability) {
   SourceReachability.checking => l10n.playerSourceChecking,
   SourceReachability.reachable => l10n.playerSourceReachable,
+  SourceReachability.unseekable => l10n.playerSourceCannotSeek,
   // "Unknown", not "unreachable": the check got no answer, which a slow host
   // or one that refuses test requests gives too, and such a link can still
   // play. The word claims no more than the check knows.
   SourceReachability.unreachable => l10n.unknown,
+  SourceReachability.notVideo => l10n.playerSourceNotVideo,
   SourceReachability.notChecked => l10n.playerSourceNotChecked,
 };
 

@@ -1353,7 +1353,10 @@ class _FocusableCardState extends State<_FocusableCard> {
 
     // The card lights up only for focus it owns itself, such as its
     // ExpansionTile header. A focused row draws its own affordance instead.
-    final highlight = _isFocused && _focusedRow == null;
+    // And only for a remote or a keyboard: under a thumb, a field tapped
+    // inside the card is focus the card must not light up for.
+    final highlight =
+        showFocusIndicator(context, _isFocused) && _focusedRow == null;
 
     return NotificationListener<_RowFocusNotification>(
       onNotification: _onRowFocus,

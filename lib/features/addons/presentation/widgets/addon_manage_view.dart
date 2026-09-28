@@ -198,7 +198,10 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
                       onSelect: () => unawaited(_refreshAll()),
                       child: const SizedBox.shrink(),
                       builder: (context, focusState, _) {
-                        final isFocused = focusState.focused;
+                        final isFocused = showFocusIndicator(
+                          context,
+                          focusState.focused,
+                        );
                         return AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
                           decoration: BoxDecoration(
@@ -233,7 +236,10 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
                   onSelect: () => unawaited(_showAddDialog()),
                   child: const SizedBox.shrink(),
                   builder: (context, focusState, _) {
-                    final isFocused = focusState.focused;
+                    final isFocused = showFocusIndicator(
+                      context,
+                      focusState.focused,
+                    );
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
                       decoration: BoxDecoration(
@@ -276,7 +282,10 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
                     : () => unawaited(_install(preset.url, label: preset.name)),
                 child: const SizedBox.shrink(),
                 builder: (context, focusState, _) {
-                  final isFocused = focusState.focused;
+                  final isFocused = showFocusIndicator(
+                    context,
+                    focusState.focused,
+                  );
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     decoration: BoxDecoration(
@@ -510,7 +519,9 @@ class _AddonTileState extends State<_AddonTile> {
         onSelect: () => widget.onToggle(!widget.addon.enabled),
         child: const SizedBox.shrink(),
         builder: (context, focusState, _) {
-          final isTileFocused = focusState.focused && !_menuFocusNode.hasFocus;
+          final isTileFocused =
+              showFocusIndicator(context, focusState.focused) &&
+              !_menuFocusNode.hasFocus;
 
           return AnimatedContainer(
             duration: const Duration(milliseconds: 150),
@@ -651,7 +662,8 @@ class _AddonTileState extends State<_AddonTile> {
                             states,
                           ) {
                             if (isTileFocused ||
-                                states.contains(WidgetState.focused) ||
+                                (states.contains(WidgetState.focused) &&
+                                    FocusVisibility.visible) ||
                                 states.contains(WidgetState.hovered)) {
                               if (widget.addon.enabled) {
                                 return const Icon(
@@ -685,7 +697,10 @@ class _AddonTileState extends State<_AddonTile> {
                                 _popupMenuKey.currentState?.showButtonMenu(),
                             child: const SizedBox.shrink(),
                             builder: (context, menuFocusState, _) {
-                              final isMenuFocused = menuFocusState.focused;
+                              final isMenuFocused = showFocusIndicator(
+                                context,
+                                menuFocusState.focused,
+                              );
                               return AnimatedContainer(
                                 duration: const Duration(milliseconds: 150),
                                 decoration: BoxDecoration(
@@ -1041,7 +1056,10 @@ class _DebridCardState extends ConsumerState<_DebridCard> {
                 onSelect: _openApiKeyDialog,
                 child: const SizedBox.shrink(),
                 builder: (context, focusState, _) {
-                  final isFocused = focusState.focused;
+                  final isFocused = showFocusIndicator(
+                    context,
+                    focusState.focused,
+                  );
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     decoration: BoxDecoration(
@@ -1087,7 +1105,10 @@ class _DebridCardState extends ConsumerState<_DebridCard> {
                   onSelect: _saving ? null : () => unawaited(_save()),
                   child: const SizedBox.shrink(),
                   builder: (context, focusState, _) {
-                    final isFocused = focusState.focused;
+                    final isFocused = showFocusIndicator(
+                      context,
+                      focusState.focused,
+                    );
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
                       decoration: BoxDecoration(
@@ -1134,7 +1155,10 @@ class _DebridCardState extends ConsumerState<_DebridCard> {
                           },
                     child: const SizedBox.shrink(),
                     builder: (context, focusState, _) {
-                      final isFocused = focusState.focused;
+                      final isFocused = showFocusIndicator(
+                        context,
+                        focusState.focused,
+                      );
                       return AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         decoration: BoxDecoration(

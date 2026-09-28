@@ -561,6 +561,56 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }, variant: texturePlatform);
 
+    testWidgets('puts the track inside the video back after a reopen, even '
+        'when the new media lists its subtitles after its audio', (
+      tester,
+    ) async {
+      await pumpPlayer(
+        tester,
+        preloadedStreams: <StreamResult>[
+          source('/sources/alpha.mkv'),
+          source('/sources/beta.mkv'),
+        ],
+        settings: auto,
+      );
+      engine.audio = const <Map<String, Object?>>[
+        <String, Object?>{'id': 1, 'name': 'Track 1 - [English]'},
+      ];
+      engine.activeAudioId = 1;
+      await embed(tester, const <Map<String, Object?>>[
+        <String, Object?>{'id': 4, 'name': 'Track 2 - [English]'},
+      ]);
+      await tick(tester);
+      await tick(tester);
+      expect(engine.activeSubtitleId, 4, reason: 'Auto turned it on');
+
+      // The source drops and the media is opened again. The new media lists
+      // its audio first, and its subtitles a moment later.
+      await tick(tester, <String, Object?>{
+        'state': 'error',
+        'errorDescription': 'the socket closed',
+      });
+      await settle(tester);
+      engine.subtitle = const <Map<String, Object?>>[];
+      engine.activeSubtitleId = -1;
+      await engine.bumpTracks(<String, Object?>{'state': 'paused'});
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await embed(tester, const <Map<String, Object?>>[
+        <String, Object?>{'id': 7, 'name': 'Track 2 - [English]'},
+      ]);
+      await tick(tester, <String, Object?>{'position': 3000});
+      await tick(tester, <String, Object?>{'position': 4500});
+
+      expect(
+        engine.activeSubtitleId,
+        7,
+        reason: 'the viewer was reading English, and this media has it',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    }, variant: texturePlatform);
+
     testWidgets('leaves alone what the viewer picked before the tracks were '
         'known', (tester) async {
       await pumpPlayer(

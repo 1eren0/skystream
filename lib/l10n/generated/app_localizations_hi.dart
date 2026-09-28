@@ -1768,6 +1768,12 @@ class AppLocalizationsHi extends AppLocalizations {
   String get playerSourceUnplayable => 'चल नहीं सका';
 
   @override
+  String get playerSourceCannotSeek => 'सीक नहीं हो सकता';
+
+  @override
+  String get playerSourceNotVideo => 'वीडियो नहीं';
+
+  @override
   String get nuvioPlugins => 'Nuvio plugins';
 
   @override

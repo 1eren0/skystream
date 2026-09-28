@@ -1127,7 +1127,10 @@ class _AddonDetailScreenState extends ConsumerState<AddonDetailScreen> {
               Focus(
                 child: Builder(
                   builder: (context) {
-                    final isFocused = Focus.of(context).hasFocus;
+                    final isFocused = showFocusIndicator(
+                      context,
+                      Focus.of(context).hasFocus,
+                    );
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(

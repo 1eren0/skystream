@@ -165,6 +165,78 @@ void main() {
         isNull,
       );
     });
+
+    // Failing over mid-film resumes where it stopped, and a source whose server
+    // ignores byte ranges would start it again from the top.
+    test('passes over candidates that cannot seek while there are others', () {
+      expect(
+        nextFailoverIndex(from: 0, total: 4, tried: {0}, cannotSeek: {1}),
+        2,
+      );
+    });
+
+    test('takes one that cannot seek before one the check found dead', () {
+      expect(
+        nextFailoverIndex(
+          from: 0,
+          total: 4,
+          tried: {0, 3},
+          unreachable: {1},
+          cannotSeek: {2},
+        ),
+        2,
+      );
+    });
+  });
+
+  // Resuming on a source whose server ignores byte ranges plays the film from
+  // the top: libVLC cannot jump into it, so the viewer's place is lost.
+  group('resumeSourceIndex', () {
+    test('keeps the chosen source when it can seek, or nobody knows', () {
+      expect(
+        resumeSourceIndex(
+          preferred: 0,
+          total: 3,
+          probes: {0: ProbeOutcome.healthy},
+        ),
+        0,
+      );
+      expect(
+        resumeSourceIndex(
+          preferred: 1,
+          total: 3,
+          probes: const <int, ProbeOutcome>{},
+        ),
+        1,
+      );
+    });
+
+    test('moves off one that cannot seek to one found able to', () {
+      expect(
+        resumeSourceIndex(
+          preferred: 0,
+          total: 4,
+          probes: {
+            0: ProbeOutcome.unseekable,
+            1: ProbeOutcome.unhealthy,
+            2: ProbeOutcome.notVideo,
+            3: ProbeOutcome.healthy,
+          },
+        ),
+        3,
+      );
+    });
+
+    test('stays when none able to seek has been found', () {
+      expect(
+        resumeSourceIndex(
+          preferred: 0,
+          total: 3,
+          probes: {0: ProbeOutcome.unseekable, 1: ProbeOutcome.trying},
+        ),
+        0,
+      );
+    });
   });
 
   // Where to go when a source being opened turns out unreachable: back to one
@@ -195,6 +267,27 @@ void main() {
           except: 1,
         ),
         2,
+      );
+    });
+
+    test('prefers one that can seek, and still counts one that cannot', () {
+      expect(
+        firstReachableIndex(
+          total: 3,
+          probes: {0: ProbeOutcome.unseekable, 1: ProbeOutcome.healthy},
+          failed: const <int>{},
+          except: 2,
+        ),
+        1,
+      );
+      expect(
+        firstReachableIndex(
+          total: 3,
+          probes: {0: ProbeOutcome.unseekable, 1: ProbeOutcome.notVideo},
+          failed: const <int>{},
+          except: 2,
+        ),
+        0,
       );
     });
 

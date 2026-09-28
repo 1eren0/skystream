@@ -307,6 +307,22 @@ picture unchanged.
 
 ---
 
+### 14. New: `pendingSeekTarget`, the seek on its way
+
+libVLC reports the position it left while a seek repositions the demuxer and refills the buffer -
+seconds, on a slow network file - so a scrubber drawn from `VlcPlayerValue.position` sprang back to
+where the viewer had been and jumped forward once the stream caught up. Media3 masks a seek's
+position the moment it is asked for, and browsers move a media element's `currentTime` at the same
+moment.
+
+`VlcPlayerController.pendingSeekTarget` publishes the target from `seekTo` until the engine's
+published position arrives at it (a little short counts: seeks land on a keyframe or a segment
+boundary) or goes past it in the seek's direction; until the engine can no longer get there
+(stopped, ended, failed, new media); or until playback carries on elsewhere for a dozen reports in a
+row, which is an engine that ignored the seek. `VlcPlayerValue.position` stays the engine's own, so a
+resume point or a relative step never counts from a place playback did not reach; hosts show the
+target in their scrubber and clock. Covered by `test/vlc_player_seek_position_test.dart`.
+
 ## Known gaps, not yet addressed
 
 - **Rendering path.** Android/iOS/macOS use `AndroidView`/`UiKitView`/

@@ -376,6 +376,7 @@ void main() {
               trackInfo: const <VlcMediaTrackInfo>[],
               sideCars: subtitles,
               onTracksChanged: () {},
+              onOpenPage: (_) {},
             ),
           ),
         ),

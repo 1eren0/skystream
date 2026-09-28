@@ -1779,6 +1779,12 @@ class AppLocalizationsKn extends AppLocalizations {
   String get playerSourceUnplayable => 'ಪ್ಲೇ ಆಗಲಿಲ್ಲ';
 
   @override
+  String get playerSourceCannotSeek => 'ಸೀಕ್ ಆಗುವುದಿಲ್ಲ';
+
+  @override
+  String get playerSourceNotVideo => 'ವೀಡಿಯೊ ಅಲ್ಲ';
+
+  @override
   String get nuvioPlugins => 'Nuvio plugins';
 
   @override

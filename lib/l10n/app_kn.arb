@@ -490,6 +490,8 @@
   "playerSourceNotChecked": "ಪರಿಶೀಲಿಸಿಲ್ಲ",
   "playerReasonNoAnswer": "ಲಿಂಕ್‌ನಿಂದ ಉತ್ತರ ಬಂದಿಲ್ಲ",
   "playerSourceUnplayable": "ಪ್ಲೇ ಆಗಲಿಲ್ಲ",
+  "playerSourceCannotSeek": "ಸೀಕ್ ಆಗುವುದಿಲ್ಲ",
+  "playerSourceNotVideo": "ವೀಡಿಯೊ ಅಲ್ಲ",
 "addonSourcesSearchTooltip": "Search links",
   "addonSourcesCloseSearchTooltip": "Close search",
   "addonSourcesSearchHint": "Add-on, provider, quality…",

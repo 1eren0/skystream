@@ -45,10 +45,11 @@ import '../../../domain/side_car_subtitles.dart';
 import '../../../domain/subtitle_search_target.dart';
 import '../../../domain/track_language.dart';
 import '../player_value_selector.dart';
-import '../vlc_subtitle_search_sheet.dart';
 import 'player_anchored_list.dart';
 import 'player_panel_labels.dart';
+import 'player_panel_page.dart';
 import 'player_panel_row.dart';
+import 'player_subtitle_search_page.dart';
 
 /// Which list a tab is showing. The two differ by more than a title: only
 /// subtitles have an Off and two ways to add a track from outside.
@@ -87,8 +88,10 @@ class PlayerTracksTab extends StatelessWidget {
     required this.tracks,
     required this.trackInfo,
     required this.onTracksChanged,
+    required this.onOpenPage,
     this.sideCars,
     this.target,
+    this.searchFocusNode,
     this.isTv = false,
     this.autofocus = false,
     super.key,
@@ -123,6 +126,15 @@ class PlayerTracksTab extends StatelessWidget {
   /// engine that never said - and a refused set, which means the list on
   /// screen is out of date (see `_setTrack`).
   final VoidCallback onTracksChanged;
+
+  /// Opens a second step in the panel's place: the online search. See
+  /// [PanelPage].
+  final ValueChanged<PanelPage> onOpenPage;
+
+  /// The Search online row's focus stop, held by the panel so Back from the
+  /// search can hand focus back to that row wherever the list has moved it -
+  /// a file the search added is listed ahead of it.
+  final FocusNode? searchFocusNode;
 
   /// The subtitle files SkyStream draws, listed after the video's own tracks.
   /// Null only where there is no screen behind the panel to draw them; files
@@ -402,7 +414,8 @@ class PlayerTracksTab extends StatelessWidget {
       PanelRow(
         label: l10n.searchSubtitlesOnline,
         icon: Icons.search_rounded,
-        onTap: () => unawaited(_searchOnline(context)),
+        focusNode: searchFocusNode,
+        onTap: () => unawaited(_searchOnline(context, l10n)),
       ),
       _delayStepper(
         label: l10n.subtitleDelay,
@@ -454,25 +467,35 @@ class PlayerTracksTab extends StatelessWidget {
     // Deliberately no reload here - see the note on [onTracksChanged].
   }
 
-  Future<void> _searchOnline(BuildContext context) async {
+  /// Opens the search as the panel's second step. Done or backed out of, it
+  /// ends on this list again: a viewer who backed out still wants the tracks
+  /// they opened it from, and one who picked a result sees it ticked here.
+  /// Nothing is re-read when it closes: a pick ends at the same queued
+  /// `addSubtitle`, with the problem described on [onTracksChanged].
+  Future<void> _searchOnline(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) async {
     final seed = await _searchSeed();
     if (!context.mounted) return;
-    // The panel stays up either way: a viewer who backed out of the search
-    // still wants the track list they opened it from. What the sheet returns
-    // is not acted on: it ends at the same queued `addSubtitle`, so re-reading
-    // on its word has the problem described on [onTracksChanged].
-    await VlcSubtitleSearchSheet.show(
-      context,
-      controller,
-      target: seed,
-      isTv: isTv,
-      onFile: sideCars == null
-          ? null
-          : (file, subtitle) => _addFile(
-              file,
-              label: subtitle.name.isEmpty ? null : subtitle.name,
-              language: subtitle.language,
-            ),
+    final files = sideCars;
+    onOpenPage(
+      PanelPage(
+        title: l10n.searchSubtitlesOnline,
+        builder: (context, close) => SubtitleSearchPage(
+          controller: controller,
+          target: seed,
+          isTv: isTv,
+          onFile: files == null
+              ? null
+              : (file, subtitle) => _addFile(
+                  file,
+                  label: subtitle.name.isEmpty ? null : subtitle.name,
+                  language: subtitle.language,
+                ),
+          onDone: close,
+        ),
+      ),
     );
   }
 

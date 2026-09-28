@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/layout_constants.dart';
 import '../focus/app_focus.dart';
+import '../focus/text_field_keys.dart';
 
 /// A Slider widget that handles D-pad navigation properly on TV.
 /// Left/Right D-pad adjusts the value, Up/Down D-pad navigates to other focusable elements.
@@ -196,15 +197,16 @@ class _CustomSliderState extends State<CustomSlider> {
   }
 }
 
-/// A TextField widget that leaves the D-pad entirely to text entry.
+/// A single-line TextField a remote can get into and out of.
 ///
 /// On Android TV the leanback IME needs all four arrow keys to walk its
-/// letter grid while the field is focused, so this widget must not
-/// intercept a single direction. The old up/down -> previous/next focus
-/// dropped focus out of the field mid-word and stranded the remote user on
-/// one letter of the keyboard. Focus moves out the normal way (the clear
-/// button, the surrounding controls), and Enter / numpad-Enter submits
-/// through [onSubmitted].
+/// letter grid while the keyboard is up, so none of them is taken then: the
+/// old up/down -> previous/next focus dropped focus out of the field
+/// mid-word and stranded the remote user on one letter of the keyboard.
+/// With the keyboard put away, up and down leave the field and Select brings
+/// the keyboard back - see [remoteTextFieldKeys]; before that, a dialog's
+/// field was a dead end on a television, with no way to its Save. Enter /
+/// numpad-Enter submits through [onSubmitted].
 class CustomTextField extends StatefulWidget {
   final TextEditingController? controller;
   final InputDecoration? decoration;
@@ -237,15 +239,11 @@ class _CustomTextFieldState extends State<CustomTextField> {
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode(
-      // No arrow handling at all. The leanback IME uses all four directions
-      // to walk its letter grid while this field is focused, and returning
-      // `handled` for up/down used to steal the key, move focus out of the
-      // field and kill the keyboard mid-word. Left/right still reach the
-      // text caret through the framework's own editing shortcuts, and
-      // Enter / numpad-Enter submit through [CustomTextField.onSubmitted].
-      onKeyEvent: (node, event) => KeyEventResult.ignored,
-    );
+    // Up and down only while the keyboard is put away, and Select to bring
+    // it back: see [remoteTextFieldKeys]. Left/right still reach the text
+    // caret through the framework's own editing shortcuts, and Enter /
+    // numpad-Enter submit through [CustomTextField.onSubmitted].
+    _focusNode = FocusNode(onKeyEvent: remoteTextFieldKeys);
   }
 
   @override

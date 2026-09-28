@@ -490,6 +490,8 @@
   "playerSourceNotChecked": "जाँचा नहीं गया",
   "playerReasonNoAnswer": "लिंक से कोई जवाब नहीं मिला",
   "playerSourceUnplayable": "चल नहीं सका",
+  "playerSourceCannotSeek": "सीक नहीं हो सकता",
+  "playerSourceNotVideo": "वीडियो नहीं",
 "addonSourcesSearchTooltip": "Search links",
   "addonSourcesCloseSearchTooltip": "Close search",
   "addonSourcesSearchHint": "Add-on, provider, quality…",

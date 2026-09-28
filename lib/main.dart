@@ -519,7 +519,13 @@ class _MyAppState extends ConsumerState<MyApp> {
             // UI, the player chrome, dialogs and the toast host alike - reads
             // one answer to "is anyone driving this with a remote or a
             // keyboard right now". See `shared/focus/app_focus.dart`.
-            return FocusVisibilityScope(child: result);
+            //
+            // A television shows focus from the first frame; anything else
+            // waits for a key. See the scope for the rule.
+            return FocusVisibilityScope(
+              television: profile?.isTv == true,
+              child: result,
+            );
           },
         );
 

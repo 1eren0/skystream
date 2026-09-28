@@ -210,6 +210,26 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
   /// [position] must be non-negative.
   Future<void> seekTo(Duration position);
 
+  /// Where the last seek is going, until the engine gets there; null when no
+  /// seek is on its way.
+  ///
+  /// libVLC keeps reporting the position it left while a seek repositions the
+  /// demuxer and refills the buffer - seconds, on a slow network file - so a
+  /// scrubber drawn from [VlcPlayerValue.position] alone springs back to where
+  /// the viewer was and jumps forward later. Media3 and the browsers report a
+  /// seek's target from the moment it is asked for; a scrubber or a clock that
+  /// wants to behave the same shows this while it is set.
+  /// [VlcPlayerValue.position] itself stays the engine's own throughout, for
+  /// everything that must only ever see a place playback reached.
+  ///
+  /// Set by [seekTo]. Cleared when the engine's position arrives at it - a
+  /// little short counts, since seeks land on a keyframe or a segment boundary
+  /// - or goes past it in the seek's direction; when the engine can no longer
+  /// get there (stopped, ended, failed, new media); and when playback carries
+  /// on somewhere else without ever arriving, which is an engine that did not
+  /// take the seek at all.
+  ValueListenable<Duration?> get pendingSeekTarget;
+
   /// How many seeks have been asked for on this controller.
   ///
   /// Only ever increases, and increases the moment a seek is requested rather
@@ -292,6 +312,21 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
 
 const MethodChannel _methodChannel = MethodChannel('vlc_player');
 
+/// How far short of a seek's target the engine may land and count as there:
+/// seeks land on a keyframe or a segment boundary, a little before the
+/// millisecond asked for. See `_seekLanded`.
+const Duration _kSeekLandsShortBy = Duration(seconds: 3);
+
+/// How far past a seek's target the engine may land and count as there.
+const Duration _kSeekLandsLongBy = Duration(milliseconds: 750);
+
+/// How many published positions in a row may move without arriving before a
+/// seek is taken as not having happened. Two or three can be reports already
+/// on their way when the seek was asked - an earlier step of a chain landing,
+/// a tick from the old position - so a handful more than that: about three
+/// seconds of playback carrying on at the rate positions are published.
+const int _kSeekIgnoredAfterMoves = 12;
+
 class _VlcPlayerController extends VlcPlayerController
     implements VlcPlayerControllerInternals {
   _VlcPlayerController({
@@ -319,6 +354,10 @@ class _VlcPlayerController extends VlcPlayerController
     }
     _pendingMediaSource = mediaSource;
     _pendingAutoPlay = autoPlay;
+    // Judged against what is published, not the raw snapshot: a landing held
+    // back by the event throttle must not clear the target while the old
+    // position is still the one on screen.
+    addListener(_watchSeekLanding);
   }
 
   @override
@@ -425,6 +464,22 @@ class _VlcPlayerController extends VlcPlayerController
   /// the published position lags the engine by up to an interval, and a stall
   /// judged against it would see a frozen clock at every flush.
   Duration? _lastNativePosition;
+
+  final ValueNotifier<Duration?> _pendingSeekTarget = ValueNotifier<Duration?>(
+    null,
+  );
+
+  /// The published position the pending seek set out from - in a chain of
+  /// steps, the previous step's target - so an earlier step landing late is
+  /// not taken for this one.
+  Duration? _seekOrigin;
+
+  /// The published position when the landing was last checked, and how many
+  /// checks in a row have found it moving without arriving. A seek on its way
+  /// holds the engine's position still; one that moves and moves without
+  /// arriving is playback carrying on somewhere the seek never took it.
+  Duration? _seekLastSeen;
+  int _seekMovesWithoutLanding = 0;
   bool _isDisposed = false;
 
   @override
@@ -979,6 +1034,8 @@ class _VlcPlayerController extends VlcPlayerController
     // startup spinner's job, not this one's.
     _hasPlayedSinceMedia = false;
     _cancelStallTimer();
+    // A seek's target belongs to the media it was asked of.
+    _clearPendingSeek();
     // A measured length belongs to the media it was measured on.
     _durationCap = null;
     // Opening while the app is away must not start audio nobody can stop:
@@ -1092,9 +1149,91 @@ class _VlcPlayerController extends VlcPlayerController
       _lastNativePosition = position;
       _armStallTimer();
     }
+    _seekOrigin = _pendingSeekTarget.value ?? value.position;
+    _seekLastSeen = value.position;
+    _seekMovesWithoutLanding = 0;
+    _pendingSeekTarget.value = position;
     return _invoke('seekTo', <String, Object?>{
       'position': position.inMilliseconds,
     });
+  }
+
+  @override
+  ValueListenable<Duration?> get pendingSeekTarget => _pendingSeekTarget;
+
+  /// Clears [pendingSeekTarget] once the published value shows the engine has
+  /// arrived, cannot arrive, or has carried on without the seek.
+  void _watchSeekLanding() {
+    final target = _pendingSeekTarget.value;
+    final origin = _seekOrigin;
+    if (target == null || origin == null) return;
+    final published = value;
+    if (!_canStillLand(published.state) ||
+        _seekLanded(published.position, target: target, origin: origin)) {
+      _clearPendingSeek();
+      return;
+    }
+    final last = _seekLastSeen;
+    _seekLastSeen = published.position;
+    if (last == null || published.position == last) {
+      // Still: the engine is repositioning or refilling, which is what a seek
+      // on its way looks like.
+      _seekMovesWithoutLanding = 0;
+      return;
+    }
+    _seekMovesWithoutLanding += 1;
+    if (_seekMovesWithoutLanding >= _kSeekIgnoredAfterMoves) {
+      _clearPendingSeek();
+    }
+  }
+
+  /// Whether [position] shows the engine has taken the seek from [origin] to
+  /// [target]: it is at the target - a little short allowed, because seeks
+  /// land on a keyframe or a segment boundary - or it has gone past the
+  /// target in the direction of the seek.
+  ///
+  /// Anything else holds, and that is what matters in a chain of D-pad steps:
+  /// the report of an earlier step landing is short of this one's target, not
+  /// at it.
+  static bool _seekLanded(
+    Duration position, {
+    required Duration target,
+    required Duration origin,
+  }) {
+    final asked = target - origin;
+    // Short by at most half the step, so a report from where a short step
+    // set out cannot pass for its landing.
+    final half = asked.abs() ~/ 2;
+    final shortBy = half < _kSeekLandsShortBy ? half : _kSeekLandsShortBy;
+    final early = asked.isNegative ? _kSeekLandsLongBy : shortBy;
+    final late = asked.isNegative ? shortBy : _kSeekLandsLongBy;
+    if (position >= target - early && position <= target + late) return true;
+    if (asked == Duration.zero) return false;
+    final travelled = position - origin;
+    return travelled.isNegative == asked.isNegative &&
+        travelled.abs() >= asked.abs();
+  }
+
+  /// A paused seek still lands; a stopped, ended, errored or idle engine
+  /// never will.
+  static bool _canStillLand(VlcPlaybackState state) {
+    return switch (state) {
+      VlcPlaybackState.opening ||
+      VlcPlaybackState.buffering ||
+      VlcPlaybackState.playing ||
+      VlcPlaybackState.paused => true,
+      VlcPlaybackState.idle ||
+      VlcPlaybackState.stopped ||
+      VlcPlaybackState.ended ||
+      VlcPlaybackState.error => false,
+    };
+  }
+
+  void _clearPendingSeek() {
+    _seekOrigin = null;
+    _seekLastSeen = null;
+    _seekMovesWithoutLanding = 0;
+    _pendingSeekTarget.value = null;
   }
 
   @override
@@ -1595,6 +1734,8 @@ class _VlcPlayerController extends VlcPlayerController
     _eventsSubscription = null;
     _cancelPendingThrottledValue();
     _cancelStallTimer();
+    _clearPendingSeek();
+    _pendingSeekTarget.dispose();
     if (viewId != null) {
       unawaited(_disposeNativeView(viewId));
     }

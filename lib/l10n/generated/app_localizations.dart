@@ -3243,6 +3243,18 @@ abstract class AppLocalizations {
   /// **'Unplayable'**
   String get playerSourceUnplayable;
 
+  /// Reachability column of the source list, beside 'Reachable', for a link whose server answered but ignores byte ranges: it plays, but only from its start, so the viewer cannot jump ahead and a resume starts over. Keep it as short as 'Reachable'.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t seek'**
+  String get playerSourceCannotSeek;
+
+  /// Reachability column of the source list, for a link that answered with a web page - a link generator, a login or a missing-file page - rather than anything that plays. Keep it as short as 'Reachable'.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a video'**
+  String get playerSourceNotVideo;
+
   /// Title of the Nuvio source card on a TMDB details screen. Sits beside the 'Available sources' card, which is the SkyStream plugin system; the two are peers. 'Nuvio' is the name of the third-party scraper project and is never translated.
   ///
   /// In en, this message translates to:

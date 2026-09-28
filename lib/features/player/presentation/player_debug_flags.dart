@@ -89,7 +89,7 @@ abstract final class PlayerDiagnostics {
       };
 
   /// Whether libVLC should log at `--verbose=2` instead of `--quiet`.
-  static bool get verboseVlcLog => _isOn('SKYSTREAM_VLC_VERBOSE');
+  static bool get verboseVlcLog => true; // TEMP-INSTR
 
   static bool get suppressVideoSurface => _isOn('SKYSTREAM_NO_VIDEO');
 }

@@ -1,14 +1,18 @@
-/// The online subtitle search sheet, driven the way the Subtitles tab drives
-/// it: handed a [SubtitleSearchTarget] and a controller on a fake engine.
+/// Online subtitle search, as the side panel's second step: opened from the
+/// Subtitles tab's Search online row in the panel's own place, the way the
+/// player opens it - by remote on a television, by a tap elsewhere - handed a
+/// [SubtitleSearchTarget] and a controller on a fake engine.
 ///
 /// What is pinned is the hand-off - which arguments reach the providers and
-/// when - not the providers themselves. The real [SubtitleSearch] notifier
-/// runs, over `SubtitleSearch.debugProviders`, so the id -> title fallback
-/// and the repeat-search guard are the production ones; only the download,
-/// which would need Dio and a temp directory, is stubbed on a subclass.
+/// when - and the way in and out: every control is a stop a remote reaches,
+/// and Back walks one step. The real [SubtitleSearch] notifier runs, over
+/// `SubtitleSearch.debugProviders`, so the id -> title fallback and the
+/// repeat-search guard are the production ones; only the download, which
+/// would need Dio and a temp directory, is stubbed on a subclass.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -17,15 +21,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:skystream/features/player/domain/entity/subtitle_model.dart';
+import 'package:skystream/features/player/domain/side_car_subtitles.dart';
 import 'package:skystream/features/player/domain/subtitle_search_target.dart';
 import 'package:skystream/features/player/presentation/subtitle_search_provider.dart';
-import 'package:skystream/features/player/presentation/vlc/vlc_subtitle_search_sheet.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_panel.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_panel_row.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_subtitle_search_page.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import 'fake_vlc_engine.dart';
 
 const Size _tv = Size(2560, 1440);
+
+/// A snapshot that moves nothing but keeps the controller's stall watchdog
+/// unarmed: a playing snapshot leaves a 1 s timer pending, and flutter_test
+/// checks pending timers before any tear-down runs.
+const Map<String, Object?> _paused = <String, Object?>{'state': 'paused'};
 
 const SubtitleSearchTarget _episode = SubtitleSearchTarget(
   title: 'The Show',
@@ -120,6 +132,13 @@ class _StubDownload extends SubtitleSearch {
   }
 }
 
+/// What SkyStream draws a downloaded file with: a fetch that reads every file
+/// as the same one-cue SubRip.
+SideCarSubtitles _drawnBySkyStream() => SideCarSubtitles(
+  fetch: (url, headers) async =>
+      utf8.encode('1\n00:00:01,000 --> 00:00:04,000\nHello\n'),
+);
+
 OnlineSubtitle _result(String id) => OnlineSubtitle(
   id: id,
   name: 'The.Show.S02E05.$id.srt',
@@ -152,6 +171,19 @@ String? _focusedText() {
   return found;
 }
 
+/// What the control holding primary focus announces itself as: the panel's
+/// own buttons, Back among them, are a [Semantics] label over their focus.
+String? _focusedLabel() => FocusManager.instance.primaryFocus?.context
+    ?.findAncestorWidgetOfExactType<Semantics>()
+    ?.properties
+    .label;
+
+/// The label of the tab row holding primary focus, or null when a row does
+/// not.
+String? _focusedRow() => FocusManager.instance.primaryFocus?.context
+    ?.findAncestorWidgetOfExactType<PanelRow>()
+    ?.label;
+
 /// Whether the text [finder] finds sits inside a focus stop: a control a
 /// remote lands on, rather than words it steps past.
 bool _insideStop(Finder finder) {
@@ -159,10 +191,13 @@ bool _insideStop(Finder finder) {
   return node != null && node.canRequestFocus && !node.skipTraversal;
 }
 
-Future<void> _down(WidgetTester tester) async {
-  await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+Future<void> _press(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyEvent(key);
   await tester.pumpAndSettle();
 }
+
+Future<void> _down(WidgetTester tester) =>
+    _press(tester, LogicalKeyboardKey.arrowDown);
 
 /// The retired "no subtitle account is set up" advice, matched by what it
 /// claimed rather than by an ARB key that no longer exists.
@@ -200,44 +235,69 @@ void main() {
     l10n = await AppLocalizations.delegate.load(const Locale('en'));
   });
 
-  /// Opens the sheet over a host page the way the tracks tab does, on a fresh
-  /// fake engine, and returns everything a test can observe: the provider's
-  /// calls, the downloads asked for, the engine, and what the sheet popped
-  /// with. [settle] false leaves an in-flight search's spinner running.
+  /// Whether the panel is showing its tabs again - the search closed and the
+  /// Subtitles tab it was opened from back on screen.
+  bool onTheTab() =>
+      find.byType(SubtitleSearchPage).evaluate().isEmpty &&
+      find
+          .widgetWithText(PanelRow, l10n.searchSubtitlesOnline)
+          .evaluate()
+          .isNotEmpty;
+
+  /// Opens the panel on the Subtitles tab over a host page, as the player
+  /// does, then Search online the way a viewer would: from a remote on a
+  /// television - down the tab to the row, then Select - and by a tap
+  /// elsewhere.
+  ///
+  /// Returns everything a test can observe: the provider's calls, the
+  /// downloads asked for, the engine, and whether the panel itself closed.
+  /// [settle] false leaves an in-flight search's shimmer running. [sideCars]
+  /// is what draws a downloaded file, as on the player's screen; without it
+  /// the file goes to the engine. [embedded] are the tracks inside the video
+  /// the tab lists ahead of any file.
   Future<
     ({
       _RecordingProvider provider,
       List<OnlineSubtitle> downloads,
       List<(int?, int?)> episodes,
       FakeVlcEngine engine,
-      List<bool?> popped,
+      List<bool> closed,
     })
   >
-  pumpSheet(
+  pumpSearch(
     WidgetTester tester, {
     SubtitleSearchTarget? target,
     bool isTv = true,
     PlayerSettings settings = const PlayerSettings(),
     _RecordingProvider? provider,
     String? downloadPath,
+    SideCarSubtitles? sideCars,
+    List<Map<String, Object?>> embedded = const <Map<String, Object?>>[],
+    Size size = _tv,
     bool settle = true,
   }) async {
-    tester.view.physicalSize = _tv;
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final engine = FakeVlcEngine()..install();
+    final engine = FakeVlcEngine()
+      ..subtitle = embedded
+      ..install();
     addTearDown(engine.dispose);
     final controller = await engine.attach();
     addTearDown(controller.dispose);
+    await engine.emit(_paused);
 
     final recorder = provider ?? _RecordingProvider();
     SubtitleSearch.debugProviders = <SubtitleProvider>[recorder];
     addTearDown(() => SubtitleSearch.debugProviders = null);
 
+    final data = ValueNotifier<PanelData>(PanelData(subtitleTarget: target));
+    addTearDown(data.dispose);
+
     final downloads = <OnlineSubtitle>[];
     final episodes = <(int?, int?)>[];
-    final popped = <bool?>[];
+    final closed = <bool>[];
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -251,16 +311,20 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             backgroundColor: Colors.black,
-            body: Center(
+            body: Align(
+              alignment: Alignment.centerLeft,
               child: Builder(
                 builder: (context) => TextButton(
                   onPressed: () => unawaited(
-                    VlcSubtitleSearchSheet.show(
+                    showPlayerPanel(
                       context,
-                      controller,
-                      target: target,
+                      controller: controller,
+                      initialTab: PlayerPanelTab.subtitles,
+                      data: data,
                       isTv: isTv,
-                    ).then(popped.add),
+                      focusOnOpen: isTv,
+                      sideCars: sideCars,
+                    ).then((_) => closed.add(true)),
                   ),
                   child: const Text('open'),
                 ),
@@ -272,19 +336,32 @@ void main() {
     );
 
     await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    if (isTv) {
+      for (var i = 0; _focusedRow() != l10n.searchSubtitlesOnline; i++) {
+        expect(i, lessThan(8), reason: 'Search online is reachable');
+        await _down(tester);
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    } else {
+      await tester.tap(find.text(l10n.searchSubtitlesOnline));
+    }
     if (settle) {
       await tester.pumpAndSettle();
     } else {
-      // The sheet's slide-in, then the post-frame auto-search.
+      // The seed, the page's first frame, then its post-frame auto-search.
+      await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
     }
+    expect(find.byType(SubtitleSearchPage), findsOneWidget);
     return (
       provider: recorder,
       downloads: downloads,
       episodes: episodes,
       engine: engine,
-      popped: popped,
+      closed: closed,
     );
   }
 
@@ -292,10 +369,10 @@ void main() {
     testWidgets('a target with an id searches on open, ids and episode along', (
       tester,
     ) async {
-      final sheet = await pumpSheet(tester, target: _episode);
+      final page = await pumpSearch(tester, target: _episode);
 
-      expect(sheet.provider.calls, hasLength(1), reason: 'zero presses');
-      expect(sheet.provider.calls.single, (
+      expect(page.provider.calls, hasLength(1), reason: 'zero presses');
+      expect(page.provider.calls.single, (
         query: 'The Show',
         imdbId: 'tt0903747',
         tmdbId: 1396,
@@ -312,10 +389,10 @@ void main() {
     });
 
     testWidgets('a title-only target waits for the viewer', (tester) async {
-      final sheet = await pumpSheet(tester, target: _localFile);
+      final page = await pumpSearch(tester, target: _localFile);
 
       expect(
-        sheet.provider.calls,
+        page.provider.calls,
         isEmpty,
         reason: 'a filename is a guess, not worth a network call per open',
       );
@@ -324,9 +401,9 @@ void main() {
 
       await tester.tap(find.byTooltip(l10n.search));
       await tester.pumpAndSettle();
-      expect(sheet.provider.calls.single.query, _localFile.title);
-      expect(sheet.provider.calls.single.imdbId, isNull);
-      expect(sheet.provider.calls.single.season, isNull);
+      expect(page.provider.calls.single.query, _localFile.title);
+      expect(page.provider.calls.single.imdbId, isNull);
+      expect(page.provider.calls.single.season, isNull);
     });
 
     testWidgets('editing the title drops the ids; restoring it brings them '
@@ -338,20 +415,20 @@ void main() {
         ..respond = (n) => n == 1
             ? pending.future
             : Future.value(<OnlineSubtitle>[_result('$n')]);
-      final sheet = await pumpSheet(
+      final page = await pumpSearch(
         tester,
         target: _episode,
         provider: provider,
         settle: false,
       );
-      expect(sheet.provider.calls, hasLength(1));
+      expect(page.provider.calls, hasLength(1));
 
       await tester.enterText(find.byType(TextField), 'Another Show');
       await tester.tap(find.byTooltip(l10n.search));
       await tester.pumpAndSettle();
 
-      expect(sheet.provider.calls, hasLength(2));
-      expect(sheet.provider.calls[1], (
+      expect(page.provider.calls, hasLength(2));
+      expect(page.provider.calls[1], (
         query: 'Another Show',
         imdbId: null,
         tmdbId: null,
@@ -364,10 +441,10 @@ void main() {
       await tester.tap(find.byTooltip(l10n.search));
       await tester.pumpAndSettle();
 
-      expect(sheet.provider.calls, hasLength(3));
-      expect(sheet.provider.calls[2].imdbId, 'tt0903747');
-      expect(sheet.provider.calls[2].tmdbId, 1396);
-      expect(sheet.provider.calls[2].query, 'The Show');
+      expect(page.provider.calls, hasLength(3));
+      expect(page.provider.calls[2].imdbId, 'tt0903747');
+      expect(page.provider.calls[2].tmdbId, 1396);
+      expect(page.provider.calls[2].query, 'The Show');
     });
   });
 
@@ -379,7 +456,7 @@ void main() {
           ..respond = (n) async => n == 1
               ? const <OnlineSubtitle>[]
               : <OnlineSubtitle>[_result('title')];
-        await pumpSheet(tester, target: _episode, provider: provider);
+        await pumpSearch(tester, target: _episode, provider: provider);
 
         expect(provider.calls, hasLength(2));
         expect(provider.calls[1].imdbId, isNull);
@@ -397,7 +474,7 @@ void main() {
           reason: 'the note is text a remote steps past, not a stop',
         );
         expect(_insideStop(find.text(_result('title').name)), isTrue);
-        expect(_focused<IconButton>(), isNotNull);
+        expect(_focused<IconButton>()?.tooltip, l10n.search);
         await _down(tester);
         expect(
           _focusedText(),
@@ -410,7 +487,7 @@ void main() {
     );
 
     testWidgets('a direct hit carries no note', (tester) async {
-      await pumpSheet(tester, target: _episode);
+      await pumpSearch(tester, target: _episode);
 
       expect(find.text(l10n.subtitleSearchTitleFallback), findsNothing);
       expect(find.text(l10n.subtitleSearchSeasonFallback), findsNothing);
@@ -429,7 +506,7 @@ void main() {
         ..respond = (n) async => n == 1
             ? const <OnlineSubtitle>[]
             : <OnlineSubtitle>[_result('season')];
-      await pumpSheet(tester, target: _episodeNoId, provider: provider);
+      await pumpSearch(tester, target: _episodeNoId, provider: provider);
 
       expect(provider.calls, isEmpty, reason: 'no id is no auto-search');
       await tester.tap(find.byTooltip(l10n.search));
@@ -465,7 +542,7 @@ void main() {
         ..respond = (n) async => n < 3
             ? const <OnlineSubtitle>[]
             : <OnlineSubtitle>[_result('season')];
-      await pumpSheet(tester, target: _episode, provider: provider);
+      await pumpSearch(tester, target: _episode, provider: provider);
 
       expect(provider.calls, hasLength(3));
       expect(provider.calls[2].episode, isNull);
@@ -488,7 +565,7 @@ void main() {
       // [_accountAdvice].
       final provider = _RecordingProvider()
         ..respond = (_) async => const <OnlineSubtitle>[];
-      await pumpSheet(tester, target: _episode, provider: provider);
+      await pumpSearch(tester, target: _episode, provider: provider);
 
       expect(
         provider.calls,
@@ -504,7 +581,7 @@ void main() {
     ) async {
       final provider = _RecordingProvider()
         ..respond = (_) async => const <OnlineSubtitle>[];
-      await pumpSheet(
+      await pumpSearch(
         tester,
         target: _episode,
         provider: provider,
@@ -520,7 +597,7 @@ void main() {
     ) async {
       final provider = _RecordingProvider()
         ..respond = (_) async => const <OnlineSubtitle>[];
-      await pumpSheet(
+      await pumpSearch(
         tester,
         target: _episode,
         provider: provider,
@@ -554,10 +631,40 @@ void main() {
   });
 
   group('a chosen result', () {
-    testWidgets('is downloaded, handed to the engine and closes the sheet', (
-      tester,
-    ) async {
-      final sheet = await pumpSheet(
+    /// The labels of the rows the Subtitles tab has ticked.
+    List<String> ticked(WidgetTester tester) => tester
+        .widgetList<PanelRow>(find.byType(PanelRow))
+        .where((row) => row.selected)
+        .map((row) => row.label)
+        .toList();
+
+    testWidgets('is downloaded and drawn by SkyStream, and the panel is back '
+        'on the tab with it ticked', (tester) async {
+      final page = await pumpSearch(
+        tester,
+        target: _episode,
+        downloadPath: '/tmp/subs/The.Show.S02E05.srt',
+        sideCars: _drawnBySkyStream(),
+      );
+
+      await tester.tap(find.text(_result('1').name));
+      await tester.pumpAndSettle();
+
+      expect(page.downloads.map((s) => s.id), <String>['1']);
+      expect(page.episodes, <(int?, int?)>[
+        (2, 5),
+      ], reason: 'the episode on screen picks its file out of a season pack');
+      expect(page.engine.callsTo('addSubtitle'), isEmpty);
+      expect(onTheTab(), isTrue, reason: 'back on the list, not out of it');
+      expect(page.closed, isEmpty, reason: 'the panel itself stays up');
+      expect(ticked(tester), <String>[
+        _result('1').name,
+      ], reason: 'the file the search added is the subtitle that is on');
+    });
+
+    testWidgets('with nothing to draw it, goes to the engine, and is ticked '
+        'once the engine announces it', (tester) async {
+      final page = await pumpSearch(
         tester,
         target: _episode,
         downloadPath: '/tmp/subs/The.Show.S02E05.srt',
@@ -566,37 +673,100 @@ void main() {
       await tester.tap(find.text(_result('1').name));
       await tester.pumpAndSettle();
 
-      expect(sheet.downloads.map((s) => s.id), <String>['1']);
-      expect(sheet.episodes, <(int?, int?)>[
-        (2, 5),
-      ], reason: 'the episode on screen picks its file out of a season pack');
-      final added = sheet.engine.callsTo('addSubtitle');
+      final added = page.engine.callsTo('addSubtitle');
       expect(added, hasLength(1));
       expect(
         (added.single.arguments as Map<Object?, Object?>)['uri'],
         Uri.file('/tmp/subs/The.Show.S02E05.srt').toString(),
       );
-      expect(sheet.popped, <bool?>[true]);
-      expect(find.byType(VlcSubtitleSearchSheet), findsNothing);
+      expect(onTheTab(), isTrue);
+
+      // ESAdded: the snapshot every native sends once the track exists.
+      await page.engine.emit(_paused);
+      await tester.pumpAndSettle();
+      expect(ticked(tester), <String>['The.Show.S02E05.srt']);
+    });
+
+    testWidgets('picked by remote hands focus back to Search online, though '
+        'the file it added is now listed ahead of it', (tester) async {
+      await pumpSearch(
+        tester,
+        target: _episode,
+        downloadPath: '/tmp/subs/The.Show.S02E05.srt',
+        sideCars: _drawnBySkyStream(),
+        // A track already listed, so the file's row is a row more ahead of
+        // Search online rather than the "nothing found" note's place.
+        embedded: const <Map<String, Object?>>[
+          <String, Object?>{'id': 3, 'name': 'English'},
+          <String, Object?>{'id': 4, 'name': 'SDH'},
+        ],
+        // A 1080p television at the density Android TV reports: a list short
+        // enough that one more row pushes the last ones past the fold.
+        size: const Size(960, 540),
+      );
+      final before = tester.getTopLeft(
+        find.widgetWithText(
+          PanelRow,
+          l10n.loadSubtitleFile,
+          skipOffstage: false,
+        ),
+      );
+
+      await _down(tester);
+      await _down(tester);
+      expect(_focusedText(), _result('1').name);
+      await _press(tester, LogicalKeyboardKey.select);
+
+      expect(onTheTab(), isTrue);
+      expect(find.widgetWithText(PanelRow, _result('1').name), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.widgetWithText(PanelRow, l10n.loadSubtitleFile)),
+        isNot(before),
+        reason: 'the list really did move under the page',
+      );
+      expect(
+        _focusedRow(),
+        l10n.searchSubtitlesOnline,
+        reason:
+            'the row the search was opened from, not the one now in its '
+            'old place',
+      );
+      final row = tester.getRect(
+        find.widgetWithText(PanelRow, l10n.searchSubtitlesOnline),
+      );
+      final list = tester.getRect(
+        find
+            .ancestor(
+              of: find.widgetWithText(PanelRow, l10n.searchSubtitlesOnline),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        row.top >= list.top && row.bottom <= list.bottom,
+        isTrue,
+        reason:
+            'all of the row on screen, not a ring below the fold: $row in '
+            '$list',
+      );
     });
 
     testWidgets('that fails to download says so and stays open', (
       tester,
     ) async {
-      final sheet = await pumpSheet(tester, target: _episode);
+      final page = await pumpSearch(tester, target: _episode);
 
       await tester.tap(find.text(_result('1').name));
       await tester.pumpAndSettle();
 
       expect(find.text(l10n.subtitleDownloadFailed), findsOneWidget);
-      expect(sheet.engine.callsTo('addSubtitle'), isEmpty);
-      expect(sheet.popped, isEmpty);
-      expect(find.byType(VlcSubtitleSearchSheet), findsOneWidget);
+      expect(page.engine.callsTo('addSubtitle'), isEmpty);
+      expect(find.byType(SubtitleSearchPage), findsOneWidget);
     });
 
     testWidgets('that the engine refuses says so, stops the progress bar and '
         'leaves the list usable', (tester) async {
-      final sheet = await pumpSheet(
+      final page = await pumpSearch(
         tester,
         target: _episode,
         downloadPath: '/tmp/subs/The.Show.S02E05.srt',
@@ -630,8 +800,7 @@ void main() {
         findsNothing,
         reason: 'the download is over, refused or not',
       );
-      expect(sheet.popped, isEmpty);
-      expect(find.byType(VlcSubtitleSearchSheet), findsOneWidget);
+      expect(find.byType(SubtitleSearchPage), findsOneWidget);
       expect(
         _insideStop(find.text(_result('1').name)),
         isTrue,
@@ -639,65 +808,174 @@ void main() {
       );
 
       // And it takes the next press.
-      final before = sheet.downloads.length;
+      final before = page.downloads.length;
       await tester.tap(find.text(_result('1').name));
       await tester.pumpAndSettle();
-      expect(sheet.downloads.length, before + 1);
+      expect(page.downloads.length, before + 1);
     });
   });
 
   group('every control answers a remote, a keyboard, a mouse and a tap', () {
     testWidgets('a language chip searches again in its language, pressed or '
         'selected from a remote', (tester) async {
-      final sheet = await pumpSheet(tester, target: _episode);
-      expect(sheet.provider.calls.single.language, 'en');
+      final page = await pumpSearch(tester, target: _episode);
+      expect(page.provider.calls.single.language, 'en');
 
       // From the search button into the row, then one along.
       await _down(tester);
       expect(_focusedText(), 'English');
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
+      await _press(tester, LogicalKeyboardKey.arrowRight);
       expect(_focusedText(), 'Hindi');
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await _press(tester, LogicalKeyboardKey.select);
+
+      expect(page.provider.calls, hasLength(2));
+      expect(page.provider.calls.last.language, 'hi');
+
+      // Enter from a keyboard, the same as Select.
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+      await _press(tester, LogicalKeyboardKey.enter);
+      expect(page.provider.calls.last.language, 'bn');
+
+      // And a tap.
+      await tester.ensureVisible(find.text('Telugu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Telugu'));
+      await tester.pumpAndSettle();
+      expect(page.provider.calls.last.language, 'te');
+    });
+
+    testWidgets('down into the languages lands on the one searched in, and '
+        'keeps it on screen', (tester) async {
+      // A 1080p television at the density Android TV reports. The search
+      // button sits over a chip far along the row, which is where the
+      // remote's DOWN goes first: the row hands focus on to the language
+      // searched in, and the chip passed through must not scroll that one out
+      // of sight on its way.
+      await pumpSearch(tester, target: _episode, size: const Size(960, 540));
+
+      await _down(tester);
+      expect(_focusedText(), 'English');
+      final chip = tester.getRect(
+        find
+            .ancestor(of: find.text('English'), matching: find.byType(Focus))
+            .first,
+      );
+      final row = tester.getRect(
+        find
+            .ancestor(
+              of: find.text('English'),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        chip.left >= row.left && chip.right <= row.right,
+        isTrue,
+        reason: 'the focused chip is off the row: $chip in $row',
+      );
+    });
+
+    testWidgets('focus arriving on another language is handed to the one '
+        'searched in, and that one stays on screen', (tester) async {
+      // Where a remote's DOWN from the search button lands first, on the
+      // television: the language under the button, fully in view and not the
+      // one searched in. It began to scroll itself to the middle, the row
+      // handed focus on to English - still in view, so its own reveal was
+      // nothing to do - and the scroll carried English off the row.
+      await pumpSearch(tester, target: _episode, size: const Size(960, 540));
+      expect(_focused<IconButton>()?.tooltip, l10n.search);
+
+      Focus.maybeOf(
+        tester.element(find.text('Bengali')),
+        createDependency: false,
+      )!.requestFocus();
       await tester.pumpAndSettle();
 
-      expect(sheet.provider.calls, hasLength(2));
-      expect(sheet.provider.calls.last.language, 'hi');
+      expect(_focusedText(), 'English');
+      final chip = tester.getRect(
+        find
+            .ancestor(of: find.text('English'), matching: find.byType(Focus))
+            .first,
+      );
+      final row = tester.getRect(
+        find
+            .ancestor(
+              of: find.text('English'),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        chip.left >= row.left && chip.right <= row.right,
+        isTrue,
+        reason: 'the focused language is off the row: $chip in $row',
+      );
+    });
 
-      // And the same with a tap.
-      await tester.tap(find.text('Bengali'));
+    testWidgets('with the keyboard up the arrows are the keyboard\'s, and '
+        'Select brings it back once it is put away', (tester) async {
+      // Android TV's keyboard walks its letter grid with the arrows. Taking
+      // them while it is up moved focus out of the field and closed it
+      // mid-word.
+      await pumpSearch(tester);
+      expect(_focused<TextField>(), isNotNull);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 600);
+      await tester.pump();
+
+      await _down(tester);
+      expect(_focused<TextField>(), isNotNull, reason: 'the keyboard\'s key');
+
+      // Put away - Back on a remote: the arrows leave the field again, and
+      // OK is how a remote gets back into it.
+      tester.view.resetViewInsets();
+      tester.testTextInput.hide();
+      await tester.pump();
+      await _press(tester, LogicalKeyboardKey.select);
+      expect(_focused<TextField>(), isNotNull);
+      expect(tester.testTextInput.isVisible, isTrue);
+    });
+
+    testWidgets('the keyboard\'s search key searches and leaves focus on the '
+        'search button, not nowhere', (tester) async {
+      final page = await pumpSearch(tester);
+      await tester.enterText(find.byType(TextField), 'Inception');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pumpAndSettle();
-      expect(sheet.provider.calls.last.language, 'bn');
+
+      expect(page.provider.calls.single.query, 'Inception');
+      expect(_focused<IconButton>()?.tooltip, l10n.search);
     });
 
     testWidgets('up and down leave the field on a remote', (tester) async {
-      await pumpSheet(tester);
+      await pumpSearch(tester);
       expect(_focused<TextField>(), isNotNull);
 
       await _down(tester);
       expect(_focusedText(), 'English');
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-      await tester.pumpAndSettle();
+      await _press(tester, LogicalKeyboardKey.arrowUp);
       expect(_focused<TextField>(), isNotNull);
     });
 
-    testWidgets('down from the back button is the field', (tester) async {
-      await pumpSheet(tester, target: _episode);
+    testWidgets('up from the field is the page\'s Back, and down from Back is '
+        'the field', (tester) async {
+      await pumpSearch(tester, target: _episode);
       final back = MaterialLocalizations.of(
-        tester.element(find.byType(VlcSubtitleSearchSheet)),
+        tester.element(find.byType(SubtitleSearchPage)),
       ).backButtonTooltip;
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-      await tester.pumpAndSettle();
-      expect(_focused<IconButton>()?.tooltip, back);
+      await _press(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedLabel(), back);
 
       await _down(tester);
       expect(_focused<TextField>(), isNotNull);
+
+      await _press(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedLabel(), back);
     });
 
     testWidgets('a result takes Enter as well as a tap', (tester) async {
-      final sheet = await pumpSheet(
+      final page = await pumpSearch(
         tester,
         target: _episode,
         downloadPath: '/tmp/subs/The.Show.S02E05.srt',
@@ -706,79 +984,122 @@ void main() {
       await _down(tester);
       await _down(tester);
       expect(_focusedText(), _result('1').name);
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pumpAndSettle();
+      await _press(tester, LogicalKeyboardKey.enter);
 
-      expect(sheet.downloads.map((s) => s.id), <String>['1']);
-      expect(sheet.popped, <bool?>[true]);
+      expect(page.downloads.map((s) => s.id), <String>['1']);
+      expect(onTheTab(), isTrue);
     });
 
     testWidgets('Tab walks every control, results included', (tester) async {
-      await pumpSheet(tester, target: _episode, isTv: false);
+      await pumpSearch(tester, target: _episode, isTv: false);
 
       final seen = <String?>{};
-      for (var i = 0; i < 80; i++) {
+      final start = FocusManager.instance.primaryFocus;
+      for (var i = 0; i < 120; i++) {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        final button = _focused<IconButton>();
         seen.add(
-          button?.tooltip ??
-              (_focused<TextField>() != null ? 'field' : _focusedText()),
+          _focused<IconButton>()?.tooltip ??
+              (_focused<TextField>() != null ? 'field' : null) ??
+              _focusedText() ??
+              _focusedLabel(),
         );
-        if (_focusedText() == _result('1').name) break;
+        if (FocusManager.instance.primaryFocus == start) break;
       }
 
-      final back = MaterialLocalizations.of(
-        tester.element(find.byType(VlcSubtitleSearchSheet)),
+      final material = MaterialLocalizations.of(
+        tester.element(find.byType(SubtitleSearchPage)),
       );
-      expect(seen, contains(back.backButtonTooltip));
+      expect(seen, contains(material.backButtonTooltip));
       expect(seen, contains('field'));
-      expect(seen, contains(back.clearButtonTooltip));
+      expect(seen, contains(material.clearButtonTooltip));
       expect(seen, contains(l10n.search));
       expect(seen, containsAll(<String>['English', 'Hindi']));
       expect(seen, contains(_result('1').name));
-    });
-
-    testWidgets('the back button closes it', (tester) async {
-      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
-      final back = MaterialLocalizations.of(
-        tester.element(find.byType(VlcSubtitleSearchSheet)),
-      ).backButtonTooltip;
-
-      await tester.tap(find.byTooltip(back));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(VlcSubtitleSearchSheet), findsNothing);
-      expect(sheet.popped, hasLength(1));
-    });
-
-    testWidgets('Escape closes it', (tester) async {
-      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
-
-      expect(find.byType(VlcSubtitleSearchSheet), findsNothing);
-      expect(sheet.popped, hasLength(1));
+      expect(
+        seen,
+        isNot(contains(l10n.searchSubtitlesOnline)),
+        reason: 'the tab under the page is out of reach while it is up',
+      );
     });
 
     testWidgets('Clear empties the field and takes the ids with it', (
       tester,
     ) async {
-      final sheet = await pumpSheet(tester, target: _episode, isTv: false);
+      final page = await pumpSearch(tester, target: _episode, isTv: false);
       final clear = MaterialLocalizations.of(
-        tester.element(find.byType(VlcSubtitleSearchSheet)),
+        tester.element(find.byType(SubtitleSearchPage)),
       ).clearButtonTooltip;
 
       await tester.tap(find.byTooltip(clear));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextField, 'The Show'), findsNothing);
       expect(find.byTooltip(clear), findsNothing, reason: 'nothing to clear');
+      expect(
+        _focused<TextField>(),
+        isNotNull,
+        reason: 'the button went with the text; focus waits for the next title',
+      );
 
       // An empty field with the ids gone is nothing to search for.
       await tester.tap(find.byTooltip(l10n.search));
       await tester.pumpAndSettle();
-      expect(sheet.provider.calls, hasLength(1), reason: 'only the open');
+      expect(page.provider.calls, hasLength(1), reason: 'only the open');
+    });
+  });
+
+  group('Back walks one step', () {
+    testWidgets('the page\'s Back button takes the panel back to the tab', (
+      tester,
+    ) async {
+      final page = await pumpSearch(tester, target: _episode, isTv: false);
+      final back = MaterialLocalizations.of(
+        tester.element(find.byType(SubtitleSearchPage)),
+      ).backButtonTooltip;
+
+      await tester.tap(find.byTooltip(back));
+      await tester.pumpAndSettle();
+
+      expect(onTheTab(), isTrue);
+      expect(page.closed, isEmpty);
+    });
+
+    testWidgets('Android\'s Back, and a remote\'s, step back to the Search '
+        'online row; the next closes the panel', (tester) async {
+      final page = await pumpSearch(tester, target: _episode);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(onTheTab(), isTrue);
+      expect(page.closed, isEmpty, reason: 'one step, not the whole panel');
+      expect(_focusedRow(), l10n.searchSubtitlesOnline);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(page.closed, <bool>[true]);
+    });
+
+    testWidgets('Escape steps back the same way', (tester) async {
+      final page = await pumpSearch(tester, target: _episode);
+
+      await _press(tester, LogicalKeyboardKey.escape);
+      expect(onTheTab(), isTrue);
+      expect(page.closed, isEmpty);
+      expect(_focusedRow(), l10n.searchSubtitlesOnline);
+
+      await _press(tester, LogicalKeyboardKey.escape);
+      expect(page.closed, <bool>[true]);
+    });
+
+    testWidgets('a tap beside the drawer closes the whole panel, a step in '
+        'or not', (tester) async {
+      final page = await pumpSearch(tester, target: _episode, isTv: false);
+
+      await tester.tapAt(const Offset(400, 700));
+      await tester.pumpAndSettle();
+
+      expect(page.closed, <bool>[true]);
+      expect(find.byType(SubtitleSearchPage), findsNothing);
     });
   });
 
@@ -787,7 +1108,7 @@ void main() {
         'DOWN reaches the first result', (tester) async {
       final pending = Completer<List<OnlineSubtitle>>();
       final provider = _RecordingProvider()..respond = (_) => pending.future;
-      await pumpSheet(
+      await pumpSearch(
         tester,
         target: _episode,
         provider: provider,
@@ -796,33 +1117,56 @@ void main() {
 
       expect(find.byType(Shimmer), findsOneWidget);
       expect(
-        _focused<IconButton>(),
-        isNotNull,
+        _focused<IconButton>()?.tooltip,
+        l10n.search,
         reason: 'a visible Retry while the network is out',
       );
 
       pending.complete(<OnlineSubtitle>[_result('1'), _result('2')]);
       await tester.pumpAndSettle();
-      expect(_focused<IconButton>(), isNotNull, reason: 'results do not steal');
+      expect(
+        _focused<IconButton>()?.tooltip,
+        l10n.search,
+        reason: 'results do not steal',
+      );
 
       await _down(tester);
       await _down(tester);
       expect(_focusedText(), _result('1').name);
     });
 
-    testWidgets('an unseeded sheet starts in the field', (tester) async {
-      await pumpSheet(tester);
+    testWidgets('an unseeded search starts in the field', (tester) async {
+      await pumpSearch(tester);
 
       expect(_focused<TextField>(), isNotNull);
     });
 
-    testWidgets('off a television nothing is focused until asked', (
+    testWidgets('the page never opens with nothing focused, which would give '
+        'the arrows nowhere to go', (tester) async {
+      await pumpSearch(tester, target: _episode);
+      final focused = FocusManager.instance.primaryFocus;
+
+      expect(focused, isNotNull);
+      expect(focused, isNot(isA<FocusScopeNode>()));
+      expect(
+        focused!.context!.findAncestorWidgetOfExactType<SubtitleSearchPage>(),
+        isNotNull,
+      );
+    });
+  });
+
+  group('under a thumb', () {
+    testWidgets('the field is left alone, so no keyboard comes up unasked', (
       tester,
     ) async {
-      await pumpSheet(tester, target: _episode, isTv: false);
+      await pumpSearch(tester, isTv: false);
 
-      expect(_focused<IconButton>(), isNull);
       expect(_focused<TextField>(), isNull);
+      expect(
+        _focusedText(),
+        'English',
+        reason: 'focus is still somewhere a later key press can start from',
+      );
     });
   });
 }

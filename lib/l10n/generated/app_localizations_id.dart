@@ -1768,6 +1768,12 @@ class AppLocalizationsId extends AppLocalizations {
   String get playerSourceUnplayable => 'Unplayable';
 
   @override
+  String get playerSourceCannotSeek => 'Can\'t seek';
+
+  @override
+  String get playerSourceNotVideo => 'Not a video';
+
+  @override
   String get nuvioPlugins => 'Nuvio plugins';
 
   @override
