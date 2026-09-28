@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/core/addons/data/addon_client.dart';
+import 'package:skystream/core/addons/data/addon_repository.dart';
 import 'package:skystream/core/addons/models/addon_manifest.dart';
 import 'package:skystream/features/addons/presentation/addon_providers.dart';
 
@@ -92,6 +94,55 @@ void main() {
       },
     );
   });
+
+  group('addonHealthProvider', () {
+    // Switching an add-on off or moving it up the list says nothing about
+    // whether its host answers. Watched whole, the add-on list re-fetched
+    // every manifest on either, and every badge went back to "Checking".
+    test('probes the installed set again only when the set changes', () async {
+      final client = _FakeHealthClient({
+        'a': () async => sampleManifest('test.a'),
+        'b': () async => sampleManifest('test.b'),
+        'c': () async => sampleManifest('test.c'),
+      });
+      final a = managed('a');
+      final b = managed('b');
+      final container = ProviderContainer(
+        overrides: [
+          addonClientProvider.overrideWithValue(client),
+          addonRepositoryProvider.overrideWith(() => _StubRepository([a, b])),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(addonHealthProvider, (_, _) {});
+      addTearDown(subscription.close);
+      final repository =
+          container.read(addonRepositoryProvider.notifier) as _StubRepository;
+
+      await container.read(addonHealthProvider.future);
+      expect(client.fetches, 2);
+
+      repository.replace([b, a.copyWith(enabled: false)]);
+      await container.read(addonHealthProvider.future);
+      expect(client.fetches, 2, reason: 'the same hosts, reordered and off');
+
+      repository.replace([a, b, managed('c')]);
+      await container.read(addonHealthProvider.future);
+      expect(client.fetches, 5, reason: 'an install probes the set again');
+    });
+  });
+}
+
+class _StubRepository extends AddonRepository {
+  _StubRepository(this._initial);
+
+  final List<ManagedAddon> _initial;
+
+  @override
+  AddonsState build() => AddonsState(addons: _initial, isLoading: false);
+
+  void replace(List<ManagedAddon> addons) =>
+      state = state.copyWith(addons: addons);
 }
 
 typedef _ManifestHandler = Future<AddonManifest> Function();
@@ -100,9 +151,11 @@ class _FakeHealthClient extends AddonClient {
   _FakeHealthClient(this.handlers) : super(Dio());
 
   final Map<String, _ManifestHandler> handlers;
+  int fetches = 0;
 
   @override
   Future<AddonManifest> fetchManifest(String url, {bool forceRefresh = false}) {
+    fetches++;
     final key = Uri.parse(url).host.split('.').first;
     final handler = handlers[key];
     if (handler == null) {

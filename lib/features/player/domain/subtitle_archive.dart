@@ -168,7 +168,13 @@ final RegExp _nameWord = RegExp(r'[a-zÀ-ɏ-]+');
 bool _mentionsLanguage(String name, Set<String> words) {
   final text = _baseName(name).toLowerCase();
   for (final match in _nameWord.allMatches(text)) {
-    if (words.contains(match[0])) return true;
+    final word = match[0]!;
+    if (words.contains(word)) return true;
+    // The hyphen that keeps pt-br whole also joins a language to the word
+    // beside it - English-SDH, en-US, Movie-English - so the parts count too.
+    for (final part in word.split('-')) {
+      if (part.isNotEmpty && words.contains(part)) return true;
+    }
   }
   return false;
 }

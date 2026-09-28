@@ -149,6 +149,7 @@ class SubtitleSearch extends _$SubtitleSearch {
   @visibleForTesting
   static List<SubtitleProvider>? debugProviders;
 
+  // ignore: riverpod_lint/avoid_public_notifier_properties
   /// How the current results were found. Assigned before every `state`
   /// write, so reading it next to a watched state is always consistent.
   ///
@@ -158,8 +159,9 @@ class SubtitleSearch extends _$SubtitleSearch {
   /// the state class would rebuild every watcher whenever only the mode
   /// changed. The invariant above is what keeps the pair consistent.
   ///
-  /// (riverpod_lint still reports this; its diagnostics come from an analyzer
-  /// plugin, which `// ignore:` comments do not filter.)
+  /// Hence the ignore above this comment, where the diagnostic starts. An
+  /// analyzer plugin's diagnostics are filtered only by an ignore that names
+  /// the plugin: `riverpod_lint/avoid_public_notifier_properties`.
   SubtitleSearchMode lastMode = SubtitleSearchMode.byTitle;
 
   late List<SubtitleProvider> _providers;

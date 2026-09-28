@@ -62,8 +62,9 @@ void main() {
 
     expect(seen, <Duration?>[const Duration(minutes: 30)]);
     expect(controller.value.position, ms(600000));
-    // The stall clock is armed by the seek; ending healthy means disposing
-    // in-body, before flutter_test checks for pending timers.
+    // The stall clock and the merge window are both armed by the seek; ending
+    // healthy means disposing in-body, before flutter_test checks for pending
+    // timers.
     controller.dispose();
   });
 
@@ -145,25 +146,26 @@ void main() {
 
   testWidgets('a paused seek holds its target too', (tester) async {
     final controller = await playing(7);
-    addTearDown(controller.dispose);
     await harness.sendEvent(7, snapshot(state: 'paused', position: 600000));
 
     await controller.seekTo(const Duration(minutes: 20));
     await harness.sendEvent(7, snapshot(state: 'paused', position: 600000));
 
     expect(controller.pendingSeekTarget.value, const Duration(minutes: 20));
+    // A seek leaves its merge window open; see the first test.
+    controller.dispose();
   });
 
   testWidgets('an engine that stops, ends or fails lets the target go', (
     tester,
   ) async {
     final controller = await playing(8);
-    addTearDown(controller.dispose);
 
     await controller.seekTo(const Duration(minutes: 30));
     await harness.sendEvent(8, snapshot(state: 'ended', position: 3600000));
 
     expect(controller.pendingSeekTarget.value, isNull);
+    controller.dispose();
   });
 
   testWidgets('new media drops the old media\'s target', (tester) async {

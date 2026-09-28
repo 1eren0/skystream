@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart'
@@ -207,8 +208,24 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
 
   /// Seeks to [position].
   ///
-  /// [position] must be non-negative.
+  /// [position] must be non-negative. [pendingSeekTarget] moves to it at once.
+  /// The engine is sent it at once too, unless another seek went out within
+  /// the last [seekMergeWindow] - then the two are merged, and the engine is
+  /// sent the latest target once the seeks stop arriving for a window. The
+  /// returned future completes once the seek is sent or, merged, taken.
   Future<void> seekTo(Duration position);
+
+  /// How long after a seek has gone to the engine further seeks are held and
+  /// merged into one.
+  ///
+  /// libVLC answers every seek by flushing its decoders and, whenever the
+  /// target is not already in its read-ahead, by dropping that and asking the
+  /// network for the stream again - over a new connection on HTTP/1.1. It
+  /// merges queued seeks only while one is still being processed (VLC 3.0.21
+  /// `src/input/input.c`), so six presses of an arrow key, six taps or six
+  /// bumps of a gamepad shoulder button became three full resets, a frame
+  /// from each flashing past.
+  static const Duration seekMergeWindow = Duration(milliseconds: 400);
 
   /// Where the last seek is going, until the engine gets there; null when no
   /// seek is on its way.
@@ -1036,6 +1053,7 @@ class _VlcPlayerController extends VlcPlayerController
     _cancelStallTimer();
     // A seek's target belongs to the media it was asked of.
     _clearPendingSeek();
+    _dropMergedSeek();
     // A measured length belongs to the media it was measured on.
     _durationCap = null;
     // Opening while the app is away must not start audio nobody can stop:
@@ -1153,10 +1171,76 @@ class _VlcPlayerController extends VlcPlayerController
     _seekLastSeen = value.position;
     _seekMovesWithoutLanding = 0;
     _pendingSeekTarget.value = position;
-    return _invoke('seekTo', <String, Object?>{
-      'position': position.inMilliseconds,
-    });
+    return _sendOrMergeSeek(position);
   }
+
+  /// When a seek last went to the engine, and where to.
+  ///
+  /// A time rather than an open timer, so a seek on its own leaves nothing
+  /// running behind it; a timer exists only while a merged seek waits.
+  DateTime? _seekSentAt;
+  Duration? _seekSentTarget;
+
+  /// The latest seek asked for inside the window, and the timer that sends it
+  /// once the seeks stop arriving.
+  Duration? _mergedSeek;
+  Timer? _mergedSeekTimer;
+
+  /// The first seek of a burst goes at once; the rest move the target and
+  /// restart the window. See [VlcPlayerController.seekMergeWindow].
+  ///
+  /// A merged seek completes as soon as it is taken. Its caller has nothing
+  /// to wait for - the target is already published - and holding it for the
+  /// window would hang it outright wherever time does not advance on its own.
+  Future<void> _sendOrMergeSeek(Duration position) {
+    const window = VlcPlayerController.seekMergeWindow;
+    final now = clock.now();
+    final sentAt = _seekSentAt;
+    final inBurst =
+        _mergedSeekTimer != null ||
+        (sentAt != null && now.difference(sentAt) < window);
+    if (!inBurst) {
+      _seekSentAt = now;
+      _seekSentTarget = position;
+      return _sendSeek(position);
+    }
+    _mergedSeek = position;
+    _mergedSeekTimer?.cancel();
+    _mergedSeekTimer = Timer(window, _sendMergedSeek);
+    return Future<void>.value();
+  }
+
+  void _sendMergedSeek() {
+    _mergedSeekTimer = null;
+    final target = _mergedSeek;
+    _mergedSeek = null;
+    // A burst that ends where it began - right, right, left - has nothing to
+    // send: the engine already has that target, and a second seek there
+    // would flush and refill for nothing.
+    if (target == null || target == _seekSentTarget) return;
+    // Sending restarts the window, so a burst that carries on straight after
+    // is merged again rather than sent press by press.
+    _seekSentAt = clock.now();
+    _seekSentTarget = target;
+    // The engine only has the seek from now, so the landing watcher's count
+    // of reports that moved without arriving starts here, not at the press.
+    _seekMovesWithoutLanding = 0;
+    unawaited(_sendSeek(target));
+  }
+
+  /// Forgets a merged seek that has not gone out, and the last one that did:
+  /// both belong to media that is going away, and the first seek on the next
+  /// one goes at once.
+  void _dropMergedSeek() {
+    _mergedSeekTimer?.cancel();
+    _mergedSeekTimer = null;
+    _mergedSeek = null;
+    _seekSentAt = null;
+    _seekSentTarget = null;
+  }
+
+  Future<void> _sendSeek(Duration position) =>
+      _invoke('seekTo', <String, Object?>{'position': position.inMilliseconds});
 
   @override
   ValueListenable<Duration?> get pendingSeekTarget => _pendingSeekTarget;
@@ -1735,6 +1819,7 @@ class _VlcPlayerController extends VlcPlayerController
     _cancelPendingThrottledValue();
     _cancelStallTimer();
     _clearPendingSeek();
+    _dropMergedSeek();
     _pendingSeekTarget.dispose();
     if (viewId != null) {
       unawaited(_disposeNativeView(viewId));

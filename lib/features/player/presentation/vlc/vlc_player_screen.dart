@@ -143,6 +143,13 @@ const Duration _kHealthyPlayback = Duration(seconds: 30);
 /// thresholds and costs nothing — the check is arithmetic on two counters.
 const Duration _kWatchdogTick = Duration(seconds: 1);
 
+/// How recently the source must have delivered bytes for a frozen picture to
+/// count as a refill rather than a stall. See `_bytesArriving`.
+const Duration _kArrivalWindow = Duration(seconds: 5);
+
+/// How soon after a seek a stall must begin to count as that seek's refill.
+const Duration _kAfterSeekSlack = Duration(seconds: 2);
+
 /// How long after Back has put the bars away a second Back is taken for the
 /// same press. Some televisions deliver one press twice — as a key event and
 /// as a `popRoute` in the same frame — and without this the echo would pop the
@@ -440,6 +447,17 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// Whether a stats request is in flight, so a slow platform round trip
   /// cannot queue a second behind itself on the next tick.
   bool _statsInFlight = false;
+
+  /// `readBytes` at the last stats sample, and when it was last seen to grow,
+  /// on [_attemptAge]'s clock. What tells a frozen picture over a source that
+  /// is still refilling from one over a source gone quiet - see
+  /// [_bytesArriving].
+  int? _arrivalReadBytes;
+  Duration? _bytesArrivedAt;
+
+  /// When the viewer last seeked, on [_attemptAge]'s clock: a stall that
+  /// begins with one has a refill ahead of it - see [kStallNudgeAfterSeek].
+  Duration? _lastSeekAt;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
 
   /// Whether the app is on screen. A backgrounded player freezes its position
@@ -778,7 +796,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           // Read-ahead, which is the knob the caching one was mistaken for:
           // it buys resilience and cheap seeks without delaying a stream that
           // starts mid-playback. KiB is libVLC's unit.
-          prefetchBufferKiB: (() { debugPrint('TEMP-INSTR prefetchBufferKiB=8192 (proxy test)'); return 8192; })(),
+          prefetchBufferKiB: _bufferMb * 1024,
           userAgent: kDefaultBrowserUserAgent,
           // libVLC does adapt, but its estimator starts pessimistic and can
           // sit on a low rendition for a long stretch, so pin the highest.
@@ -1897,6 +1915,10 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // The seek correction describes the outgoing media's counters. The band's
     // rate baseline is left alone on purpose - see [noteMediaChanged].
     _bufferedAhead.noteMediaChanged();
+    // So does the byte count, which restarts with the media.
+    _arrivalReadBytes = null;
+    _bytesArrivedAt = null;
+    _lastSeekAt = null;
   }
 
   void _resetStallClock() {
@@ -1945,6 +1967,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     final seeks = _controller.seekRequests;
     if (seeks != _seenSeekRequests) {
       _seenSeekRequests = seeks;
+      _lastSeekAt = _attemptAge;
       if (_lastStallAction != StallAction.none) _setStatus('');
       _resetStallClock();
       return;
@@ -1972,6 +1995,14 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // down in exactly the states such a source gets stuck in.
     if (!_sawFrames) return;
 
+    _watchArrival();
+    // The stall began with a seek - allowing for the one report of the target
+    // some backends make before the picture freezes - so it has its refill
+    // ahead of it.
+    final seekAt = _lastSeekAt;
+    final afterSeek =
+        seekAt != null &&
+        _attemptAge - _stalledFor - seekAt <= _kAfterSeekSlack;
     final action = stallActionFor(
       stalledFor: _stalledFor,
       hadFrames: _sawFrames,
@@ -1979,6 +2010,8 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       recoverAfter: _attemptIsTorrent
           ? kTorrentStallRecoverAfter
           : kStallRecoverAfter,
+      arriving: _bytesArriving,
+      afterSeek: afterSeek,
     );
     switch (action) {
       case StallAction.none:
@@ -2016,6 +2049,47 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _videoWindow += _kWatchdogTick;
     _statsInFlight = true;
     unawaited(_sampleVideoHealth());
+  }
+
+  /// Keeps the byte count current through a stall, when the video-health
+  /// sampler stands down. Its answer is read on the next tick.
+  void _watchArrival() {
+    if (!_handedToEngine || _statsInFlight) return;
+    _statsInFlight = true;
+    unawaited(_sampleArrival());
+  }
+
+  Future<void> _sampleArrival() async {
+    final generation = _generation;
+    VlcMediaStats stats;
+    try {
+      stats = await _controller.getMediaStats();
+    } on Object {
+      _statsInFlight = false;
+      return;
+    }
+    _statsInFlight = false;
+    if (_disposed || generation != _generation) return;
+    _noteArrival(stats);
+  }
+
+  void _noteArrival(VlcMediaStats stats) {
+    if (!stats.isAvailable) return;
+    final last = _arrivalReadBytes;
+    _arrivalReadBytes = stats.readBytes;
+    if (last != null && stats.readBytes > last) _bytesArrivedAt = _attemptAge;
+  }
+
+  /// Whether the source has delivered anything in the last few seconds.
+  ///
+  /// A frozen picture over a source still delivering is a refill - a seek
+  /// fetching its keyframe run-up and a fresh buffer - not a source gone
+  /// quiet, and nudging it throws the refill away. A few seconds rather than
+  /// one tick, because bytes come in bursts. False where the engine has no
+  /// counters, which leaves the ladder as it always was.
+  bool get _bytesArriving {
+    final at = _bytesArrivedAt;
+    return at != null && _attemptAge - at <= _kArrivalWindow;
   }
 
   /// Says which side a stutter is coming from, once per change of verdict.
@@ -2082,18 +2156,24 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     }
 
     final value = _controller.value;
+    // Where playback is going, not where the engine last said it was: every
+    // backend goes on publishing the place a seek left until it takes, and
+    // measured from there a step back looks like playback carrying on.
+    final position = _controller.pendingSeekTarget.value ?? value.position;
     final fraction = bufferedFraction(
-      position: value.position,
+      position: position,
       duration: value.duration,
       ahead: _bufferedAhead.sample(
         readBytes: stats.readBytes,
         demuxReadBytes: stats.demuxReadBytes,
-        position: value.position,
+        position: position,
         at: _attemptAge,
         // What tells the estimate a skip happened, so the bytes the skip
         // stranded stop being counted as buffer. See [BufferedAheadEstimator].
         seekRequests: _controller.seekRequests,
         speed: value.playbackSpeed,
+        // The prefetch window libVLC was given, which is all it can hold.
+        capacityBytes: _bufferMb * 1024 * 1024,
       ),
     );
     _bufferedFraction.value = fraction ?? 0;
@@ -2115,6 +2195,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     if (_disposed || generation != _generation) return;
 
     _updateBufferedAhead(stats);
+    _noteArrival(stats);
 
     final baseline = _videoBaseline;
     if (baseline == null) {
@@ -2190,10 +2271,15 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// starts a new one, and a stream the engine quietly parked simply resumes.
   /// Only the seek is conditional: a live feed has nowhere to seek to, so it
   /// gets the play() on its own.
+  ///
+  /// "Current" is where playback is meant to be: a seek still on its way wins
+  /// over the published position, which every backend holds at the place the
+  /// seek left until it lands. Re-seeking to that undid the viewer's skip.
   Future<void> _nudge(VlcPlayerValue value) async {
     final generation = _generation;
-    if (value.isSeekable && value.position > Duration.zero) {
-      await _controller.seekTo(value.position);
+    final at = _controller.pendingSeekTarget.value ?? value.position;
+    if (value.isSeekable && at > Duration.zero) {
+      await _controller.seekTo(at);
       // Account for that seek before the next tick reads the counter. The
       // watchdog forgives a freeze the viewer asked for, and this one is its
       // own - left unclaimed it would clear the line it just put up and

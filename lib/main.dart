@@ -100,7 +100,11 @@ void main() async {
     );
   }
 
+  // AppRoot opens storage and then builds the app's ProviderScope, which the
+  // rule cannot see through.
+  // ignore: riverpod_lint/missing_provider_scope
   AppUtils.setRestartFunction(() => runApp(const AppRoot()));
+  // ignore: riverpod_lint/missing_provider_scope
   runApp(const AppRoot());
 }
 
@@ -202,6 +206,9 @@ class _AppRootState extends State<AppRoot> {
     }
 
     return ProviderScope(
+      // The app's root scope - below AppRoot only because storage has to open
+      // first - so there is no parent scope for dependencies to describe.
+      // ignore: riverpod_lint/scoped_providers_should_specify_dependencies
       overrides: [storageServiceProvider.overrideWithValue(_storageService)],
       child: const ExtensionsSyncBridge(child: MyApp()),
     );

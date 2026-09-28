@@ -10,7 +10,8 @@ import org.videolan.libvlc.MediaPlayer
 /// Without the shim, Zoom still plays; its subtitles are laid out for the
 /// whole picture instead of the part on screen.
 internal object VlcNativeGeometry {
-    private val available: Boolean = try {
+    @Volatile
+    private var available: Boolean = try {
         System.loadLibrary("vlc_player_geometry")
         true
     } catch (error: UnsatisfiedLinkError) {
@@ -29,7 +30,16 @@ internal object VlcNativeGeometry {
         if (instance == 0L) {
             return false
         }
-        return nativeSetCropGeometry(instance, geometry)
+        return try {
+            nativeSetCropGeometry(instance, geometry)
+        } catch (error: UnsatisfiedLinkError) {
+            // The library loaded but the method is not bound - a host that
+            // minified the name away (see consumer-rules.pro). Playing on
+            // without the crop beats taking the app down on every call.
+            Log.w("VlcPlayer", "libVLC crop is unavailable: ${error.message}")
+            available = false
+            false
+        }
     }
 
     @JvmStatic

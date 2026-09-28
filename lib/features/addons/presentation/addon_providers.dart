@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/addons/data/addon_client.dart';
@@ -264,10 +265,22 @@ Future<Map<String, AddonHealth>> probeAddonsHealth(
 }
 
 /// Liveness of every installed add-on, keyed by manifest URL. Re-probes
-/// automatically when the installed list changes (install/remove/refresh).
+/// automatically when an add-on is installed or removed; the manual refresh
+/// invalidates it.
+///
+/// Watches the set of installed hosts rather than the add-on list: switching
+/// an add-on off or reordering it replaces the list without changing whether
+/// any host answers, and watched whole, either re-fetched every manifest and
+/// put every badge back to "Checking".
 @riverpod
 Future<Map<String, AddonHealth>> addonHealth(Ref ref) {
-  final addons = ref.watch(addonRepositoryProvider).addons;
+  ref.watch(
+    addonRepositoryProvider.select(
+      (state) =>
+          ([for (final a in state.addons) a.manifestUrl]..sort()).join('\n'),
+    ),
+  );
+  final addons = ref.read(addonRepositoryProvider).addons;
   final client = ref.watch(addonClientProvider);
   if (addons.isEmpty) return Future.value(const {});
   return probeAddonsHealth(client, addons);

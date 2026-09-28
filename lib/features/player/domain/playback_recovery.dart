@@ -28,11 +28,36 @@ enum StallAction {
 ///
 /// Long enough that an ordinary rebuffer on a slow connection rides it out: a
 /// nudge forces a fresh request, which on a stream that is merely refilling
-/// its buffer costs more than it saves.
+/// its buffer costs more than it saves. A stream seen to be refilling - bytes
+/// still arriving - is not nudged at all; see [stallActionFor].
 const Duration kStallNudgeAfter = Duration(seconds: 10);
 
 /// How long any source may make no progress at all before it is abandoned.
 const Duration kStallRecoverAfter = Duration(seconds: 25);
+
+/// [kStallNudgeAfter] for a stall that began with a seek.
+///
+/// A seek that lands outside libVLC's read-ahead fetches its keyframe run-up
+/// and three seconds of buffer before the picture moves, which at 4K remux
+/// bitrates on an ordinary line takes longer than [kStallNudgeAfter]. Nor do
+/// the byte counters say it is under way: libVLC updates them from its input
+/// thread, and that thread is the one waiting on the read. Measured on the TV
+/// emulator, they stood still for the first ten seconds of a refill that was
+/// arriving the whole time.
+const Duration kStallNudgeAfterSeek = Duration(seconds: 20);
+
+/// [kStallRecoverAfter] for a stall that began with a seek. See
+/// [kStallNudgeAfterSeek].
+const Duration kStallRecoverAfterSeek = Duration(seconds: 40);
+
+/// How long a source still delivering bytes may sit at one position before
+/// it is abandoned anyway.
+///
+/// Room for the slowest refill worth waiting for - a 4K remux's keyframe
+/// run-up and buffer after a seek, on a line barely faster than its bitrate -
+/// and no more: a source trickling bytes it can never play at is as good as
+/// dead, and the failover ladder has others to try.
+const Duration kStallRecoverWhileArrivingAfter = Duration(seconds: 60);
 
 /// How long a source may take, from the moment it starts opening, to show its
 /// first picture before it is given up on.
@@ -60,19 +85,41 @@ const Duration kTorrentStallRecoverAfter = Duration(minutes: 3);
 /// The rungs are tested in descending severity, so a freeze noticed late — a
 /// suspended laptop that missed a minute of ticks — escalates straight to
 /// recovery instead of walking the ladder a second at a time.
+///
+/// [arriving] is whether the source has delivered bytes in the last few
+/// seconds. A frozen picture over a source that is still delivering is a
+/// refill, not a source gone quiet: a seek that has to fetch its keyframe
+/// run-up and a fresh buffer outlasts [kStallNudgeAfter] on an ordinary line
+/// at 4K remux bitrates. It gets no nudge, whose fresh request would throw
+/// the refill away and start it over, and [kStallRecoverWhileArrivingAfter]
+/// before it is given up on.
+///
+/// [afterSeek] is whether the stall began with a seek, which gets
+/// [kStallNudgeAfterSeek] and [kStallRecoverAfterSeek] for its refill.
 StallAction stallActionFor({
   required Duration stalledFor,
   required bool hadFrames,
   required StallAction lastAction,
   Duration recoverAfter = kStallRecoverAfter,
+  bool arriving = false,
+  bool afterSeek = false,
 }) {
-  if (stalledFor >= recoverAfter && lastAction != StallAction.recover) {
+  var giveUpAfter = recoverAfter;
+  if (afterSeek && giveUpAfter < kStallRecoverAfterSeek) {
+    giveUpAfter = kStallRecoverAfterSeek;
+  }
+  if (arriving && giveUpAfter < kStallRecoverWhileArrivingAfter) {
+    giveUpAfter = kStallRecoverWhileArrivingAfter;
+  }
+  if (stalledFor >= giveUpAfter && lastAction != StallAction.recover) {
     return StallAction.recover;
   }
   // Nothing has been decoded yet, so there is no position to seek back to and
   // no demuxer to unstick. Waiting out the deadline is the only move.
   if (!hadFrames) return StallAction.none;
-  if (stalledFor >= kStallNudgeAfter && lastAction == StallAction.none) {
+  if (arriving) return StallAction.none;
+  final nudgeAfter = afterSeek ? kStallNudgeAfterSeek : kStallNudgeAfter;
+  if (stalledFor >= nudgeAfter && lastAction == StallAction.none) {
     return StallAction.nudge;
   }
   return StallAction.none;

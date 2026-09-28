@@ -98,6 +98,41 @@ void main() {
       );
     });
 
+    test('finds a language a hyphen joins to the word beside it', () {
+      // English-SDH, en-US, Movie-English: the hyphen that keeps pt-br whole
+      // glued every other language to its neighbour, and the largest file -
+      // here the wrong language - won instead.
+      expect(
+        pickSubtitleEntry([
+          _file('Show.S01E01.French.srt', 90000),
+          _file('Show.S01E01.English-SDH.srt', 60000),
+        ], language: 'en'),
+        'Show.S01E01.English-SDH.srt',
+      );
+      expect(
+        pickSubtitleEntry([
+          _file('Movie.fr-FR.srt', 90000),
+          _file('Movie.en-US.srt', 60000),
+        ], language: 'English'),
+        'Movie.en-US.srt',
+      );
+      expect(
+        pickSubtitleEntry([
+          _file('Movie-French.srt', 90000),
+          _file('Movie-English.srt', 60000),
+        ], language: 'eng'),
+        'Movie-English.srt',
+      );
+      expect(
+        pickSubtitleEntry([
+          _file('Movie.en.srt', 90000),
+          _file('Movie.pt-BR.srt', 60000),
+        ], language: 'pt-br'),
+        'Movie.pt-BR.srt',
+        reason: 'and pt-br still reads as one',
+      );
+    });
+
     test('takes the largest of what is left: a full track over a forced '
         'one', () {
       final entries = [
