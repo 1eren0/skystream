@@ -77,6 +77,47 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+
+    testWidgets('TV: D-pad Down stays with the visible keyboard', (
+      tester,
+    ) async {
+      await pumpSearch(
+        tester,
+        history: ['Dune'],
+        size: const Size(1920, 1080),
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 540);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+
+      await press(tester, LogicalKeyboardKey.arrowDown);
+
+      expect(
+        fieldHasFocus(tester),
+        isTrue,
+        reason: 'the TV IME must own arrows while its keyboard is visible',
+      );
+      expect(focusedRowText(tester), isNull);
+    });
+
+    testWidgets('TV: controller A reopens the dismissed search keyboard', (
+      tester,
+    ) async {
+      await pumpSearch(
+        tester,
+        history: const [],
+        size: const Size(1920, 1080),
+      );
+      tester.testTextInput.hide();
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(fieldHasFocus(tester), isTrue);
+
+      await press(tester, LogicalKeyboardKey.gameButtonA);
+
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(fieldHasFocus(tester), isTrue);
+    });
+
     // The bar used to be a column, so down from the field meant "into the
     // scope pill". The pill stands beside the field now and the panel is what
     // is underneath, so down has to reach the list.
