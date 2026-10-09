@@ -60,6 +60,17 @@ void main() {
               '"name":"Example","url":"https://example.test/plugin.js",'
               '"version":1}]}',
             );
+        case '/hybrid':
+          request.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.json
+            ..write(
+              '{"name":"Hybrid Repository","id":"hybrid.repo",'
+              '"repos":["https://example.test/child.json"],'
+              '"plugins":[{"packageName":"example.hybrid",'
+              '"name":"Hybrid Plugin","url":"https://example.test/plugin.js",'
+              '"version":1}]}',
+            );
         case '/missing':
           request.response.statusCode = 404;
         default:
@@ -147,8 +158,16 @@ void main() {
 
       expect(repo, isNotNull);
       expect(repo!.name, 'Inline Repository');
-      expect(repo.plugins.single.packageName, 'example.plugin');
-      expect((await service.getRepoPlugins(repo)).single.name, 'Example');
+      expect(repo!.plugins.single.packageName, 'example.plugin');
+      expect((await service.getRepoPlugins(repo!)).single.name, 'Example');
+    });
+
+    test('keeps embedded plugins in a collection that also lists repositories', () async {
+      final repo = await service.fetchRepository('$base/hybrid');
+
+      expect(repo, isNotNull);
+      expect(repo!.includedRepos, <String>['https://example.test/child.json']);
+      expect(repo!.plugins.single.name, 'Hybrid Plugin');
     });
 
     test('a shortlink redirect with a relative Location resolves to an absolute URL', () async {
