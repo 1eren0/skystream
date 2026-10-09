@@ -191,10 +191,11 @@ void main() {
       final repo = await shortcodeService.fetchRepository('universe');
 
       expect(repo, isNotNull);
-      expect(repo!.includedRepos, <String>[
+      final repository = repo!;
+      expect(repository.includedRepos, <String>[
         'https://example.test/child.json',
       ]);
-      expect(repo.plugins.single.name, 'Hybrid Plugin');
+      expect(repository.plugins.single.name, 'Hybrid Plugin');
     });
 
     test('a shortlink redirect with a relative Location resolves to an absolute URL', () async {
