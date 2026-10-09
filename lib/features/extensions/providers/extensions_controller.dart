@@ -577,7 +577,7 @@ class ExtensionsController extends _$ExtensionsController {
 
           // If the repo is PURELY a container (no plugin of its own),
           // do NOT add it to the list or persist it.
-          if (repo.pluginLists.isEmpty) {
+          if (repo.pluginLists.isEmpty && repo.plugins.isEmpty) {
             state = ExtensionsSuccess(
               installedPlugins: state.installedPlugins,
               repositories: state.repositories,
