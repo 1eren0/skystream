@@ -46,6 +46,20 @@ void main() {
           request.response
             ..statusCode = 302
             ..headers.set('location', 'https://cutt.ly/404');
+        case '/relative':
+          request.response
+            ..statusCode = 302
+            ..headers.set('location', '/inline');
+        case '/inline':
+          request.response
+            ..statusCode = 200
+            ..headers.contentType = ContentType.json
+            ..write(
+              '{"name":"Inline Repository","id":"inline.repo",'
+              '"plugins":[{"packageName":"example.plugin",'
+              '"name":"Example","url":"https://example.test/plugin.js",'
+              '"version":1}]}',
+            );
         case '/missing':
           request.response.statusCode = 404;
         default:
@@ -124,6 +138,21 @@ void main() {
         service.unescapeHtml('https://e.com/a.json?x=1&amp;y=2'),
         'https://e.com/a.json?x=1&y=2',
       );
+    });
+  });
+
+  group('repository manifests', () {
+    test('accepts a direct URL with embedded plugins and no pluginLists', () async {
+      final repo = await service.fetchRepository('$base/inline');
+
+      expect(repo, isNotNull);
+      expect(repo!.name, 'Inline Repository');
+      expect(repo.plugins.single.packageName, 'example.plugin');
+      expect((await service.getRepoPlugins(repo)).single.name, 'Example');
+    });
+
+    test('a shortlink redirect with a relative Location resolves to an absolute URL', () async {
+      expect(await service.resolveShortLink('$base/relative'), '$base/inline');
     });
   });
 }
