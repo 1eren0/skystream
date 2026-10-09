@@ -77,6 +77,16 @@ class _Web extends RepositoryService {
     _plugins[url] = plugins;
   }
 
+  void inlineRepo(String url, String name, List<ExtensionPlugin> plugins) {
+    _published[url] = ExtensionRepository(
+      name: name,
+      url: url,
+      pluginLists: const <String>[],
+      plugins: plugins,
+      explicitId: 'repo.inline',
+    );
+  }
+
   void collection(String url, String name, List<String> listed) {
     _published[url] = ExtensionRepository(
       name: name,
@@ -207,6 +217,34 @@ void main() {
       // Said once.
       final (_, next) = await launch(web);
       expect(next.isEmpty, isTrue);
+    });
+
+    test('installs a direct repository with only embedded plugins', () async {
+      final web = _Web()
+        ..inlineRepo(_a, 'Inline Repo', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container.read(extensionsControllerProvider.notifier).addRepository(_a);
+
+      expect(await savedRepositories(), <String>[_a]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a]);
+      expect(state.availablePlugins[_a]?.single.name, 'Alpha');
+    });
+
+    test('Universe collection adds repositories containing embedded plugins', () async {
+      final web = _Web()
+        ..collection(_universe, 'Universe', <String>[_a])
+        ..inlineRepo(_a, 'Inline Repo', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container
+          .read(extensionsControllerProvider.notifier)
+          .addRepository(_universe);
+
+      expect(await savedRepositories(), <String>[_a]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a]);
+      expect(state.availablePlugins[_a]?.single.name, 'Alpha');
+      expect(state, isNot(isA<ExtensionsError>()));
     });
 
     test('does not bring back a repository the user removed', () async {
