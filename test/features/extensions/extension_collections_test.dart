@@ -85,6 +85,10 @@ class _Web extends RepositoryService {
       plugins: plugins,
       explicitId: 'repo.inline',
     );
+    // Mirror RepositoryService.getRepoPlugins, which includes embedded
+    // plugins. Without this, our fake returns an empty listing despite
+    // publishing a manifest with plugins.
+    _plugins[url] = plugins;
   }
 
   void mixedCollection(
@@ -101,6 +105,7 @@ class _Web extends RepositoryService {
       plugins: plugins,
       explicitId: 'repo.mixed',
     );
+    _plugins[url] = plugins;
   }
 
   void collection(String url, String name, List<String> listed) {
