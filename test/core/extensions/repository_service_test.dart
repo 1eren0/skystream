@@ -4,6 +4,18 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/core/extensions/services/repository_service.dart';
 
+/// Replaces only the external shortener. The resolved manifest is still
+/// fetched and parsed by the real RepositoryService over local HTTP.
+class _LocalShortcodeService extends RepositoryService {
+  final String manifestUrl;
+
+  _LocalShortcodeService(this.manifestUrl) : super(Dio());
+
+  @override
+  Future<String?> resolveShortLink(String shortUrl) async =>
+      shortUrl == 'https://cutt.ly/sky-universe' ? manifestUrl : null;
+}
+
 /// Adding an extension repository by URL or by shortcode.
 ///
 /// The old resolver understood exactly two things: a full `https://…` URL, or
@@ -157,17 +169,32 @@ void main() {
       final repo = await service.fetchRepository('$base/inline');
 
       expect(repo, isNotNull);
-      expect(repo!.name, 'Inline Repository');
-      expect(repo!.plugins.single.packageName, 'example.plugin');
-      expect((await service.getRepoPlugins(repo!)).single.name, 'Example');
+      final repository = repo!;
+      expect(repository.name, 'Inline Repository');
+      expect(repository.plugins.single.packageName, 'example.plugin');
+      expect((await service.getRepoPlugins(repository)).single.name, 'Example');
     });
 
     test('keeps embedded plugins in a collection that also lists repositories', () async {
       final repo = await service.fetchRepository('$base/hybrid');
 
       expect(repo, isNotNull);
-      expect(repo!.includedRepos, <String>['https://example.test/child.json']);
-      expect(repo!.plugins.single.name, 'Hybrid Plugin');
+      final repository = repo!;
+      expect(repository.includedRepos, <String>[
+        'https://example.test/child.json',
+      ]);
+      expect(repository.plugins.single.name, 'Hybrid Plugin');
+    });
+
+    test('Universe shortcode resolves through the normal manifest parser', () async {
+      final shortcodeService = _LocalShortcodeService('$base/hybrid');
+      final repo = await shortcodeService.fetchRepository('universe');
+
+      expect(repo, isNotNull);
+      expect(repo!.includedRepos, <String>[
+        'https://example.test/child.json',
+      ]);
+      expect(repo.plugins.single.name, 'Hybrid Plugin');
     });
 
     test('a shortlink redirect with a relative Location resolves to an absolute URL', () async {
