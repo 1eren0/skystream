@@ -87,6 +87,22 @@ class _Web extends RepositoryService {
     );
   }
 
+  void mixedCollection(
+    String url,
+    String name,
+    List<String> listed,
+    List<ExtensionPlugin> plugins,
+  ) {
+    _published[url] = ExtensionRepository(
+      name: name,
+      url: url,
+      pluginLists: const <String>[],
+      includedRepos: listed,
+      plugins: plugins,
+      explicitId: 'repo.mixed',
+    );
+  }
+
   void collection(String url, String name, List<String> listed) {
     _published[url] = ExtensionRepository(
       name: name,
@@ -245,6 +261,26 @@ void main() {
       expect(state.repositories.map((r) => r.url), <String>[_a]);
       expect(state.availablePlugins[_a]?.single.name, 'Alpha');
       expect(state, isNot(isA<ExtensionsError>()));
+    });
+
+    test('a collection with embedded plugins retains its own repository', () async {
+      final web = _Web()
+        ..mixedCollection(
+          _universe,
+          'Universe',
+          <String>[_a],
+          <ExtensionPlugin>[_plugin('Beta')],
+        )
+        ..repo(_a, 'Repo A', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container
+          .read(extensionsControllerProvider.notifier)
+          .addRepository(_universe);
+
+      expect(await savedRepositories(), <String>[_a, _universe]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a, _universe]);
+      expect(state.availablePlugins[_universe]?.single.name, 'Beta');
     });
 
     test('does not bring back a repository the user removed', () async {
