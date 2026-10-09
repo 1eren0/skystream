@@ -14,6 +14,7 @@ import 'widgets/search_header_bar.dart';
 import 'widgets/search_suggestion_row.dart';
 import 'widgets/bouncy_entry_animation.dart';
 import '../../../shared/widgets/loading_indicator.dart';
+import '../../../shared/focus/text_field_keys.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -54,17 +55,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // list", and the pill is reached by going right.
     _focusNode.onKeyEvent = (node, event) {
       if (event is! KeyDownEvent) return KeyEventResult.ignored;
-      final key = event.logicalKey;
+
+      // A TV IME uses all four D-pad directions to select letters. In
+      // particular, moving focus to the result list on Down while the
+      // keyboard is visible prevents users from typing complete searches.
+      if (isSoftKeyboardVisible(node)) return KeyEventResult.ignored;
 
       // Do NOT handle left/right here. Android TV leanback keyboards use those
       // to move between letter keys; stealing them left users stuck mid-word.
       // Clear / scope pills stay reachable via the clear icon and Up from results.
-
-      if (key == LogicalKeyboardKey.arrowDown) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
         return _focusBelowBar();
       }
-      // Enter / select submit is handled by TextField.onSubmitted.
-      return KeyEventResult.ignored;
+      // Select/controller A restores an IME dismissed with Back. Enter
+      // continues to submit through TextField.onSubmitted.
+      return reopenTextFieldKeyboard(node, event);
     };
 
     _clearButtonFocusNode.onKeyEvent = (node, event) {
