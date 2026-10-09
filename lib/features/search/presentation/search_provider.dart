@@ -9,6 +9,7 @@ import '../../../../core/extensions/extension_manager.dart';
 import '../../../../core/extensions/base_provider.dart';
 import '../../../../core/domain/entity/multimedia_item.dart';
 import '../../explore/data/explore_tmdb_provider.dart';
+import '../domain/search_result_filter.dart';
 
 part 'search_provider.g.dart';
 
@@ -40,30 +41,12 @@ class SearchAggregateState {
 // ---------------------------------------------------------------------------
 class _FilterParams {
   final List<MultimediaItem> items;
-  final List<String> queryParts;
-  const _FilterParams(this.items, this.queryParts);
+  final String query;
+  const _FilterParams(this.items, this.query);
 }
 
-List<MultimediaItem> _filterItems(_FilterParams params) {
-  return params.items.where((item) {
-    final titleLower = item.title.toLowerCase();
-    final titleParts = titleLower
-        .split(' ')
-        .where((s) => s.isNotEmpty)
-        .toList();
-    for (final qPart in params.queryParts) {
-      bool foundPrefix = false;
-      for (final tPart in titleParts) {
-        if (tPart.startsWith(qPart)) {
-          foundPrefix = true;
-          break;
-        }
-      }
-      if (!foundPrefix) return false;
-    }
-    return true;
-  }).toList();
-}
+List<MultimediaItem> _filterItems(_FilterParams params) =>
+    filterProviderSearchResults(params.items, params.query);
 
 Stream<SearchAggregateState> searchAllProviders(
   Ref ref,
@@ -83,7 +66,7 @@ Stream<SearchAggregateState> searchAllProviders(
     '[SEARCH DBG] searchAllProviders called: query="$query", providers=${providers.length}, cancelled=${isCancelled()}',
   );
 
-  if (query.isEmpty || providers.isEmpty) {
+  if (query.trim().isEmpty || providers.isEmpty) {
     yield const SearchAggregateState(results: [], isLoading: false);
     return;
   }
@@ -91,8 +74,6 @@ Stream<SearchAggregateState> searchAllProviders(
   yield const SearchAggregateState(results: [], isLoading: true);
 
   final results = <ProviderSearchResult>[];
-  final queryLower = query.toLowerCase();
-  final queryParts = queryLower.split(' ').where((s) => s.isNotEmpty).toList();
 
   final controller = StreamController<SearchAggregateState>();
 
@@ -249,10 +230,10 @@ Stream<SearchAggregateState> searchAllProviders(
           // For small result sets, skip the compute() isolate overhead
           // (spawn + serialize + deserialize costs more than the filter work).
           final filtered = providerItems.length < 30
-              ? _filterItems(_FilterParams(providerItems, queryParts))
+              ? _filterItems(_FilterParams(providerItems, query))
               : await compute(
                   _filterItems,
-                  _FilterParams(providerItems, queryParts),
+                  _FilterParams(providerItems, query),
                 );
           debugPrint(
             '[SEARCH DBG] FILTERED ${provider.packageName} — ${filtered.length}/${providerItems.length} items',
