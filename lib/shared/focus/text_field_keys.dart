@@ -10,8 +10,8 @@
 /// its letter grid with all four, and taking them would move focus out of the
 /// field and close it mid-word. So the up and down that leave the field are
 /// taken only while it is down, and Select - OK on a remote - brings it back,
-/// the way a television's own text boxes open theirs. Every other key is
-/// left to the field.
+/// the way a television's own text boxes open theirs (including remotes that
+/// report DPAD_CENTER as gameButtonA). Every other key is left to the field.
 library;
 
 import 'package:flutter/services.dart';
@@ -22,10 +22,8 @@ KeyEventResult remoteTextFieldKeys(FocusNode node, KeyEvent event) {
   if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
     return KeyEventResult.ignored;
   }
-  final context = node.context;
-  if (context == null || !context.mounted || _keyboardUp(context)) {
-    return KeyEventResult.ignored;
-  }
+  if (isSoftKeyboardVisible(node)) return KeyEventResult.ignored;
+
   final key = event.logicalKey;
   if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
     node.focusInDirection(
@@ -35,11 +33,36 @@ KeyEventResult remoteTextFieldKeys(FocusNode node, KeyEvent event) {
     );
     return KeyEventResult.handled;
   }
-  if (key == LogicalKeyboardKey.select && event is KeyDownEvent) {
-    context.findAncestorStateOfType<EditableTextState>()?.requestKeyboard();
-    return KeyEventResult.handled;
+  return reopenTextFieldKeyboard(node, event);
+}
+
+/// Whether an on-screen keyboard is covering the focused text field.
+///
+/// Read the view, not a nested MediaQuery: dialogs and scaffolds can consume
+/// the keyboard inset before it reaches their children.
+bool isSoftKeyboardVisible(FocusNode node) {
+  final context = node.context;
+  return context != null && context.mounted && _keyboardUp(context);
+}
+
+/// Reopen text entry on TV remotes reporting OK as Select or gameButtonA.
+///
+/// Enter remains available to submit an edited field; the IME receives all
+/// activation/directional keys unmodified while it is visible.
+KeyEventResult reopenTextFieldKeyboard(FocusNode node, KeyEvent event) {
+  if (event is! KeyDownEvent ||
+      (event.logicalKey != LogicalKeyboardKey.select &&
+          event.logicalKey != LogicalKeyboardKey.gameButtonA)) {
+    return KeyEventResult.ignored;
   }
-  return KeyEventResult.ignored;
+  final context = node.context;
+  if (context == null || !context.mounted || _keyboardUp(context)) {
+    return KeyEventResult.ignored;
+  }
+  final editable = context.findAncestorStateOfType<EditableTextState>();
+  if (editable == null) return KeyEventResult.ignored;
+  editable.requestKeyboard();
+  return KeyEventResult.handled;
 }
 
 /// Whether a soft keyboard covers part of the window.

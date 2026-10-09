@@ -94,4 +94,20 @@ void main() {
     expect(tester.testTextInput.isVisible, isTrue);
     expect(inField(), isTrue);
   });
+
+  testWidgets('controller A reopens a dismissed TV keyboard', (
+    tester,
+  ) async {
+    // Some Android TV devices report DPAD_CENTER as gameButtonA, not Select.
+    await pumpField(tester);
+    tester.testTextInput.hide();
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.gameButtonA);
+    await tester.pump();
+
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(inField(), isTrue);
+  });
+
 }
