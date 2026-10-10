@@ -12,6 +12,8 @@ library;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/features/player/domain/side_car_subtitles.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_panel.dart';
@@ -150,17 +152,24 @@ void main() {
     addTearDown(data.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: PlayerPanel(
-            controller: controller,
-            initialTab: PlayerPanelTab.subtitles,
-            data: data,
-            isTv: true,
-            focusOnOpen: true,
-            onClose: () {},
+      ProviderScope(
+        overrides: [
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: PlayerPanel(
+              controller: controller,
+              initialTab: PlayerPanelTab.subtitles,
+              data: data,
+              isTv: true,
+              focusOnOpen: true,
+              onClose: () {},
+            ),
           ),
         ),
       ),
@@ -178,17 +187,24 @@ void main() {
     VoidCallback? onTracksChanged,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: PlayerTracksTab(
-            controller: controller,
-            kind: kind,
-            tracks: tracks,
-            trackInfo: const <VlcMediaTrackInfo>[],
-            onTracksChanged: onTracksChanged ?? () {},
-            onOpenPage: (_) {},
+      ProviderScope(
+        overrides: [
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: PlayerTracksTab(
+              controller: controller,
+              kind: kind,
+              tracks: tracks,
+              trackInfo: const <VlcMediaTrackInfo>[],
+              onTracksChanged: onTracksChanged ?? () {},
+              onOpenPage: (_) {},
+            ),
           ),
         ),
       ),
