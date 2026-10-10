@@ -5,12 +5,14 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show RootIsolateToken;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as wv;
+
 import '../../storage/extension_repository.dart';
 import '../../network/cloudflare_bypass.dart';
 import '../../logger/app_logger.dart';
@@ -582,6 +584,15 @@ class JsEngineService {
         // as another 403s. See http_defaults.dart.
         headers['User-Agent'] = kDefaultBrowserUserAgent;
       }
+      // Cloudflare ties the clearance cookie to the browser that earned it;
+      // any other user agent (even the plugin's own) gets the challenge again.
+      final verifiedAgent = CloudflareBypass.instance.userAgentFor(
+        Uri.parse(url).host,
+      );
+      if (verifiedAgent != null) {
+        headers.removeWhere((key, _) => key.toLowerCase() == 'user-agent');
+        headers['User-Agent'] = verifiedAgent;
+      }
       if (!headers.keys.any((k) => k.toLowerCase() == 'accept-encoding')) {
         headers['Accept-Encoding'] = 'identity';
       }
@@ -642,10 +653,17 @@ class JsEngineService {
         final cfResult = await CloudflareBypass.instance.solveAndFetch(
           url,
           callerId: callerNamespace,
+          referer: headers.entries
+              .where((entry) => entry.key.toLowerCase() == 'referer')
+              .map((entry) => entry.value.toString())
+              .firstOrNull,
           onSolved: (host) => _injectCfCookies(host),
         );
         if (cfResult != null) {
           talker.debug('[JS HTTP] Cloudflare solved ($requestId)');
+          if (cfResult.cookies.isNotEmpty) {
+            await _saveVerifiedCookies(Uri.parse(url).host, cfResult.cookies);
+          }
           return {
             'code': cfResult.statusCode,
             'statusCode': cfResult.statusCode,
@@ -677,6 +695,38 @@ class JsEngineService {
         'body': '',
         'error': e.toString(),
       };
+    }
+  }
+
+  /// Stores cookies the visible verification read from its live page.
+  Future<void> _saveVerifiedCookies(
+    String host,
+    List<Map<String, dynamic>> cookies,
+  ) async {
+    if (!_cookieJarReady) {
+      talker.error('[CF Cookie] Cookie store not ready for $host');
+      return;
+    }
+    try {
+      final ioCookies = [
+        for (final c in cookies)
+          io.Cookie('${c['name']}', '${c['value'] ?? ''}')
+            ..domain = (c['domain'] as String?) ?? host
+            ..path = (c['path'] as String?) ?? '/'
+            ..httpOnly = c['httpOnly'] == true
+            ..secure = c['secure'] == true
+            ..expires = c['expires'] is num && (c['expires'] as num) > 0
+                ? DateTime.fromMillisecondsSinceEpoch(
+                    ((c['expires'] as num) * 1000).toInt(),
+                  )
+                : null,
+      ];
+      await _cookieJar.saveFromResponse(Uri.parse('https://$host/'), ioCookies);
+      talker.info(
+        '[CF Cookie] Saved ${ioCookies.length} verified cookies for $host',
+      );
+    } catch (error, stack) {
+      talker.error('[CF Cookie] Could not save verified cookies', error, stack);
     }
   }
 
@@ -1019,12 +1069,7 @@ class CfOnlyCookieInterceptor extends Interceptor {
     } catch (_) {}
 
     final cfCookies = cookies
-        .where(
-          (c) =>
-              c.name == 'cf_clearance' ||
-              c.name == '__cf_bm' ||
-              c.name.startsWith('__cf'),
-        )
+        .where((c) => isCloudflareCookieName(c.name))
         .toList();
 
     String? manualCookie;

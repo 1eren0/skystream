@@ -14,6 +14,34 @@ class CloudflareBypass {
   CloudflareBypass._();
   static final instance = CloudflareBypass._();
 
+  /// The Windows UI path is registered by the app, keeping this service
+  /// independent of the router. Approved interactive verification, not a
+  /// silent headless fallback. The existing spawn queue also serializes dialogs.
+  static Future<CfResult?> Function(String, WebViewEnvironment?, String?)?
+  interactiveSolver;
+
+  /// Host -> user agent of the visible verification that cleared it.
+  final Map<String, String> _verifiedUserAgents = {};
+
+  /// The user agent HTTP requests to [host] must send for its clearance
+  /// cookie to be accepted, or null when no visible verification cleared it.
+  String? userAgentFor(String host) => _verifiedUserAgents[host];
+
+  /// Host -> `name=value; ...` of the Cloudflare cookies that visible
+  /// verification read, for clients that cannot reach the engine's jar.
+  final Map<String, String> _verifiedCookies = {};
+
+  /// The Cookie header that carries [host]'s visible-verification clearance.
+  String? cookieHeaderFor(String host) {
+    final exact = _verifiedCookies[host];
+    if (exact != null) return exact;
+    // Subdomains share a clearance issued for the parent domain.
+    for (final entry in _verifiedCookies.entries) {
+      if (host.endsWith('.${entry.key}')) return entry.value;
+    }
+    return null;
+  }
+
   /// Whether this platform ships a `flutter_inappwebview` implementation.
   ///
   /// A function rather than a plain `Platform.isLinux`, because `dart:io`'s
@@ -373,6 +401,7 @@ class CloudflareBypass {
   Future<CfResult?> solveAndFetch(
     String url, {
     String? callerId,
+    String? referer,
     Future<void> Function(String host)? onSolved,
   }) async {
     // Linux ships no flutter_inappwebview implementation, and the
@@ -432,7 +461,13 @@ class CloudflareBypass {
 
     // 3. Fresh solve — register future before any await so concurrent callers
     //    for this scope share it rather than spawning duplicate WebViews.
-    final future = _freshSolve(url, host, scopeKey, onSolved: onSolved);
+    final future = _freshSolve(
+      url,
+      host,
+      scopeKey,
+      onSolved: onSolved,
+      referer: referer,
+    );
     _activeByHost[scopeKey] = future;
     try {
       return await future;
@@ -451,11 +486,12 @@ class CloudflareBypass {
     String url,
     String host,
     String cacheKey, {
+    String? referer,
     Future<void> Function(String host)? onSolved,
   }) async {
     await _acquireSpawnSlot();
     try {
-      final result = await _fetchViaWebView(url, cacheKey);
+      final result = await _fetchViaWebView(url, cacheKey, referer: referer);
       if (result != null && onSolved != null) await onSolved(host);
       return result;
     } finally {
@@ -494,7 +530,45 @@ class CloudflareBypass {
 
   static const _maxCachedWebViews = 2;
 
-  Future<CfResult?> _fetchViaWebView(String url, String cacheKey) async {
+  Future<CfResult?> _fetchViaWebView(
+    String url,
+    String cacheKey, {
+    String? referer,
+  }) async {
+    final interactive = interactiveSolver;
+    if (needsWebViewEnvironment() && interactive != null) {
+      try {
+        final environment = await _environment().timeout(spawnTimeout);
+        if (environment == null) {
+          talker.error(
+            '$_tag Interactive verification: no WebView2 environment',
+          );
+          return null;
+        }
+        talker.info(
+          '$_tag Interactive verification started for ${Uri.parse(url).host}',
+        );
+        final result = await interactive(url, environment, referer);
+        talker.info(
+          '$_tag Interactive verification ${result == null ? 'cancelled or expired' : 'completed'}',
+        );
+        final verifiedHost = Uri.parse(url).host;
+        final agent = result?.userAgent;
+        if (agent != null && agent.isNotEmpty) {
+          _verifiedUserAgents[verifiedHost] = agent;
+        }
+        final cookies = result?.cookies ?? const [];
+        if (cookies.isNotEmpty) {
+          _verifiedCookies[verifiedHost] = cookies
+              .map((cookie) => '${cookie['name']}=${cookie['value'] ?? ''}')
+              .join('; ');
+        }
+        return result;
+      } catch (error, stack) {
+        talker.error('$_tag Interactive verification failed', error, stack);
+        return null;
+      }
+    }
     if (kDebugMode) debugPrint('$_tag Starting fresh solve for $url');
 
     // Evict oldest cached WebViews to prevent GPU memory exhaustion.
@@ -878,13 +952,29 @@ class _ViewHolder {
   _HostWebView? hostView;
 }
 
+/// Cookies Cloudflare uses for clearance: `cf_clearance`, `__cf*` and the
+/// Turnstile session cookie `_cfuvid`, which the `__cf` prefix misses.
+bool isCloudflareCookieName(String name) =>
+    name == 'cf_clearance' || name.startsWith('__cf') || name == '_cfuvid';
+
 class CfResult {
   final String body;
   final int statusCode;
   final String finalUrl;
+
+  /// Cookies read from the visible verification page before it closed
+  /// (DevTools `Network.getCookies` shape: name, value, domain, path...).
+  final List<Map<String, dynamic>> cookies;
+
+  /// The browser identity that passed verification. Cloudflare ties the
+  /// clearance cookie to it, so later plain HTTP requests must reuse it.
+  final String? userAgent;
+
   const CfResult({
     required this.body,
     required this.statusCode,
     required this.finalUrl,
+    this.cookies = const [],
+    this.userAgent,
   });
 }

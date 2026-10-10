@@ -1751,6 +1751,20 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _setFailReason(
       '${sourceRowLabel(resolved.streams[_attemptIndex])} · $reason',
     );
+    // The on-screen reason alone left no trace in the log.
+    // Host and path only; signed query strings stay out of the log.
+    final failedStream = resolved.streams[_attemptIndex];
+    final failedUri = Uri.tryParse(failedStream.url);
+    talker.warning(
+      'Playback failed: ${sourceRowLabel(failedStream)} · $reason · '
+      'url=${failedUri?.host}${failedUri?.path} '
+      'engine=${_controller.value.state} '
+      'error=${_controller.value.errorDescription} '
+      'handed=$_handedToEngine frames=$_sawFrames '
+      'bytesArrived=${_bytesArrivedAt != null} '
+      'probe=${_probes[_attemptIndex]} '
+      'headers=${playbackHeaders(failedStream).keys.join(',')}',
+    );
 
     // A source that produced frames and then died is worth another try at the
     // same URL; one that never played at all is simply dead.

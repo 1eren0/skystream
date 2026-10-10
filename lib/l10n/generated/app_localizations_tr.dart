@@ -1838,4 +1838,19 @@ class AppLocalizationsTr extends AppLocalizations {
   String addonManageNoMatch(String query) {
     return 'No installed add-on matches \"$query\".';
   }
+
+  @override
+  String get cloudflareVerificationTitle => 'Site doğrulaması';
+
+  @override
+  String get cloudflareVerificationPrompt =>
+      'Site doğrulamasını bu pencerede tamamla.';
+
+  @override
+  String get cloudflareVerificationUnreadable =>
+      'Doğrulama sayfası okunamadı. İptal edip tekrar dene.';
+
+  @override
+  String get cloudflareVerificationNotOpened =>
+      'Doğrulama sayfası açılamadı. İptal edip tekrar dene.';
 }

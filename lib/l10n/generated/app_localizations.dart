@@ -3338,6 +3338,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No installed add-on matches \"{query}\".'**
   String addonManageNoMatch(String query);
+
+  /// Title of the window where the user completes a Cloudflare check
+  ///
+  /// In en, this message translates to:
+  /// **'Site verification'**
+  String get cloudflareVerificationTitle;
+
+  /// Instruction under the site verification title
+  ///
+  /// In en, this message translates to:
+  /// **'Complete the site verification in this window.'**
+  String get cloudflareVerificationPrompt;
+
+  /// Shown when the verification page content cannot be read
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the verification page. Cancel and try again.'**
+  String get cloudflareVerificationUnreadable;
+
+  /// Shown when the verification page fails to load
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the verification page. Cancel and try again.'**
+  String get cloudflareVerificationNotOpened;
 }
 
 class _AppLocalizationsDelegate

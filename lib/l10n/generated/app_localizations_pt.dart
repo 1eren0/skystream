@@ -1827,6 +1827,21 @@ class AppLocalizationsPt extends AppLocalizations {
   String addonManageNoMatch(String query) {
     return 'No installed add-on matches \"$query\".';
   }
+
+  @override
+  String get cloudflareVerificationTitle => 'Site verification';
+
+  @override
+  String get cloudflareVerificationPrompt =>
+      'Complete the site verification in this window.';
+
+  @override
+  String get cloudflareVerificationUnreadable =>
+      'Could not read the verification page. Cancel and try again.';
+
+  @override
+  String get cloudflareVerificationNotOpened =>
+      'Could not open the verification page. Cancel and try again.';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
