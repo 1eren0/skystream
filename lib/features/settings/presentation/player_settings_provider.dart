@@ -7,6 +7,7 @@ import '../../../core/storage/settings_repository.dart';
 import '../../../core/storage/storage_service.dart'
     show kOsPasswordKey, kSubDlPasswordKey;
 import '../../player/domain/network_buffer.dart';
+import '../../player/domain/track_language.dart';
 import '../../player/data/subtitle_providers.dart';
 import '../../../core/network/dio_client_provider.dart';
 
@@ -84,6 +85,10 @@ class PlayerSettings {
   /// [SubtitleDefault.auto] is what every install did before this setting
   /// existed, so an upgrade changes nothing.
   final SubtitleDefault subtitleDefault;
+
+  /// Empty means leave the source's audio choice unchanged. A recognized
+  /// ISO language code prefers a matching track on each newly opened video.
+  final String preferredAudioLanguage;
 
   final bool hardwareDecoding;
   final String?
@@ -171,6 +176,7 @@ class PlayerSettings {
     this.subtitleBackgroundColor = 0x00000000, // Transparent
     this.subtitleBackgroundOpacity = 0.5, // Default opacity (50%)
     this.subtitleDefault = SubtitleDefault.auto,
+    this.preferredAudioLanguage = '',
     this.hardwareDecoding = true,
     this.preferredPlayer,
     this.wifiQuality = kDefaultWifiQuality,
@@ -204,6 +210,7 @@ class PlayerSettings {
     int? subtitleBackgroundColor,
     double? subtitleBackgroundOpacity,
     SubtitleDefault? subtitleDefault,
+    String? preferredAudioLanguage,
     bool? hardwareDecoding,
     String? preferredPlayer,
     bool clearPreferredPlayer = false,
@@ -239,6 +246,8 @@ class PlayerSettings {
       subtitleBackgroundOpacity:
           subtitleBackgroundOpacity ?? this.subtitleBackgroundOpacity,
       subtitleDefault: subtitleDefault ?? this.subtitleDefault,
+      preferredAudioLanguage:
+          preferredAudioLanguage ?? this.preferredAudioLanguage,
       hardwareDecoding: hardwareDecoding ?? this.hardwareDecoding,
       preferredPlayer: clearPreferredPlayer
           ? null
@@ -352,6 +361,10 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
           e.name == storage.getPlayerSetting<String>('player_subtitle_default'),
       orElse: () => SubtitleDefault.auto,
     );
+    final savedAudioLanguage =
+        storage.getPlayerSetting<String>('player_audio_language');
+    final preferredAudioLanguage =
+        languageCodeOf(savedAudioLanguage) ?? '';
     final prefPlayer = storage.getPlayerSetting<String>('player_preferred');
     final swipeSeek =
         storage.getPlayerSetting<bool>(
@@ -431,6 +444,7 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
       subtitleBackgroundColor: subBg,
       subtitleBackgroundOpacity: subBgOpacity,
       subtitleDefault: subtitleDefault,
+      preferredAudioLanguage: preferredAudioLanguage,
       hardwareDecoding: hwDec,
       preferredPlayer: prefPlayer,
       wifiQuality: wifiQ,
@@ -539,6 +553,16 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
   Future<void> setSubtitleDefault(SubtitleDefault value) async {
     await _repository.setPlayerSetting('player_subtitle_default', value.name);
     _update((PlayerSettings c) => c.copyWith(subtitleDefault: value));
+  }
+
+  /// Applies to the next opened media, not the track already playing.
+  /// Invalid codes are treated as Automatic instead of storing a selection
+  /// that can never match any language the UI offers.
+  Future<void> setPreferredAudioLanguage(String language) async {
+    final normalized = languageCodeOf(language) ?? '';
+    await _repository.setPlayerSetting('player_audio_language', normalized);
+    _update((PlayerSettings c) =>
+        c.copyWith(preferredAudioLanguage: normalized));
   }
 
   Future<void> setHardwareDecoding(bool val) async {
