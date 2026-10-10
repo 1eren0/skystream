@@ -189,7 +189,7 @@ void main() {
       find.byType(SettingsTile, skipOffstage: false),
     );
     final audio = rows.firstWhere(
-      (row) => row.title == 'Preferred audio language',
+      (row) => row.title == '${l10n.audio} · ${l10n.language}',
     );
     expect(audio.subtitle, 'Turkish');
   });
