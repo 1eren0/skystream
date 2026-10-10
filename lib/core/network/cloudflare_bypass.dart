@@ -814,8 +814,9 @@ class CloudflareBypass {
   }
 
   static String _normalizeHost(String host) {
-    final h = host.toLowerCase();
-    return h.startsWith('www.') ? h.substring(4) : h;
+    // Do not collapse www.site into site: a host-only cookie issued for
+    // www.site must never be reused by site or an unrelated subdomain.
+    return host.toLowerCase();
   }
 
   String? _headerValue(Map<String, dynamic> headers, String key) {
