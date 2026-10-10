@@ -918,7 +918,7 @@ void showPreferredAudioLanguageDialog(
     context: context,
     builder: (ctx) => AlertDialog(
       surfaceTintColor: Colors.transparent,
-      title: const Text('Preferred audio language'),
+      title: Text('${l10n.audio} · ${l10n.language}'),
       content: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 420,
