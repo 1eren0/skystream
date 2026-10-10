@@ -13,6 +13,35 @@ VlcTrackDescription _t(int id, {String? language, String name = ''}) =>
 /// which is exactly where they would have been anyway. So every rule here
 /// prefers null to a guess.
 void main() {
+  group('preferred audio language', () {
+    test('matches ISO 639-3 and regional language tags by language', () {
+      final tracks = <VlcTrackDescription>[
+        _t(1, language: 'eng', name: 'English'),
+        _t(7, language: 'tur', name: 'Turkish'),
+      ];
+      expect(findPreferredAudioTrack(tracks, 'tr-TR')?.id, 7);
+      expect(findPreferredAudioTrack(tracks, 'en')?.id, 1);
+    });
+
+    test('matches a language in the label only when no tag is known', () {
+      final tracks = <VlcTrackDescription>[
+        _t(1, language: 'eng', name: 'Turkish dub (actually English)'),
+        _t(4, language: 'und', name: 'AAC 5.1 Turkish'),
+      ];
+      expect(findPreferredAudioTrack(tracks, 'tr')?.id, 4);
+    });
+
+    test('no match, unknown preference and disabled pseudo-track leave engine default', () {
+      final tracks = <VlcTrackDescription>[
+        _t(-1, language: 'tur', name: 'Disable'),
+        _t(1, language: 'eng', name: 'English'),
+      ];
+      expect(findPreferredAudioTrack(tracks, 'tr'), isNull);
+      expect(findPreferredAudioTrack(tracks, ''), isNull);
+      expect(findPreferredAudioTrack(tracks, 'xx'), isNull);
+    });
+  });
+
   group('a recovery of the same file', () {
     test('takes the id back when the language agrees', () {
       final tracks = <VlcTrackDescription>[
