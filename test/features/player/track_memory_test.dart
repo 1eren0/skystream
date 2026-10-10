@@ -74,6 +74,18 @@ void main() {
       expect(match?.id, 7);
     });
 
+    test('a track chosen as Turkish survives a 3-letter to 2-letter tag change', () {
+      final tracks = <VlcTrackDescription>[
+        _t(1, language: 'eng'),
+        _t(9, language: 'tr'),
+      ];
+      final match = matchRememberedTrack(
+        tracks,
+        const RememberedTrack(id: 7, language: 'tur'),
+      );
+      expect(match?.id, 9);
+    });
+
     test('refuses an id that survived while the language did not', () {
       // The dangerous case, and the reason the id is not a fallback: id 3
       // exists in the new source and is a completely different language.
