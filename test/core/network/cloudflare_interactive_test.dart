@@ -196,6 +196,66 @@ void main() {
     );
   });
 
+  test('artwork may use the one verified Cloudflare-only identity', () async {
+    CloudflareBypass.interactiveSolver = (url, _, _) async => CfResult(
+      body: '<html>ok</html>',
+      statusCode: 200,
+      finalUrl: url,
+      userAgent: 'ImageAgent/1',
+      cookies: const [
+        {'name': 'cf_clearance', 'value': 'image-pass', 'domain': '.cover.test'},
+        {'name': 'auth_token', 'value': 'never-forward'},
+      ],
+    );
+    await CloudflareBypass.instance.solveAndFetch(
+      'https://cover.test/', callerId: 'plugin-covers',
+    );
+    final image = CloudflareBypass.instance.artworkCredentialsFor(
+      Uri.parse('https://images.cover.test/poster.webp'),
+    );
+    expect(image?.userAgent, 'ImageAgent/1');
+    expect(image?.cookie, 'cf_clearance=image-pass');
+    expect(
+      CloudflareBypass.instance.artworkCredentialsFor(
+        Uri.parse('https://images.cover.test/api/profile'),
+      ),
+      isNull,
+      reason: 'the shared image transport is never a generic API client',
+    );
+    expect(
+      CloudflareBypass.instance.artworkCredentialsFor(
+        Uri.parse('http://images.cover.test/poster.webp'),
+      ),
+      isNull,
+    );
+  });
+
+  test('ambiguous plugin clearance must not be shared with artwork', () async {
+    var token = 'first';
+    CloudflareBypass.interactiveSolver = (url, _, _) async => CfResult(
+      body: '<html>ok</html>',
+      statusCode: 200,
+      finalUrl: url,
+      userAgent: 'Agent-$token',
+      cookies: [
+        {'name': 'cf_clearance', 'value': token},
+      ],
+    );
+    await CloudflareBypass.instance.solveAndFetch(
+      'https://ambiguous.test/', callerId: 'plugin-one',
+    );
+    token = 'second';
+    await CloudflareBypass.instance.solveAndFetch(
+      'https://ambiguous.test/', callerId: 'plugin-two',
+    );
+    expect(
+      CloudflareBypass.instance.artworkCredentialsFor(
+        Uri.parse('https://ambiguous.test/cover.png'),
+      ),
+      isNull,
+    );
+  });
+
   test('an HTTP error or a challenge page cannot count as verified', () {
     const clearance = <Map<String, dynamic>>[
       {'name': 'cf_clearance', 'value': 'token'},
