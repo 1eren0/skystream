@@ -37,7 +37,9 @@ class CloudflareBypass {
     String path = '/',
   }) {
     final identity = _identityFor(host, callerId: callerId, path: path);
-    if (identity == null) return null;
+    if (identity == null) {
+      return null;
+    }
     final selected = identity.cookies
         .where((cookie) => _cookieApplies(
           cookie, issuerHost: identity.issuerHost, targetHost: host, path: path,
@@ -64,7 +66,9 @@ class CloudflareBypass {
             issuerHost: issuer, targetHost: normalized, path: path))) {
         continue;
       }
-      if (!_verifiedUserAgents.containsKey(entry.key)) continue;
+      if (!_verifiedUserAgents.containsKey(entry.key)) {
+        continue;
+      }
       return (key: entry.key, issuerHost: issuer, cookies: entry.value);
     }
     return null;
@@ -78,24 +82,39 @@ class CloudflareBypass {
   }) {
     final name = cookie['name'];
     final value = cookie['value'];
-    if (name is! String || !isCloudflareCookieName(name) ||
-        value is! String || value.isEmpty) return false;
+    if (name is! String ||
+        !isCloudflareCookieName(name) ||
+        value is! String ||
+        value.isEmpty) {
+      return false;
+    }
     final rawDomain = (cookie['domain'] as String?)?.toLowerCase().trim();
     final domain = rawDomain == null || rawDomain.isEmpty
         ? issuerHost
         : rawDomain.replaceFirst(RegExp(r'^\.'), '');
-    if (issuerHost != domain && !issuerHost.endsWith('.$domain')) return false;
+    if (issuerHost != domain && !issuerHost.endsWith('.$domain')) {
+      return false;
+    }
     if (rawDomain?.startsWith('.') == true) {
-      if (targetHost != domain && !targetHost.endsWith('.$domain')) return false;
+      if (targetHost != domain && !targetHost.endsWith('.$domain')) {
+        return false;
+      }
     } else if (targetHost != domain) {
       return false;
     }
     final cookiePath = (cookie['path'] as String?) ?? '/';
-    if (!cookiePath.startsWith('/')) return false;
-    if (!path.startsWith(cookiePath)) return false;
-    if (cookiePath != '/' && !cookiePath.endsWith('/') &&
+    if (!cookiePath.startsWith('/')) {
+      return false;
+    }
+    if (!path.startsWith(cookiePath)) {
+      return false;
+    }
+    if (cookiePath != '/' &&
+        !cookiePath.endsWith('/') &&
         path.length > cookiePath.length &&
-        path[cookiePath.length] != '/') return false;
+        path[cookiePath.length] != '/') {
+      return false;
+    }
     return true;
   }
 
