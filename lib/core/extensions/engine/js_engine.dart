@@ -588,6 +588,7 @@ class JsEngineService {
       // any other user agent (even the plugin's own) gets the challenge again.
       final verifiedAgent = CloudflareBypass.instance.userAgentFor(
         Uri.parse(url).host,
+        callerId: callerNamespace,
       );
       if (verifiedAgent != null) {
         headers.removeWhere((key, _) => key.toLowerCase() == 'user-agent');
