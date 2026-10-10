@@ -630,6 +630,14 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
     );
   }
 
+  /// Saves only size from the in-player slider, without rewriting the user's
+  /// colour and background choices. The slider commits once per gesture.
+  Future<void> setSubtitleSize(double size) async {
+    final value = size.round().clamp(10, 80).toDouble();
+    await _repository.setPlayerSetting('player_sub_size', value);
+    _update((PlayerSettings current) => current.copyWith(subtitleSize: value));
+  }
+
   Future<void> setPreferredPlayer(String? playerId) async {
     if (playerId == null) {
       await _repository.setPlayerSetting('player_preferred', null);

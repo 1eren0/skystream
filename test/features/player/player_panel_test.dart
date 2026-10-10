@@ -19,6 +19,7 @@ import 'package:skystream/features/player/presentation/vlc/panel/player_panel_ro
 import 'package:skystream/features/player/presentation/vlc/panel/player_panel_shell.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_sources_tab.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_subtitle_search_page.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_subtitle_size_slider.dart';
 import 'package:skystream/features/player/presentation/vlc/torrent_file_sheet.dart';
 import 'package:skystream/features/player/presentation/widgets/hotstar_player_style.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
@@ -521,8 +522,8 @@ void main() {
   /// opens, as it would be mid-playback, unless [primed] is false - the case
   /// of fresh media whose first snapshot lands after the panel is already up.
   /// [settle] false stops after the first frame of the route, with the track
-  /// lists still loading. [overrides] wraps the host in a ProviderScope - only
-  /// the Search online page reads providers; the panel itself has no scope.
+  /// lists still loading. A ProviderScope supplies player appearance settings
+  /// for the mobile subtitle slider and optional test overrides.
   Future<
     ({
       FocusNode opener,
@@ -623,9 +624,16 @@ void main() {
         ),
       ),
     );
-    if (overrides != null) {
-      app = ProviderScope(overrides: overrides, child: app);
-    }
+    app = ProviderScope(
+      overrides: [
+        if (overrides?.any((override) => override.origin == playerSettingsProvider) != true)
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(),
+          ),
+        ...?overrides,
+      ],
+      child: app,
+    );
     await tester.pumpWidget(app);
 
     final opener = hostKey.currentState!.opener;
@@ -1376,6 +1384,36 @@ void main() {
         _phone.width * 0.8,
         reason: 'and the picture is still visible beside it',
       );
+    });
+  });
+
+  group('subtitle size in the panel', () {
+    testWidgets('touch player shows the saved size as an inline slider', (
+      tester,
+    ) async {
+      await pumpPanel(
+        tester,
+        size: _phone,
+        isTv: false,
+        tab: PlayerPanelTab.subtitles,
+        overrides: [
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(subtitleSize: 36),
+          ),
+        ],
+      );
+
+      expect(find.byType(PlayerSubtitleSizeSlider), findsOneWidget);
+      expect(tester.widget<Slider>(find.byType(Slider)).value, 36);
+    });
+
+    testWidgets('TV subtitles retain the existing focus controls', (
+      tester,
+    ) async {
+      await pumpPanel(tester, tab: PlayerPanelTab.subtitles);
+
+      expect(find.byType(PlayerSubtitleSizeSlider), findsNothing);
+      expect(find.byType(PanelStepperRow), findsOneWidget);
     });
   });
 

@@ -461,6 +461,29 @@ void main() {
       return container;
     }
 
+    test('subtitle slider saves just size and restores it on next launch', () async {
+      await storage.setPlayerSetting('player_sub_color', 0xFFFFEB3B);
+      await storage.setPlayerSetting('player_sub_bg', 0xFF303030);
+
+      final first = boot();
+      await first.read(playerSettingsProvider.future);
+      await first.read(playerSettingsProvider.notifier).setSubtitleSize(44);
+
+      final current = first.read(playerSettingsProvider).requireValue;
+      expect(current.subtitleSize, 44);
+      expect(current.subtitleColor, 0xFFFFEB3B);
+      expect(current.subtitleBackgroundColor, 0xFF303030);
+      expect(storage.getPlayerSetting<num>('player_sub_size'), 44.0);
+
+      final second = boot();
+      final restored = await second.read(playerSettingsProvider.future);
+      expect(restored.subtitleSize, 44);
+      expect(restored.subtitleColor, 0xFFFFEB3B);
+
+      await second.read(playerSettingsProvider.notifier).setSubtitleSize(900);
+      expect(storage.getPlayerSetting<num>('player_sub_size'), 80.0);
+    });
+
     test('audio preference is automatic on a fresh install', () async {
       final settings = await boot().read(playerSettingsProvider.future);
       expect(settings.preferredAudioLanguage, isEmpty);

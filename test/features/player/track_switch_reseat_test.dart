@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_tracks_tab.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
@@ -28,17 +30,24 @@ void main() {
     required List<VlcTrackDescription> tracks,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: PlayerTracksTab(
-            controller: controller,
-            kind: kind,
-            tracks: tracks,
-            trackInfo: const <VlcMediaTrackInfo>[],
-            onTracksChanged: () {},
-            onOpenPage: (_) {},
+      ProviderScope(
+        overrides: [
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: PlayerTracksTab(
+              controller: controller,
+              kind: kind,
+              tracks: tracks,
+              trackInfo: const <VlcMediaTrackInfo>[],
+              onTracksChanged: () {},
+              onOpenPage: (_) {},
+            ),
           ),
         ),
       ),
