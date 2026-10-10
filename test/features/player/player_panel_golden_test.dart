@@ -108,25 +108,25 @@ void main() {
           ),
         ],
         child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            videoStandIn(),
-            // The panel's own barrier is the route's; drawn directly there is
-            // none, so the scrim it normally sits over is painted here.
-            const ColoredBox(color: Color(0x73000000)),
-            PlayerPanel(
-              controller: controller,
-              initialTab: tab,
-              data: data,
-              isTv: isTv,
-              onClose: () {},
-              onPickSource: (_) {},
-            ),
-          ],
-        ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              videoStandIn(),
+              // The panel's own barrier is the route's; drawn directly there is
+              // none, so the scrim it normally sits over is painted here.
+              const ColoredBox(color: Color(0x73000000)),
+              PlayerPanel(
+                controller: controller,
+                initialTab: tab,
+                data: data,
+                isTv: isTv,
+                onClose: () {},
+                onPickSource: (_) {},
+              ),
+            ],
+          ),
         ),
       ),
     );
