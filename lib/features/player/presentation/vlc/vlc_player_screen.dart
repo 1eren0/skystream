@@ -1485,15 +1485,21 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   Future<void> _pickPreferredAudio(String preferred, int generation) async {
     try {
       final tracks = await _controller.getAudioTracks();
-      if (_disposed || generation != _generation ||
-          _preferredAudioToPick != preferred) return;
+      if (_disposed ||
+          generation != _generation ||
+          _preferredAudioToPick != preferred) {
+        return;
+      }
       final match = findPreferredAudioTrack(tracks, preferred);
       if (match == null) return; // A later track revision can still match.
       if (_controller.value.activeAudioTrackId != match.id) {
         await _controller.setAudioTrack(match.id);
       }
-      if (_disposed || generation != _generation ||
-          _preferredAudioToPick != preferred) return;
+      if (_disposed ||
+          generation != _generation ||
+          _preferredAudioToPick != preferred) {
+        return;
+      }
       _preferredAudioToPick = null;
       _rememberedAudio = RememberedTrack.of(match);
       _seenAudioTrackId = match.id;
