@@ -552,7 +552,7 @@ void main() {
             showPreferredAudioLanguageDialog(context, ref, 'tr'),
       );
 
-      expect(find.text('Preferred audio language'), findsOneWidget);
+      expect(find.text('${l10n.audio} · ${l10n.language}'), findsOneWidget);
       expect(_focusedRowTitle(), 'Turkish');
       expect(find.text('English'), findsOneWidget);
     });
@@ -571,7 +571,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(picked, <String>['tr']);
-      expect(find.text('Preferred audio language'), findsNothing);
+      expect(find.text('${l10n.audio} · ${l10n.language}'), findsNothing);
     });
 
     testWidgets('Automatic clears a stored preference', (tester) async {
