@@ -9,7 +9,7 @@ import '../../../../core/extensions/extension_manager.dart';
 import '../../../../core/extensions/base_provider.dart';
 import '../../../../core/domain/entity/multimedia_item.dart';
 import '../../explore/data/explore_tmdb_provider.dart';
-import '../domain/search_result_filter.dart';
+import '../domain/search_execution_policy.dart';
 
 part 'search_provider.g.dart';
 
@@ -35,18 +35,6 @@ class SearchAggregateState {
 
   const SearchAggregateState({this.results = const [], this.isLoading = false});
 }
-
-// ---------------------------------------------------------------------------
-// Background isolate helper — runs title filtering off the main thread.
-// ---------------------------------------------------------------------------
-class _FilterParams {
-  final List<MultimediaItem> items;
-  final String query;
-  const _FilterParams(this.items, this.query);
-}
-
-List<MultimediaItem> _filterItems(_FilterParams params) =>
-    filterProviderSearchResults(params.items, params.query);
 
 Stream<SearchAggregateState> searchAllProviders(
   Ref ref,
@@ -77,24 +65,13 @@ Stream<SearchAggregateState> searchAllProviders(
 
   final controller = StreamController<SearchAggregateState>();
 
-  // Semaphore sizing based on hardware
-  int getSemaphoreSize() {
-    int maxSlots = 8;
-    try {
-      final cores = io.Platform.numberOfProcessors;
-      if (io.Platform.isMacOS || io.Platform.isWindows || io.Platform.isLinux) {
-        maxSlots = 32;
-      } else {
-        // Mobile: eval burst queue serializes HTTP callbacks, but CF bypass
-        // WebView GPU init is still expensive — cap at 8 to avoid triggering
-        // too many concurrent CF solves while the spawn semaphore queues them.
-        maxSlots = (cores).clamp(4, 8);
-      }
-    } catch (_) {}
-    return maxSlots;
-  }
-
-  final maxSlots = getSemaphoreSize();
+  final isDesktop =
+      io.Platform.isMacOS || io.Platform.isWindows || io.Platform.isLinux;
+  final maxSlots = searchConcurrencyLimit(
+    logicalProcessors: io.Platform.numberOfProcessors,
+    desktop: isDesktop,
+    providerCount: providers.length,
+  );
   int activeJobs = 0;
 
   // Livestream-only providers (large M3U playlists) are deprioritized to the
@@ -227,14 +204,9 @@ Stream<SearchAggregateState> searchAllProviders(
               )
               .toList();
 
-          // For small result sets, skip the compute() isolate overhead
-          // (spawn + serialize + deserialize costs more than the filter work).
-          final filtered = providerItems.length < 30
-              ? _filterItems(_FilterParams(providerItems, query))
-              : await compute(
-                  _filterItems,
-                  _FilterParams(providerItems, query),
-                );
+          // A per-request compute isolate has meaningful startup and
+          // object-copy cost. Only large provider lists benefit from offload.
+          final filtered = await filterSearchItems(providerItems, query);
           debugPrint(
             '[SEARCH DBG] FILTERED ${provider.packageName} — ${filtered.length}/${providerItems.length} items',
           );
