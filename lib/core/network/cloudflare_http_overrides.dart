@@ -25,19 +25,26 @@ class _ClearanceHttpClient implements HttpClient {
   _ClearanceHttpClient(this._inner);
 
   HttpClientRequest _withClearance(HttpClientRequest request) {
-    if (!shouldAttachCloudflareClearance(request.uri)) return request;
-    final host = request.uri.host;
-    final agent = CloudflareBypass.instance.userAgentFor(host);
-    final cookie = CloudflareBypass.instance.cookieHeaderFor(
-      host, path: request.uri.path,
+    if (!shouldAttachCloudflareClearance(request.uri)) {
+      return request;
+    }
+    // The app-wide image client has no plugin namespace. Never attach
+    // plugin credentials to arbitrary API calls: allow only image URLs
+    // with one unambiguous verified CF-only browser identity.
+    final identity = CloudflareBypass.instance.artworkCredentialsFor(
+      request.uri,
     );
-    if (agent == null || cookie == null) return request;
+    if (identity == null) {
+      return request;
+    }
     final existing = request.headers.value(HttpHeaders.cookieHeader) ?? '';
-    if (existing.contains('cf_clearance=')) return request;
-    request.headers.set(HttpHeaders.userAgentHeader, agent);
+    if (existing.contains('cf_clearance=')) {
+      return request;
+    }
+    request.headers.set(HttpHeaders.userAgentHeader, identity.userAgent);
     request.headers.set(
       HttpHeaders.cookieHeader,
-      existing.isEmpty ? cookie : '$existing; $cookie',
+      existing.isEmpty ? identity.cookie : '$existing; ${identity.cookie}',
     );
     return request;
   }
