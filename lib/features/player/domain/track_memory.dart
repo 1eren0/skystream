@@ -50,7 +50,10 @@ String? _primarySubtag(String? tag) {
   if (tag == null) return null;
   final primary = tag.trim().toLowerCase().split(RegExp('[-_]')).first;
   if (primary.isEmpty || primary == 'und') return null;
-  return primary;
+  // The same language may be tagged `tur` by one source and `tr` by the
+  // next. Canonicalize recognized ISO codes before comparing them, while
+  // preserving the old exact-tag behaviour for unknown languages.
+  return languageCodeOf(primary) ?? primary;
 }
 
 /// The track in [available] that best answers [remembered], or null when
