@@ -2,9 +2,11 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/core/domain/entity/multimedia_item.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_panel.dart';
+import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 import 'package:vlc_player/vlc_player.dart';
 
@@ -99,7 +101,13 @@ void main() {
     addTearDown(data.dispose);
 
     await tester.pumpWidget(
-      MaterialApp(
+      ProviderScope(
+        overrides: [
+          playerSettingsProvider.overrideWithBuild(
+            (_, _) => const PlayerSettings(),
+          ),
+        ],
+        child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: Stack(
@@ -118,6 +126,7 @@ void main() {
               onPickSource: (_) {},
             ),
           ],
+        ),
         ),
       ),
     );
