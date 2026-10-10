@@ -34,6 +34,11 @@ import '../../domain/subtitle_style.dart';
 /// that wait.
 const Duration _kMaxRunOn = Duration(seconds: 1);
 
+/// libVLC timestamps may briefly regress even when the picture continues
+/// forward. A backwards jump of a second or more is treated as a seek;
+/// smaller corrections must not replay a finished cue or hide an active one.
+const Duration _kBackwardSeekThreshold = Duration(seconds: 1);
+
 /// Space between the lines and the edge of the player area, as a share of the
 /// frame height.
 const double _kEdgeMargin = 0.06;
@@ -83,6 +88,13 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
   Duration _reported = Duration.zero;
   Duration _reportedAt = Duration.zero;
 
+  /// Last subtitle-clock position actually presented on screen. The native
+  /// clock can arrive a little behind our run-on clock; keep the presentation
+  /// monotonic until a real seek or delay change intentionally rewinds it.
+  Duration? _presentedAt;
+  VlcPlaybackState? _lastEngineState;
+  Duration? _lastSubtitleDelay;
+
   List<SubtitleCue> _shown = const [];
 
   @override
@@ -99,6 +111,11 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onEngine);
       widget.controller.addListener(_onEngine);
+      _reported = Duration.zero;
+      _reportedAt = _now;
+      _presentedAt = null;
+      _lastEngineState = null;
+      _lastSubtitleDelay = null;
     }
     if (oldWidget.subtitles != widget.subtitles) {
       oldWidget.subtitles.removeListener(_refresh);
@@ -117,10 +134,27 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
 
   void _onEngine() {
     final value = widget.controller.value;
+    if (value.subtitleDelay != _lastSubtitleDelay) {
+      // A viewer's delay adjustment deliberately moves subtitle time in
+      // either direction; it is not engine jitter.
+      _presentedAt = null;
+      _lastSubtitleDelay = value.subtitleDelay;
+    }
     if (value.position != _reported) {
+      final backwards = _reported - value.position;
+      if (backwards >= _kBackwardSeekThreshold ||
+          (backwards > Duration.zero &&
+              value.state == VlcPlaybackState.paused &&
+              _lastEngineState == VlcPlaybackState.paused)) {
+        // A real rewind (including a fine seek while already paused) must
+        // revisit earlier subtitles. Small corrections during playback or
+        // buffering, by contrast, must not flash the previous cue again.
+        _presentedAt = null;
+      }
       _reported = value.position;
       _reportedAt = _now;
     }
+    _lastEngineState = value.state;
     _refresh();
   }
 
@@ -140,10 +174,16 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
     final runOn = playing ? _runOn : Duration.zero;
     // The position the file's times are read against: where playback is,
     // less the delay - a positive delay shows every line later.
-    final at =
+    var at =
         _reported +
         runOn * (playing ? value.playbackSpeed : 1) -
         value.subtitleDelay;
+    // Native time reports can trail the clock that we have already drawn.
+    // A small regression is not a rewind: otherwise a cue can disappear at
+    // its start, or reappear after its end, on consecutive Android ticks.
+    final presented = _presentedAt;
+    if (presented != null && at < presented) at = presented;
+    _presentedAt = at;
     final due = timeline.isEmpty ? const <SubtitleCue>[] : timeline.at(at);
     if (!listEquals(due, _shown)) setState(() => _shown = due);
 
