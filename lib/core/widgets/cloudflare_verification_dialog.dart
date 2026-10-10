@@ -185,7 +185,7 @@ class _CloudflareVerificationDialogState
       talker.info(
         '[CF UI] Verified cookies: '
         '${cookies.map((cookie) => cookie['name']).join(',')} '
-        'userAgent=${agent is String && agent.isNotEmpty}',
+        'userAgent=${agent.isNotEmpty}',
       );
       _finish(
         CfResult(
@@ -193,7 +193,7 @@ class _CloudflareVerificationDialogState
           statusCode: 200,
           finalUrl: location.toString(),
           cookies: cookies,
-          userAgent: agent is String && agent.isNotEmpty ? agent : null,
+          userAgent: agent,
         ),
       );
     } catch (error, stack) {
