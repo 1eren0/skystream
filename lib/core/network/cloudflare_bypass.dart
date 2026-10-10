@@ -20,26 +20,83 @@ class CloudflareBypass {
   static Future<CfResult?> Function(String, WebViewEnvironment?, String?)?
   interactiveSolver;
 
-  /// Host -> user agent of the visible verification that cleared it.
+  /// Browser identities use the solver's per-extension scope, never a
+  /// global hostname-only cache. An unrelated plugin must not get them.
   final Map<String, String> _verifiedUserAgents = {};
+  final Map<String, List<Map<String, dynamic>>> _verifiedCookies = {};
 
-  /// The user agent HTTP requests to [host] must send for its clearance
-  /// cookie to be accepted, or null when no visible verification cleared it.
-  String? userAgentFor(String host) => _verifiedUserAgents[host];
+  String? userAgentFor(String host, {String? callerId}) {
+    final identity = _identityFor(host, callerId: callerId);
+    return identity == null ? null : _verifiedUserAgents[identity.key];
+  }
 
-  /// Host -> `name=value; ...` of the Cloudflare cookies that visible
-  /// verification read, for clients that cannot reach the engine's jar.
-  final Map<String, String> _verifiedCookies = {};
+  /// Only Cloudflare cookies permitted by the issuing cookie's Domain/Path.
+  String? cookieHeaderFor(
+    String host, {
+    String? callerId,
+    String path = '/',
+  }) {
+    final identity = _identityFor(host, callerId: callerId, path: path);
+    if (identity == null) return null;
+    final selected = identity.cookies
+        .where((cookie) => _cookieApplies(
+          cookie, issuerHost: identity.issuerHost, targetHost: host, path: path,
+        ))
+        .map((cookie) => '${cookie['name']}=${cookie['value']}')
+        .toList();
+    return selected.isEmpty ? null : selected.join('; ');
+  }
 
-  /// The Cookie header that carries [host]'s visible-verification clearance.
-  String? cookieHeaderFor(String host) {
-    final exact = _verifiedCookies[host];
-    if (exact != null) return exact;
-    // Subdomains share a clearance issued for the parent domain.
-    for (final entry in _verifiedCookies.entries) {
-      if (host.endsWith('.${entry.key}')) return entry.value;
+  ({String key, String issuerHost, List<Map<String, dynamic>> cookies})?
+      _identityFor(String host, {String? callerId, String path = '/'}) {
+    final normalized = _normalizeHost(host);
+    final scope = (callerId == null || callerId.isEmpty) ? '_global_' : callerId;
+    final prefix = '$scope::';
+    final entries = _verifiedCookies.entries
+        .where((entry) => entry.key.startsWith(prefix))
+        .toList()
+      ..sort((a, b) => b.key.length.compareTo(a.key.length));
+    for (final entry in entries) {
+      final issuer = entry.key.substring(prefix.length);
+      if (!entry.value.any((cookie) =>
+          cookie['name'] == 'cf_clearance' &&
+          _cookieApplies(cookie,
+            issuerHost: issuer, targetHost: normalized, path: path))) {
+        continue;
+      }
+      if (!_verifiedUserAgents.containsKey(entry.key)) continue;
+      return (key: entry.key, issuerHost: issuer, cookies: entry.value);
     }
     return null;
+  }
+
+  static bool _cookieApplies(
+    Map<String, dynamic> cookie, {
+    required String issuerHost,
+    required String targetHost,
+    required String path,
+  }) {
+    final name = cookie['name'];
+    final value = cookie['value'];
+    if (name is! String || !isCloudflareCookieName(name) ||
+        value is! String || value.isEmpty) return false;
+    final rawDomain = (cookie['domain'] as String?)?.toLowerCase().trim();
+    final domain = rawDomain == null || rawDomain.isEmpty
+        ? issuerHost
+        : rawDomain.replaceFirst(RegExp(r'^\.'), '');
+    if (issuerHost != domain && !issuerHost.endsWith('.$domain')) return false;
+    if (rawDomain?.startsWith('.') == true) {
+      if (targetHost != domain && !targetHost.endsWith('.$domain')) return false;
+    } else if (targetHost != domain) {
+      return false;
+    }
+    final cookiePath = (cookie['path'] as String?) ?? '/';
+    if (!cookiePath.startsWith('/')) return false;
+    if (!path.startsWith(cookiePath)) return false;
+    if (cookiePath != '/' && !cookiePath.endsWith('/') &&
+        path.length > cookiePath.length &&
+        path[cookiePath.length] != '/') return false;
+    return true;
   }
 
   /// Whether this platform ships a `flutter_inappwebview` implementation.
@@ -552,16 +609,18 @@ class CloudflareBypass {
         talker.info(
           '$_tag Interactive verification ${result == null ? 'cancelled or expired' : 'completed'}',
         );
-        final verifiedHost = Uri.parse(url).host;
+        final verifiedHost = _normalizeHost(Uri.parse(url).host);
         final agent = result?.userAgent;
-        if (agent != null && agent.isNotEmpty) {
-          _verifiedUserAgents[verifiedHost] = agent;
-        }
-        final cookies = result?.cookies ?? const [];
-        if (cookies.isNotEmpty) {
-          _verifiedCookies[verifiedHost] = cookies
-              .map((cookie) => '${cookie['name']}=${cookie['value'] ?? ''}')
-              .join('; ');
+        final cookies = (result?.cookies ?? const <Map<String, dynamic>>[])
+            .where((cookie) => _cookieApplies(
+              cookie, issuerHost: verifiedHost,
+              targetHost: verifiedHost, path: '/',
+            ))
+            .toList();
+        if (agent != null && agent.isNotEmpty &&
+            cookies.any((cookie) => cookie['name'] == 'cf_clearance')) {
+          _verifiedUserAgents[cacheKey] = agent;
+          _verifiedCookies[cacheKey] = cookies;
         }
         return result;
       } catch (error, stack) {
@@ -956,6 +1015,25 @@ class _ViewHolder {
 /// Turnstile session cookie `_cfuvid`, which the `__cf` prefix misses.
 bool isCloudflareCookieName(String name) =>
     name == 'cf_clearance' || name.startsWith('__cf') || name == '_cfuvid';
+
+/// A readable page alone is not proof the Cloudflare challenge was cleared.
+bool isVerifiedCloudflarePage({
+  required String host,
+  required String expectedHost,
+  required int httpStatus,
+  required bool challenge,
+  required bool hasBody,
+  required List<Map<String, dynamic>> cookies,
+}) =>
+    host.toLowerCase() == expectedHost.toLowerCase() &&
+    httpStatus >= 200 &&
+    httpStatus < 400 &&
+    !challenge &&
+    hasBody &&
+    cookies.any((cookie) =>
+        cookie['name'] == 'cf_clearance' &&
+        cookie['value'] is String &&
+        (cookie['value'] as String).isNotEmpty);
 
 class CfResult {
   final String body;
