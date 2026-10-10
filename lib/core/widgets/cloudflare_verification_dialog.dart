@@ -142,7 +142,7 @@ class _CloudflareVerificationDialogState
         final since = _contentWhileLoadingSince ??= DateTime.now();
         if (DateTime.now().difference(since) < _loadingGrace) return;
       }
-      if (!_targetNavigated && !_mainHttpFailure) {
+      if (!_targetNavigated) {
         if (location.host != expected.host) return;
         // Navigate from the real referring document so the browser preserves
         // its own Referer and same-site fetch context, including redirects.
@@ -153,6 +153,9 @@ class _CloudflareVerificationDialogState
         );
         return;
       }
+      // A readable 403 or redirect to another site must not be treated as
+      // solved just because its page has text and no recognized challenge.
+      if (location.host != expected.host || _mainHttpFailure) return;
       final html = await controller.evaluateJavascript(
         source: 'document.documentElement.outerHTML',
       );
@@ -165,6 +168,20 @@ class _CloudflareVerificationDialogState
         source: 'navigator.userAgent',
       );
       if (_finished || !mounted) return;
+      if (!isVerifiedCloudflarePage(
+            host: location.host,
+            expectedHost: expected.host,
+            httpStatus: _mainHttpStatus,
+            challenge: page['challenge'] == true,
+            hasBody: page['body'] == true,
+            cookies: cookies,
+          ) ||
+          agent is! String ||
+          agent.isEmpty) {
+        // Stay on the page so the viewer can finish the challenge, rather
+        // than caching a block page or a session with no reusable identity.
+        return;
+      }
       talker.info(
         '[CF UI] Verified cookies: '
         '${cookies.map((cookie) => cookie['name']).join(',')} '
@@ -173,7 +190,7 @@ class _CloudflareVerificationDialogState
       _finish(
         CfResult(
           body: html,
-          statusCode: _mainHttpFailure ? _mainHttpStatus : 200,
+          statusCode: 200,
           finalUrl: location.toString(),
           cookies: cookies,
           userAgent: agent is String && agent.isNotEmpty ? agent : null,
