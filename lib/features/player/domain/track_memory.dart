@@ -15,6 +15,8 @@ library;
 
 import 'package:vlc_player/vlc_player.dart';
 
+import 'track_language.dart';
+
 /// A track the viewer was listening to or reading before a reopen.
 class RememberedTrack {
   /// Creates a remembered pick.
@@ -100,6 +102,33 @@ VlcTrackDescription? matchRememberedTrack(
 
   for (final track in available) {
     if (track.id == remembered.id) return track;
+  }
+  return null;
+}
+
+
+/// Finds a track in the viewer's chosen audio language without guessing.
+///
+/// libVLC supplies ISO 639-3 tags (eng/tur) as well as ISO 639-1 (en/tr),
+/// and many scraped streams label the language only in the track name. A
+/// declared language always outranks a potentially misleading label. Never
+/// select libVLC's -1 "disable" track as an audio preference.
+VlcTrackDescription? findPreferredAudioTrack(
+  List<VlcTrackDescription> available,
+  String preferred,
+) {
+  final wanted = languageCodeOf(preferred);
+  if (wanted == null) return null;
+
+  for (final track in available) {
+    if (track.id >= 0 && isLanguage(track.language, wanted)) return track;
+  }
+  for (final track in available) {
+    if (track.id >= 0 &&
+        languageCodeOf(track.language) == null &&
+        isLanguage(track.name, wanted)) {
+      return track;
+    }
   }
   return null;
 }
