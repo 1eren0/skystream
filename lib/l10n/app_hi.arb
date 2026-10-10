@@ -497,6 +497,9 @@
   "addonSourcesSearchHint": "Add-on, provider, quality…",
   "addonSourcesNoMatchFilter": "No links match. Clear search or try \"All\".",
   "addonManageSearchHint": "Search installed add-ons…",
-  "addonManageNoMatch": "No installed add-on matches \"{query}\"."
+  "addonManageNoMatch": "No installed add-on matches \"{query}\".",
+  "cloudflareVerificationTitle": "साइट सत्यापन",
+  "cloudflareVerificationPrompt": "इस विंडो में साइट का सत्यापन पूरा करें।",
+  "cloudflareVerificationUnreadable": "सत्यापन पृष्ठ पढ़ा नहीं जा सका। रद्द करें और फिर प्रयास करें।",
+  "cloudflareVerificationNotOpened": "सत्यापन पृष्ठ खोला नहीं जा सका। रद्द करें और फिर प्रयास करें।"
 }
-
