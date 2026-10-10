@@ -10,6 +10,10 @@ import 'cloudflare_bypass.dart';
 /// Cloudflare answers those requests with the challenge page instead of the
 /// picture. Requests that already carry a clearance cookie are left alone, so
 /// the extension engine's own cookie handling is unaffected.
+/// Cloudflare clearance is a secure browser credential. Never put it on
+/// plaintext HTTP, even for localhost or an image URL that looks harmless.
+bool shouldAttachCloudflareClearance(Uri uri) => uri.scheme == 'https';
+
 class CloudflareHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) =>
@@ -21,9 +25,12 @@ class _ClearanceHttpClient implements HttpClient {
   _ClearanceHttpClient(this._inner);
 
   HttpClientRequest _withClearance(HttpClientRequest request) {
+    if (!shouldAttachCloudflareClearance(request.uri)) return request;
     final host = request.uri.host;
     final agent = CloudflareBypass.instance.userAgentFor(host);
-    final cookie = CloudflareBypass.instance.cookieHeaderFor(host);
+    final cookie = CloudflareBypass.instance.cookieHeaderFor(
+      host, path: request.uri.path,
+    );
     if (agent == null || cookie == null) return request;
     final existing = request.headers.value(HttpHeaders.cookieHeader) ?? '';
     if (existing.contains('cf_clearance=')) return request;
