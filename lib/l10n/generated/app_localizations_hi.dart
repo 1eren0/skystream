@@ -1837,17 +1837,17 @@ class AppLocalizationsHi extends AppLocalizations {
   }
 
   @override
-  String get cloudflareVerificationTitle => 'Site verification';
+  String get cloudflareVerificationTitle => 'साइट सत्यापन';
 
   @override
   String get cloudflareVerificationPrompt =>
-      'Complete the site verification in this window.';
+      'इस विंडो में साइट का सत्यापन पूरा करें।';
 
   @override
   String get cloudflareVerificationUnreadable =>
-      'Could not read the verification page. Cancel and try again.';
+      'सत्यापन पृष्ठ पढ़ा नहीं जा सका। रद्द करें और फिर प्रयास करें।';
 
   @override
   String get cloudflareVerificationNotOpened =>
-      'Could not open the verification page. Cancel and try again.';
+      'सत्यापन पृष्ठ खोला नहीं जा सका। रद्द करें और फिर प्रयास करें।';
 }
