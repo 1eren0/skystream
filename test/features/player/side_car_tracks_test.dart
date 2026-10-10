@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/features/player/domain/side_car_subtitles.dart';
 import 'package:skystream/features/player/domain/subtitle_cues.dart';
@@ -363,20 +364,27 @@ void main() {
 
     Future<void> pumpTab(WidgetTester tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: PlayerTracksTab(
-              controller: controller,
-              kind: PlayerTrackKind.subtitle,
-              tracks: const <VlcTrackDescription>[
-                VlcTrackDescription(id: 3, name: 'Commentary'),
-              ],
-              trackInfo: const <VlcMediaTrackInfo>[],
-              sideCars: subtitles,
-              onTracksChanged: () {},
-              onOpenPage: (_) {},
+        ProviderScope(
+          overrides: [
+            playerSettingsProvider.overrideWithBuild(
+              (_, _) => const PlayerSettings(),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: PlayerTracksTab(
+                controller: controller,
+                kind: PlayerTrackKind.subtitle,
+                tracks: const <VlcTrackDescription>[
+                  VlcTrackDescription(id: 3, name: 'Commentary'),
+                ],
+                trackInfo: const <VlcMediaTrackInfo>[],
+                sideCars: subtitles,
+                onTracksChanged: () {},
+                onOpenPage: (_) {},
+              ),
             ),
           ),
         ),
