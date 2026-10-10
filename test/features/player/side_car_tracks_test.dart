@@ -650,6 +650,95 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('a late VLC timestamp does not briefly hide an active SRT cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 5200});
+      await pumpView(tester);
+      expect(find.text('First'), findsWidgets);
+
+      // The overlay has already displayed 5.2 s, but Android can publish an
+      // older snapshot just after it. This is clock jitter, not a seek.
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 4900});
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 4900});
+      await tester.pump();
+    });
+
+    testWidgets('a late VLC timestamp does not replay a finished SRT cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 8100});
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+
+      // Before the fix, rewinding the reported position across the 8 s cue
+      // boundary resurrected the expired line for a frame: a visible blink.
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 7900});
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 7900});
+      await tester.pump();
+    });
+
+    testWidgets('buffering with an older timestamp holds the visible cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 5200});
+      await pumpView(tester);
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{
+        'state': 'buffering',
+        'position': 4900,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 4900});
+      await tester.pump();
+    });
+
+    testWidgets('a real backward seek still shows the earlier cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 11000});
+      await pumpView(tester);
+      expect(find.text('Up top'), findsWidgets);
+
+      // Several seconds backwards is a seek, not a late VLC report.
+      await engine.emit(<String, Object?>{'state': 'playing', 'position': 6000});
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+      expect(find.text('Up top'), findsNothing);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 6000});
+      await tester.pump();
+    });
+
+    testWidgets('paused seeking and subtitle delay still move the clock back', (
+      tester,
+    ) async {
+      await at(8100);
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+
+      // A deliberate fine seek while already paused can be less than the
+      // playing clock's jitter tolerance.
+      await at(7900);
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      // The viewer can delay subtitles by two seconds, even though that
+      // intentionally moves the subtitle timeline backwards.
+      await at(7900, delayMs: 4000);
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
+    });
+
     testWidgets('draws nothing once the file is off', (tester) async {
       await at(6000);
       await pumpView(tester);
