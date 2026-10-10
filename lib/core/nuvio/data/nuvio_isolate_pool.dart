@@ -4,6 +4,7 @@ import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 
+import 'nuvio_clearance.dart';
 import 'nuvio_engine.dart';
 
 /// Runs Nuvio plugins on worker isolates.
@@ -17,7 +18,11 @@ import 'nuvio_engine.dart';
 /// falls back to running the plugin on the calling isolate, so plugin support
 /// degrades in speed rather than disappearing.
 class NuvioIsolatePool {
-  NuvioIsolatePool({int size = 3}) : size = size < 1 ? 1 : size;
+  NuvioIsolatePool({int size = 3, this.broker}) : size = size < 1 ? 1 : size;
+
+  /// Answers a run's calls about bot checks on the main isolate, where the
+  /// app's browser is. Without one, runs use the clearances they're handed.
+  final NuvioBrokerHandler? broker;
 
   /// Worker count. Three keeps memory and battery sane on a phone while still
   /// giving real parallelism; each worker takes several jobs concurrently
@@ -45,12 +50,23 @@ class NuvioIsolatePool {
         if (error is _WorkerSpawnException) _spawnFailed = true;
       }
     }
-    return NuvioEngine.execute(request);
+    final broker = this.broker;
+    return NuvioEngine.execute(
+      request,
+      channel: broker == null
+          ? null
+          : NuvioCallChannel(
+              (message) async =>
+                  Map<String, dynamic>.from(await broker(message)),
+              source: request.source,
+              personWaiting: request.personWaiting,
+            ),
+    );
   }
 
   Future<_Worker> _leastBusyWorker() async {
     if (_slots.length < size) {
-      final slot = _Worker.spawn();
+      final slot = _Worker.spawn(broker);
       _slots.add(slot);
       try {
         return await slot;
@@ -87,9 +103,13 @@ class _WorkerSpawnException implements Exception {
 }
 
 class _Worker {
-  _Worker._(this._responses);
+  _Worker._(this._responses, NuvioBrokerHandler? broker)
+    : _main = NuvioMainLink(broker ?? (_) async => const {});
 
   final ReceivePort _responses;
+
+  /// Answers the worker's calls about bot checks.
+  final NuvioMainLink _main;
   final Map<int, Completer<String>> _inflight = {};
   Isolate? _isolate;
   SendPort? _commands;
@@ -97,9 +117,9 @@ class _Worker {
 
   int get pending => _inflight.length;
 
-  static Future<_Worker> spawn() async {
+  static Future<_Worker> spawn(NuvioBrokerHandler? broker) async {
     final responses = ReceivePort();
-    final worker = _Worker._(responses);
+    final worker = _Worker._(responses, broker);
     final ready = Completer<SendPort>();
 
     // One subscription for the whole life of the worker: the first message is
@@ -109,7 +129,11 @@ class _Worker {
         ready.complete(message);
         return;
       }
-      worker._handleResponse(message);
+      final asked = worker._main.handle(
+        message,
+        reply: (answer) => worker._commands?.send(answer),
+      );
+      if (!asked) worker._handleResponse(message);
     });
 
     try {
@@ -144,7 +168,7 @@ class _Worker {
     }
   }
 
-  Future<String> run(NuvioEngineRequest request) {
+  Future<String> run(NuvioEngineRequest request) async {
     final commands = _commands;
     if (commands == null) {
       throw _WorkerSpawnException('worker is not ready');
@@ -153,14 +177,15 @@ class _Worker {
     final completer = Completer<String>();
     _inflight[id] = completer;
     commands.send({'id': id, 'request': request.toMap()});
-    // The engine has its own budget; this is the backstop for a wedged worker.
-    return completer.future.timeout(
+    // The engine has its own budget; this is the backstop for a wedged worker,
+    // stopped like the run's own clock while a bot check is being cleared.
+    final result = await _main.guard(
+      id,
+      completer.future,
       Duration(milliseconds: request.timeoutMs + 15000),
-      onTimeout: () {
-        _inflight.remove(id);
-        return jsonEncode({'error': 'Plugin worker did not answer'});
-      },
     );
+    _inflight.remove(id);
+    return result;
   }
 
   void dispose() {
@@ -182,17 +207,27 @@ class _Worker {
 /// at once — they are network-bound most of the time.
 void _workerMain(SendPort initialReply) {
   final commands = ReceivePort();
+  final link = NuvioWorkerLink(initialReply);
   initialReply.send(commands.sendPort);
 
   commands.listen((dynamic message) {
+    if (link.handle(message)) return;
     if (message is! Map) return;
     final id = message['id'];
     final raw = message['request'];
-    if (id == null || raw is! Map) return;
+    if (id is! int || raw is! Map) return;
 
     unawaited(() async {
       try {
-        final json = await NuvioEngine.execute(NuvioEngineRequest.fromMap(raw));
+        final request = NuvioEngineRequest.fromMap(raw);
+        final json = await NuvioEngine.execute(
+          request,
+          channel: NuvioCallChannel(
+            (message) => link.call(id, message),
+            source: request.source,
+            personWaiting: request.personWaiting,
+          ),
+        );
         initialReply.send({'id': id, 'ok': true, 'json': json});
       } catch (error) {
         initialReply.send({'id': id, 'ok': false, 'error': error.toString()});

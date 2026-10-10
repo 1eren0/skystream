@@ -39,6 +39,7 @@ class _Client extends AddonClient {
   Future<AddonManifest> fetchManifest(
     String manifestUrl, {
     bool forceRefresh = false,
+    bool personWaiting = false,
   }) async {
     fetched.add(manifestUrl);
     final manifest = latest[manifestUrl];

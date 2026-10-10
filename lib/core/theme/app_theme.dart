@@ -21,6 +21,10 @@ class AppTheme {
   /// Font License text that travels with Outfit is registered here. The
   /// package it replaced did the equivalent at runtime; the in-app licence
   /// page keeps showing the entry without it.
+  ///
+  /// The app's own licence is registered here too, for the same reason:
+  /// Flutter lists only what dependencies declare. SkyStream is GPL-3.0, which
+  /// asks an interactive program to show where its licence is.
   static bool _fontLicenceRegistered = false;
 
   static void _registerFontLicence() {
@@ -30,6 +34,9 @@ class AppTheme {
       yield LicenseEntryWithLineBreaks(const <String>[
         fontFamily,
       ], await rootBundle.loadString('assets/fonts/OFL.txt'));
+      yield LicenseEntryWithLineBreaks(const <String>[
+        'SkyStream',
+      ], await rootBundle.loadString('LICENSE'));
     });
   }
 

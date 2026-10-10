@@ -5,6 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../network/clearance/challenge_triage.dart';
+import '../../network/clearance/clearance_interceptor.dart';
 import '../../network/dio_client_provider.dart';
 import '../models/addon_manifest.dart';
 import '../models/addon_meta.dart';
@@ -20,6 +22,26 @@ class AddonException implements Exception {
   const AddonException(this.message);
   @override
   String toString() => message;
+}
+
+/// An add-on's site refused the connection outright (a Cloudflare block
+/// page): no bot check clears it.
+class AddonBlockedException extends AddonException {
+  AddonBlockedException(this.host)
+    : super(
+        '$host blocked this connection. VPNs and some networks are often '
+        'blocked; try without one.',
+      );
+
+  final String host;
+}
+
+/// An add-on's site wants a bot check the app couldn't clear by itself:
+/// Verify, on the add-on's page, clears it.
+class AddonCheckException extends AddonException {
+  AddonCheckException(this.host) : super('$host needs a quick check');
+
+  final String host;
 }
 
 /// TTL cache with single-flight coalescing.
@@ -132,29 +154,52 @@ class AddonClient {
   /// took 9 to 29 s to describe titles its own search had listed.
   static const Duration scrapeTimeout = Duration(seconds: 40);
 
-  Options _options(Duration timeout) => Options(
+  /// [source] files a bot check the request meets under its add-on;
+  /// [personWaiting] opens the check sheet when the check wants a click.
+  Options _options(
+    Duration timeout, {
+    String? source,
+    bool personWaiting = false,
+  }) => Options(
     receiveTimeout: timeout,
     sendTimeout: timeout,
     headers: const {'Accept': 'application/json'},
     validateStatus: (status) => status != null && status < 500,
+    extra: {
+      ClearanceExtra.source: ?source,
+      if (personWaiting) ClearanceExtra.personWaiting: true,
+    },
   );
+
+  static String sourceFor(ManagedAddon addon) => 'addon:${addon.id}';
 
   Future<Map<String, dynamic>?> _getJson(
     String url, {
     Duration timeout = _fast,
     CancelToken? cancelToken,
+    String? source,
+    bool personWaiting = false,
   }) async {
-    final response = await _dio.get<dynamic>(
-      url,
-      options: _options(timeout),
-      cancelToken: cancelToken,
-    );
+    final Response<dynamic> response;
+    try {
+      response = await _dio.get<dynamic>(
+        url,
+        options: _options(
+          timeout,
+          source: source,
+          personWaiting: personWaiting,
+        ),
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      final failed = e.response;
+      if (e.type != DioExceptionType.badResponse || failed == null) rethrow;
+      _throwFor(failed, url);
+    }
     final status = response.statusCode ?? 0;
     // 404 is the protocol's "nothing for this id".
     if (status == 404) return null;
-    if (status < 200 || status >= 300) {
-      throw AddonException('HTTP $status from ${Uri.parse(url).host}');
-    }
+    if (status < 200 || status >= 300) _throwFor(response, url);
 
     var data = response.data;
     if (data is String) {
@@ -173,16 +218,36 @@ class AddonClient {
     return data is Map ? Map<String, dynamic>.from(data) : null;
   }
 
+  /// The bot check a failed [response] met, if any, else its status.
+  Never _throwFor(Response<dynamic> response, String url) {
+    final host = Uri.parse(url).host;
+    final status = response.statusCode ?? 0;
+    var triage = triageHeaders(status, response.headers.value);
+    if (triage == Triage.unsure) {
+      final data = response.data;
+      triage = triageBody(data is String ? data : '');
+    }
+    if (triage == Triage.block) throw AddonBlockedException(host);
+    if (triage == Triage.challenge) throw AddonCheckException(host);
+    throw AddonException('HTTP $status from $host');
+  }
+
   Future<AddonManifest> fetchManifest(
     String manifestUrl, {
     bool forceRefresh = false,
+    bool personWaiting = false,
   }) async {
     final url = AddonTransport.normalizeManifestUrl(manifestUrl);
     final key = 'manifest:$url';
     if (forceRefresh) _cache.invalidatePrefix(key);
 
     return _cache.run(key, manifestTtl, () async {
-      final json = await _getJson(url, timeout: _slow);
+      final json = await _getJson(
+        url,
+        timeout: _slow,
+        source: 'addon:$url',
+        personWaiting: personWaiting,
+      );
       if (json == null) {
         throw const AddonException('No manifest found at that URL.');
       }
@@ -214,7 +279,11 @@ class AddonClient {
     if (forceRefresh) _cache.invalidatePrefix('catalog:$url');
 
     return _cache.run('catalog:$url', catalogTtl, () async {
-      final json = await _getJson(url, cancelToken: cancelToken);
+      final json = await _getJson(
+        url,
+        cancelToken: cancelToken,
+        source: sourceFor(addon),
+      );
       final metas = json?['metas'];
       if (metas is! List) return const <AddonMetaPreview>[];
       final out = <AddonMetaPreview>[];
@@ -237,9 +306,11 @@ class AddonClient {
   Future<AddonMeta?> meta(
     ManagedAddon addon, {
     required String type,
+
     required String id,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
   }) async {
     final url = AddonTransport.resourceUrl(
       addon.manifestUrl,
@@ -258,6 +329,8 @@ class AddonClient {
         url,
         timeout: _stream,
         cancelToken: cancelToken,
+        source: sourceFor(addon),
+        personWaiting: personWaiting,
       );
       final meta = json?['meta'];
       if (meta is! Map) return null;
@@ -275,6 +348,7 @@ class AddonClient {
     required String id,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
   }) async {
     final url = AddonTransport.resourceUrl(
       addon.manifestUrl,
@@ -289,6 +363,8 @@ class AddonClient {
         url,
         timeout: _stream,
         cancelToken: cancelToken,
+        source: sourceFor(addon),
+        personWaiting: personWaiting,
       );
       final streams = json?['streams'];
       if (streams is! List) return const <AddonStreamSource>[];
@@ -306,7 +382,6 @@ class AddonClient {
       return out;
     });
   }
-
 
   /// Resolve a title to an IMDb id via Cinemeta search.
   ///
@@ -412,7 +487,11 @@ class AddonClient {
     );
 
     return _cache.run('subs:$url', subtitleTtl, () async {
-      final json = await _getJson(url, cancelToken: cancelToken);
+      final json = await _getJson(
+        url,
+        cancelToken: cancelToken,
+        source: sourceFor(addon),
+      );
       final subs = json?['subtitles'];
       if (subs is! List) return const <AddonSubtitleTrack>[];
       final out = <AddonSubtitleTrack>[];

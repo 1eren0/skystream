@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'custom_widgets.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
@@ -95,5 +97,30 @@ class LoadingDialog extends StatelessWidget {
       barrierDismissible: false,
       builder: (context) => LoadingDialog(message: message, onCancel: onCancel),
     );
+  }
+
+  /// [show], keeping the dialog's route for [close]: a route pushed over the
+  /// dialog while it shows (an extension's own full-screen screen during a
+  /// links call) stays, where a bare pop would take it instead. The route is
+  /// [showDialog]'s own.
+  static Route<void> open(BuildContext context, {required String message, required VoidCallback onCancel}) {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final route = DialogRoute<void>(
+      context: context,
+      builder: (context) => LoadingDialog(message: message, onCancel: onCancel),
+      barrierColor:
+          DialogTheme.of(context).barrierColor ?? Theme.of(context).dialogTheme.barrierColor ?? Colors.black54,
+      barrierDismissible: false,
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
+      traversalEdgeBehavior: TraversalEdgeBehavior.closedLoop,
+    );
+    unawaited(navigator.push(route));
+    return route;
+  }
+
+  /// Takes away the dialog [open] showed, wherever it now is; nothing once it
+  /// has gone (its Cancel).
+  static void close(Route<void> route) {
+    if (route.isActive) route.navigator?.removeRoute(route);
   }
 }

@@ -1,9 +1,12 @@
 import 'package:flutter/services.dart';
+import '../../../core/cloudstream/cloudstream_provider.dart';
+import '../../cloudstream/presentation/cloudstream_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'home_provider.dart';
 import 'home_state.dart';
+import 'widgets/home_check_card.dart';
 
 import 'package:skystream/features/home/presentation/widgets/continue_watching_section.dart';
 import 'package:skystream/features/search/presentation/search_provider.dart';
@@ -294,6 +297,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
+  /// Home's wait or error, or in its place the bot check Home's plugin met.
+  Widget _checkGate(Widget child) => HomeCheckGate(
+    provider: ref.watch(activeProviderProvider),
+    since: ref.read(homeDataProvider.notifier).fetchStartedAt,
+    onRetry: () => ref.invalidate(homeDataProvider),
+    child: child,
+  );
+
   Widget _buildBody(
     BuildContext context,
     HomeState state,
@@ -318,15 +329,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
 
     return switch (state) {
-      HomeLoading() => _withGradientEdgeHint(
-        CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(child: _buildCarouselShimmer(context)),
-            SliverToBoxAdapter(child: _buildListShimmer(context)),
-            SliverToBoxAdapter(child: _buildListShimmer(context)),
-            SliverToBoxAdapter(child: _buildListShimmer(context)),
-          ],
+      HomeLoading() => _checkGate(
+        _withGradientEdgeHint(
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              SliverToBoxAdapter(child: _buildCarouselShimmer(context)),
+              SliverToBoxAdapter(child: _buildListShimmer(context)),
+              SliverToBoxAdapter(child: _buildListShimmer(context)),
+              SliverToBoxAdapter(child: _buildListShimmer(context)),
+            ],
+          ),
         ),
       ),
       HomeNoProvider() => _buildNoProviderState(
@@ -335,7 +348,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         isWidescreen: isWidescreen,
       ),
       HomeOffline() => _buildErrorState(context, l10n.noInternetError, ref),
-      HomeError(:final message) => _buildErrorState(context, message, ref),
+      HomeError(:final message) => _checkGate(
+        _buildErrorState(context, message, ref),
+      ),
       HomeSuccess(:final data) => _withGradientEdgeHint(
         RefreshIndicator(
           onRefresh: () async => ref.read(homeDataProvider.notifier).fetch(),
@@ -982,9 +997,15 @@ class _ProviderSelectorDialogState extends State<_ProviderSelectorDialog> {
                                   ? index - 1
                                   : index];
                           final isDebug = p.isDebug;
-                          final isSubprovider = p.packageName.contains('::');
+                          final cloudStream = p is CloudStreamProvider ? p : null;
+                          // A CloudStream extension can register several providers (one
+                          // plugin, "Netflix" and "Prime Video"): then name the extension too.
+                          final isSubprovider = p.packageName.contains('::') ||
+                              (cloudStream != null && cloudStream.plugin.providers.length > 1);
                           String pluginTag = '';
-                          if (isSubprovider) {
+                          if (cloudStream != null) {
+                            pluginTag = cloudStream.pluginName;
+                          } else if (isSubprovider) {
                             final parentPackageName = p.packageName.substring(
                               0,
                               p.packageName.indexOf('::'),
@@ -1042,6 +1063,10 @@ class _ProviderSelectorDialogState extends State<_ProviderSelectorDialog> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                    ],
+                                    if (cloudStream != null) ...[
+                                      const SizedBox(width: 8),
+                                      const CloudStreamBadge(),
                                     ],
                                     if (isDebug) ...[
                                       const SizedBox(width: 8),

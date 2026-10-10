@@ -116,6 +116,7 @@ class _Client extends AddonClient {
     required String id,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
   }) {
     requests.add(type);
     final delay = answerAfter;

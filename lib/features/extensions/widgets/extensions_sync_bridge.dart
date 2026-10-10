@@ -38,7 +38,12 @@ class _ExtensionsSyncBridgeState extends ConsumerState<ExtensionsSyncBridge> {
   @override
   Widget build(BuildContext context) {
     ref.listen(extensionsControllerProvider, (previous, next) {
-      if (!listEquals(previous?.installedPlugins, next.installedPlugins)) {
+      // The first load syncs even with nothing installed: a finished sync is
+      // what lets a saved active provider that is gone be given up on, and
+      // without one the home screen waits for it forever.
+      final firstLoad = previous is ExtensionsLoading && next is! ExtensionsLoading;
+      if (firstLoad ||
+          !listEquals(previous?.installedPlugins, next.installedPlugins)) {
         // Coalesce bursts of install/uninstall events into one sync.
         _debounce?.cancel();
         _debounce = Timer(_debounceWindow, () {

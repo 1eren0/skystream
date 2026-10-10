@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,9 @@ import 'package:skystream/core/services/download_service.dart';
 import 'package:skystream/core/services/notification_service.dart';
 import 'package:skystream/features/details/presentation/download_launcher.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
+import 'package:skystream/shared/widgets/loading_dialog.dart';
+import 'package:skystream/core/extensions/extension_manager.dart';
+import 'package:skystream/core/extensions/base_provider.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 /// "Download Now" used to be able to do nothing at all.
@@ -161,6 +165,45 @@ void main() {
 
     await drainToasts(tester);
   });
+
+  testWidgets(
+    "Download on a game's title: as the game's call ends, only its own dialog goes, never the game's screen",
+    (WidgetTester tester) async {
+      // The game's links call is the game; its screen, still up as the call ends, is the extension's to close.
+      final game = MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('game')));
+      container = ProviderContainer(
+        overrides: [
+          activeProviderProvider.overrideWithValue(
+            _GameProvider(() => unawaited(rootNavigatorKey.currentState!.push(game))),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            navigatorKey: rootNavigatorKey,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const Scaffold(body: Text('title')),
+          ),
+        ),
+      );
+      unawaited(
+        container
+            .read(downloadLauncherProvider)
+            .launch(
+              tester.element(find.text('title')),
+              MultimediaItem(title: 'Pokemon', url: 'https://ayu.test/pokemon', posterUrl: ''),
+            ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('game'), findsOneWidget);
+      expect(find.byType(LoadingDialog, skipOffstage: false), findsNothing);
+      await drainToasts(tester);
+    },
+  );
 }
 
 final MultimediaItem _item = MultimediaItem(
@@ -216,3 +259,43 @@ class _StubDownloadService extends DownloadService {
 
 String _text(Talker logger) =>
     logger.history.map((TalkerData e) => e.generateTextMessage()).join('\n');
+
+/// A game's provider: its links call puts the game's screen up ([shown]) and ends with it still there.
+class _GameProvider implements SkyStreamProvider {
+  _GameProvider(this.shown);
+
+  final void Function() shown;
+
+  @override
+  Future<List<StreamResult>> loadStreams(String url) async {
+    shown();
+    throw const ExtensionScreenEnded();
+  }
+
+  @override
+  String get packageName => 'cs3:ayu/Pokemon/Pokemon';
+  @override
+  String get name => 'Pokemon';
+  @override
+  String get mainUrl => 'https://ayu.test';
+  @override
+  String get version => '1';
+  @override
+  List<String> get languages => const ['en'];
+  @override
+  Set<ProviderType> get supportedTypes => const {ProviderType.other};
+  @override
+  bool get hasSearch => false;
+  @override
+  bool get isDebug => false;
+  @override
+  String? get checkSource => null;
+  @override
+  void cancelInit() {}
+  @override
+  Future<List<MultimediaItem>> search(String query, {CancelToken? cancelToken}) async => const [];
+  @override
+  Future<Map<String, List<MultimediaItem>>> getHome() async => const {};
+  @override
+  Future<MultimediaItem> getDetails(String url) async => throw UnimplementedError();
+}

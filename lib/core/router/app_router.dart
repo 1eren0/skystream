@@ -14,6 +14,7 @@ import 'package:skystream/features/settings/presentation/settings_screen.dart';
 import 'package:skystream/features/player/presentation/vlc/vlc_player_screen.dart';
 import '../../features/extensions/screens/extensions_screen.dart';
 import '../../features/nuvio/presentation/nuvio_plugins_screen.dart';
+import '../../features/cloudstream/presentation/cloudstream_screen.dart';
 import '../../features/settings/presentation/player_settings_screen.dart';
 import '../../features/settings/presentation/account_settings_screen.dart';
 import '../../features/settings/presentation/developer_options_screen.dart';
@@ -54,6 +55,7 @@ part 'app_router.g.dart';
             TypedGoRoute<AccountSettingsRoute>(path: 'accounts'),
             TypedGoRoute<ExtensionsRoute>(path: 'extensions'),
             TypedGoRoute<NuvioPluginsRoute>(path: 'nuvio'),
+            TypedGoRoute<CloudStreamRoute>(path: 'cloudstream'),
             TypedGoRoute<AddonsRoute>(path: 'stremio'),
             TypedGoRoute<DeveloperOptionsRoute>(path: 'developer'),
           ],
@@ -161,6 +163,13 @@ class NuvioPluginsRoute extends GoRouteData with $NuvioPluginsRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       const NuvioPluginsScreen();
+}
+
+class CloudStreamRoute extends GoRouteData with $CloudStreamRoute {
+  const CloudStreamRoute();
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const CloudStreamScreen();
 }
 
 class AddonsRoute extends GoRouteData with $AddonsRoute {

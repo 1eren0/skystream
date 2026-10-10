@@ -82,6 +82,15 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        // Duplicate metadata from CloudStream's library dependencies.
+        resources {
+            excludes += setOf(
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+            )
+        }
     }
 }
 

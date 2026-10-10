@@ -14,14 +14,13 @@ import '../../../skip/data/skip_service.dart';
 import '../../domain/skip_segments.dart';
 import '../../domain/volume_routing.dart';
 import '../player_platform_service.dart';
+import '../player_brightness.dart';
 import '../system_volume.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../widgets/hotstar_player_style.dart';
 import '../widgets/player_control_components.dart';
 import '../widgets/player_stream_widgets.dart'
     show PlayerBufferingIndicator, PlayerTimeLabel;
-
-import 'package:screen_brightness/screen_brightness.dart';
 
 import 'chrome_visibility_controller.dart';
 import 'player_rail.dart';
@@ -91,6 +90,7 @@ class VlcPlayerControls extends ConsumerStatefulWidget {
     this.promptVisible = false,
     this.locked,
     this.systemVolumeFactory,
+    this.brightnessFactory,
     super.key,
   });
 
@@ -182,6 +182,10 @@ class VlcPlayerControls extends ConsumerStatefulWidget {
   /// through it. Null takes the real platform one; a test passes a fake,
   /// because there is no channel to answer one.
   final SystemVolume Function()? systemVolumeFactory;
+
+  /// How the screen's brightness is reached, for the touch form factors' left
+  /// swipe. Null takes the real platform one; a test passes a fake.
+  final PlayerBrightness Function()? brightnessFactory;
 
   /// Whether the screen is locked against accidental touches, when the screen
   /// offers a lock at all.
@@ -414,9 +418,34 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
   bool? _dragIsVolume;
   double _dragStart = 0;
 
+  /// Whether this volume swipe may go past 100 %: only one that started at
+  /// 100 % or above, and hasn't been under it since. As VLC's player has it, a
+  /// swipe from below stops at 100 % and says to swipe again, so the amplifier
+  /// is never reached by accident.
+  bool _dragMayBoost = false;
+
+  /// Whether this swipe has said so already: once per swipe.
+  bool _dragBoostHinted = false;
+
+  /// Counts swipes, so a start read that lands after a newer swipe began is
+  /// dropped.
+  int _dragId = 0;
+
+  /// Whether the level this swipe starts from has been read. Until it has,
+  /// the swipe's travel waits in [_dragPending] and nothing is set: the only
+  /// level to hand before it is a stale one, which after a volume swipe was a
+  /// volume level - the screen flashed to full.
+  bool _dragReady = false;
+  double _dragPending = 0;
+
   /// Mirrored so the rail can render without awaiting the platform on each
   /// frame. Brightness is an OS control; libVLC has no equivalent.
   double _brightness = 0.5;
+
+  /// The screen's brightness, built on first use: only a touch form factor's
+  /// swipe ever reaches it.
+  late final PlayerBrightness _brightnessControl =
+      (widget.brightnessFactory ?? PlatformPlayerBrightness.new)();
 
   /// Whether this session actually changed the application brightness, so
   /// teardown only resets an override it created.
@@ -541,10 +570,33 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
   }
 
   void _onControllerValue() {
-    if (!_appliedInitialFit && widget.controller.value.isPlaying) {
+    final playing = widget.controller.value.isPlaying;
+    if (!_appliedInitialFit && playing) {
       _appliedInitialFit = true;
       _applyFit(widget.fit);
     }
+    if (_wasPlaying && !playing) {
+      // libVLC lets iOS's audio session go as the film pauses, and with it go
+      // the reports of the volume buttons. The read takes it back, as VLC's
+      // player does, and catches up on anything missed. After a moment:
+      // libVLC lets go as it pauses, and the read has to come after.
+      _pauseRead?.cancel();
+      _pauseRead = Timer(const Duration(milliseconds: 300), _readSystemVolume);
+    }
+    _wasPlaying = playing;
+  }
+
+  bool _wasPlaying = false;
+  Timer? _pauseRead;
+
+  void _readSystemVolume() {
+    final system = _system;
+    if (system == null) return;
+    unawaited(
+      system.read().then((level) {
+        if (mounted && level != null) setState(() => _systemVolume = level);
+      }),
+    );
   }
 
   Future<void> _applyFit(VlcVideoFit fit) async {
@@ -559,13 +611,7 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
   void dispose() {
     // Application brightness is a process-wide override, so leaving the
     // player without clearing it dims the whole app until the process dies.
-    if (_brightnessOverridden) {
-      unawaited(
-        ScreenBrightness().resetApplicationScreenBrightness().catchError(
-          (_) {},
-        ),
-      );
-    }
+    if (_brightnessOverridden) _brightnessControl.reset();
     widget.controller.removeListener(_onControllerValue);
     FocusManager.instance.removeListener(_claimLooseFocus);
     // A drag or a D-pad burst still in flight when the player goes away never
@@ -589,10 +635,11 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
     _chrome.removeListener(_onChromeChanged);
     // The platform's own HUD is a global setting, and the rest of the app has
     // no rail of its own to replace it with.
-    if (_system != null) unawaited(setSystemVolumeUiShown(true));
+    unawaited(_system?.setPlayerShown(false) ?? Future<void>.value());
     unawaited(_systemChanges?.cancel() ?? Future<void>.value());
     _system?.dispose();
     _seekBaseReset?.cancel();
+    _pauseRead?.cancel();
     _ownChrome?.dispose();
     _sink.dispose();
     _chromeRoot.dispose();
@@ -791,7 +838,12 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
   /// device. See volume_routing.dart for why the three answers differ.
   VolumeRouting get _volumeRouting => VolumeRouting.of(
     playerFormFactorOf(ref.read(deviceProfileProvider).asData?.value),
+    systemFixed: _systemFixed,
   );
+
+  /// Whether the platform said the device's volume is fixed: then the player's
+  /// own gain carries the whole range. See [VolumeRouting.of].
+  bool _systemFixed = false;
 
   /// What the next step or toggle counts from, and what the rail and the
   /// dialog show.
@@ -833,9 +885,16 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
     if (!_volumeRouting.touchesSystem || _system != null) return;
     final system = _systemVolumeFactory();
     _system = system;
-    // The player draws its own rail off this number; the platform's HUD on top
-    // of it is the same reading twice, over the video.
-    unawaited(setSystemVolumeUiShown(false));
+    // The player draws its own rail off this number: on iOS the platform's
+    // HUD on top of it would be the same reading twice, over the video, and on
+    // Android the volume keys should move the film's volume even while it is
+    // paused.
+    unawaited(system.setPlayerShown(true));
+    unawaited(
+      system.isFixed().then((fixed) {
+        if (fixed && mounted) setState(() => _systemFixed = true);
+      }),
+    );
     unawaited(
       system.read().then((level) {
         if (mounted && level != null) setState(() => _systemVolume = level);
@@ -844,12 +903,21 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
     _systemChanges = system.changes.listen((level) {
       if (!mounted) return;
       setState(() => _systemVolume = level);
-      // The rocker moved it, so say so the way every other volume route does.
-      _showVolumeRail(joinVolume(
+      final shown = joinVolume(
         routing: _volumeRouting,
         engine: _appliedVolume ?? widget.controller.value.volume,
         system: level,
-      ));
+      );
+      // Mid-swipe - the rocker, or a raise Android's safety limit held back -
+      // the swipe carries on from the level that stands, and its rail stays
+      // until the finger lifts.
+      final swiping = _dragIsVolume == true;
+      if (swiping) _dragStart = shown.toDouble();
+      // The rocker moved it, so say so the way every other volume route does.
+      _showVolumeRail(
+        shown,
+        hideAfter: swiping ? null : const Duration(milliseconds: 900),
+      );
     });
   }
 
@@ -905,6 +973,7 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
                   : Icons.volume_down_rounded),
         value: level / _maxVolume,
         label: '$level%',
+        boostFrom: _maxVolume > 100 ? 100 / _maxVolume : null,
       ),
       hideAfter: hideAfter,
     );
@@ -965,16 +1034,36 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
       return;
     }
     final isVolume = gesture == PlayerGesture.volume;
+    final id = ++_dragId;
     _dragIsVolume = isVolume;
+    _dragReady = false;
+    _dragPending = 0;
+    _dragBoostHinted = false;
+    // Read as each swipe starts, as VLC's players do: the level can have moved
+    // with no word to the player - iOS reports no volume change while a film
+    // is paused, and Control Center or the notification shade move the
+    // brightness. A platform with no answer carries on from the mirrored one.
     if (isVolume) {
+      final system = _volumeRouting.touchesSystem
+          ? await _system?.read()
+          : null;
+      if (!mounted || id != _dragId) return;
+      if (system != null) _systemVolume = system;
       _dragStart = _volume.toDouble();
+      _dragMayBoost = _dragStart >= 100;
     } else {
-      try {
-        _brightness = await ScreenBrightness().application;
-      } catch (_) {
-        // Unsupported on this platform; carry on from the mirrored value.
-      }
+      final level = await _brightnessControl.read();
+      if (!mounted || id != _dragId) return;
+      if (level != null) _brightness = level;
       _dragStart = _brightness;
+    }
+    _dragReady = true;
+    final pending = _dragPending;
+    _dragPending = 0;
+    // A flick can end before the read lands: its travel still counts, and the
+    // rail then keeps its own clock.
+    if (pending != 0) {
+      _railTravel(isVolume, pending, live: _dragIsVolume == isVolume);
     }
   }
 
@@ -1042,24 +1131,43 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
     if (height <= 0) return;
 
     final travel = -d.primaryDelta! / height;
+    if (!_dragReady) {
+      _dragPending += travel;
+      return;
+    }
+    _railTravel(isVolume, travel);
+  }
+
+  /// Moves the swipe's level by [travel], a share of the screen's height, and
+  /// applies it. Not [live]: the finger has already lifted, so the rail hides
+  /// on its own clock.
+  void _railTravel(bool isVolume, double travel, {bool live = true}) {
     if (isVolume) {
-      _dragStart = (_dragStart + travel * _maxVolume).clamp(
+      var level = (_dragStart + travel * _maxVolume).clamp(
         0.0,
         _maxVolume * 1.0,
       );
+      if (level < 100) _dragMayBoost = false;
+      if (level > 100 && !_dragMayBoost) {
+        level = 100;
+        if (!_dragBoostHinted) {
+          _dragBoostHinted = true;
+          _showToast(AppLocalizations.of(context)!.swipeAgainToBoost);
+        }
+      }
+      _dragStart = level;
       // The same apply the keyboard uses, so the finger's level is remembered
       // for the mute toggle too. No hideAfter: the rail stays until the drag
       // ends and _railDragEnd starts the clock.
-      _setVolume(_dragStart.round(), hideAfter: null);
+      _setVolume(
+        _dragStart.round(),
+        hideAfter: live ? null : const Duration(milliseconds: 900),
+      );
     } else {
       _dragStart = (_dragStart + travel).clamp(0.0, 1.0);
       _brightness = _dragStart;
       _brightnessOverridden = true;
-      unawaited(
-        ScreenBrightness()
-            .setApplicationScreenBrightness(_brightness)
-            .catchError((_) {}),
-      );
+      _brightnessControl.set(_brightness);
       _rail.show(
         PlayerRail(
           icon: Icons.brightness_6_rounded,
@@ -1067,6 +1175,7 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
           label: '${(_brightness * 100).round()}%',
           onLeft: false,
         ),
+        hideAfter: live ? null : const Duration(milliseconds: 500),
       );
     }
   }
@@ -1093,6 +1202,13 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
     // gated on [_spaceHeld], which is set only by a Space this file already
     // claimed, so every other key is seen once, on the way down.
     if (event is KeyRepeatEvent) {
+      // A held volume key keeps stepping, as in VLC and every desktop player.
+      final step = _volumeKeyStep(event.logicalKey, bare: node.hasPrimaryFocus);
+      if (step != null) {
+        _chrome.poke();
+        _nudgeVolume(step);
+        return KeyEventResult.handled;
+      }
       if (!_spaceHeld || event.logicalKey != LogicalKeyboardKey.space) {
         return KeyEventResult.ignored;
       }
@@ -1220,26 +1336,9 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
       return KeyEventResult.handled;
     }
 
-    // The rocker is the phone's, not ours: off desktop this must fall through
-    // as ignored or the handset's own volume never moves and its HUD never
-    // appears, while the app walks its private libVLC gain. See
-    // [_ownsVolumeKeys] for the embedder path behind that.
-    if (key == LogicalKeyboardKey.audioVolumeUp ||
-        key == LogicalKeyboardKey.audioVolumeDown) {
-      if (!_ownsVolumeKeys) return KeyEventResult.ignored;
-      _nudgeVolume(
-        key == LogicalKeyboardKey.audioVolumeUp ? _volumeStep : -_volumeStep,
-      );
-      return KeyEventResult.handled;
-    }
-    // A bare arrow is the keyboard idiom, not a hardware key, and on TV it
-    // never reaches here - the directional guard above already spent it.
-    if (bare &&
-        (key == LogicalKeyboardKey.arrowUp ||
-            key == LogicalKeyboardKey.arrowDown)) {
-      _nudgeVolume(
-        key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep,
-      );
+    final step = _volumeKeyStep(key, bare: bare);
+    if (step != null) {
+      _nudgeVolume(step);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.keyM) {
@@ -1266,6 +1365,32 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
       }
     }
     return KeyEventResult.ignored;
+  }
+
+  /// The step a volume key asks for, or null for any other key - read for the
+  /// press and for every repeat.
+  ///
+  /// The rocker is the phone's, not ours: off desktop the AudioVolumeUp/Down
+  /// keys must fall through as ignored or the handset's own volume never moves
+  /// and its HUD never appears, while the app walks its private libVLC gain.
+  /// See [_ownsVolumeKeys] for the embedder path behind that. A bare arrow is
+  /// the keyboard idiom, not a hardware key, and on TV it never reaches here -
+  /// the directional guard in [_handleKey] spends it, a step per press.
+  int? _volumeKeyStep(LogicalKeyboardKey key, {required bool bare}) {
+    if (key == LogicalKeyboardKey.audioVolumeUp ||
+        key == LogicalKeyboardKey.audioVolumeDown) {
+      if (!_ownsVolumeKeys) return null;
+      return key == LogicalKeyboardKey.audioVolumeUp
+          ? _volumeStep
+          : -_volumeStep;
+    }
+    if (bare &&
+        !_isTv &&
+        (key == LogicalKeyboardKey.arrowUp ||
+            key == LogicalKeyboardKey.arrowDown)) {
+      return key == LogicalKeyboardKey.arrowUp ? _volumeStep : -_volumeStep;
+    }
+    return null;
   }
 
   /// Play or pause, read exactly as the glyph reads it: a rebuffer is still
@@ -1381,9 +1506,12 @@ class _VlcPlayerControlsState extends ConsumerState<VlcPlayerControls> {
   /// the gesture arena while a button is pressed, so the button's own tap is
   /// delayed behind the double-tap timeout and reads as unresponsive. Deeper
   /// widgets still win normally.
+  ///
+  /// No double-tap of its own, for the same reason: a double-tap recogniser
+  /// holds the arena open for its timeout, so every button on the bars, Back
+  /// included, answered 300 ms after the finger left.
   Widget _absorbGestures(Widget child) => GestureDetector(
     onTap: () {},
-    onDoubleTap: () {},
     onLongPress: () {},
     onVerticalDragStart: (_) {},
     onHorizontalDragStart: (_) {},

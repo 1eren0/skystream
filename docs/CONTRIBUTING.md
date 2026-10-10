@@ -17,6 +17,7 @@ To build SkyStream from source, you need the following installed on your machine
 2.  **Dart SDK**: Included with Flutter.
 3.  **Git**: For version control.
 4.  **IDE**: We recommend [VS Code](https://code.visualstudio.com/) or [Android Studio](https://developer.android.com/studio) with the Flutter and Dart plugins.
+5.  **A JDK 17 or newer** for desktop builds (Windows and Linux need one anyway, for `package:jni`). CloudStream extensions run on Java there; see step 5 below.
 
 ### Installation & Setup
 
@@ -44,7 +45,18 @@ To build SkyStream from source, you need the following installed on your machine
     ```
     *Tip: Use `dart run build_runner watch` to automatically regenerate code when you save changes.*
 
-5.  **Run the app**:
+    The one exception is the challenge browser's Pigeon bindings (`packages/challenge_browser`): the Dart file and its Kotlin, Swift, C++ and GObject counterparts are committed together, so they always match. After changing `packages/challenge_browser/pigeons/messages.dart`, regenerate all of them from that folder:
+    ```bash
+    dart run pigeon --input pigeons/messages.dart
+    ```
+
+5.  **Desktop only: bundle CloudStream's Java runtime**:
+    CloudStream extensions run on Java on macOS, Windows and Linux. This links a trimmed runtime from your JDK into the build, as the release workflows do, so the app needs no Java on the machine it runs on. Without it, the app uses the Java installed on the machine (17 or newer, Android Studio's included). See `packages/cs3_engine/BUILD_INSTRUCTIONS.md`.
+    ```bash
+    dart run packages/cs3_engine/tool/build_runtime.dart
+    ```
+
+6.  **Run the app**:
     Ensure you have an emulator running or a physical device connected.
     ```bash
     flutter run

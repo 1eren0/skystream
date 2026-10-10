@@ -45,13 +45,9 @@ class DownloadLauncher {
     if (resolveUrl.isEmpty) return;
 
     bool isCanceled = false;
-    unawaited(
-      LoadingDialog.show(
-        context,
-        message: l10n.resolving,
-        onCancel: () => isCanceled = true,
-      ),
-    );
+    // Its route, not a bare pop, takes it away: an extension's own full-screen
+    // screen can still be over it as the links call answers (Phase 7c).
+    final dialog = LoadingDialog.open(context, message: l10n.resolving, onCancel: () => isCanceled = true);
 
     try {
       // 2. Resolve streams
@@ -73,7 +69,7 @@ class DownloadLauncher {
       final streams = await provider.loadStreams(resolveUrl);
       if (isCanceled || !context.mounted) return;
 
-      Navigator.of(context).pop(); // Dismiss loading dialog
+      LoadingDialog.close(dialog);
 
       if (streams.isEmpty) {
         throw Exception('No download sources found for this item.');
@@ -83,7 +79,7 @@ class DownloadLauncher {
       _showSourcePicker(context, streams, item, resolveUrl);
     } catch (e) {
       if (!context.mounted) return;
-      if (!isCanceled) Navigator.of(context).pop(); // Dismiss if still there
+      if (!isCanceled) LoadingDialog.close(dialog);
       _ref
           .read(notificationServiceProvider)
           .showError(

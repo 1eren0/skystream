@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import '../../../cloudstream/presentation/cloudstream_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skystream/core/utils/responsive_breakpoints.dart';
@@ -10,6 +13,8 @@ import 'package:skystream/core/utils/image_fallbacks.dart';
 import 'package:skystream/shared/widgets/desktop_scroll_wrapper.dart';
 import 'package:skystream/shared/widgets/multimedia_card.dart';
 
+import '../search_sources.dart';
+import 'search_source_tag.dart';
 import 'stamp_in_label.dart';
 import 'bouncy_entry_animation.dart';
 
@@ -19,13 +24,26 @@ class SearchResultSection extends ConsumerStatefulWidget {
   final List<MultimediaItem> results;
   final FocusNode? firstCardFocusNode;
 
-  const SearchResultSection({
+  /// The system the section comes from, which its tag names.
+  final SearchSourceKind kind;
+
+  /// Opens the section's results in their own system's pages; without one,
+  /// they open on the details page.
+  final SearchSource? source;
+
+  SearchResultSection({
     super.key,
     required this.providerName,
     required this.providerId,
     required this.results,
     this.firstCardFocusNode,
-  });
+    SearchSourceKind? kind,
+    this.source,
+  }) : kind =
+           kind ??
+           (CloudStreamBadge.isCloudStream(providerId)
+               ? SearchSourceKind.cloudstream
+               : SearchSourceKind.skystream);
 
   @override
   ConsumerState<SearchResultSection> createState() =>
@@ -78,6 +96,8 @@ class _SearchResultSectionState extends ConsumerState<SearchResultSection> {
                             ),
                           ),
                           _buildDebugTag(context, ref),
+                          const SizedBox(width: 8),
+                          SearchSourceTag(widget.kind),
                         ],
                       ),
                     ),
@@ -133,9 +153,16 @@ class _SearchResultSectionState extends ConsumerState<SearchResultSection> {
                           focusNode: rIndex == 0
                               ? widget.firstCardFocusNode
                               : null,
-                          onTap: () => DetailsRoute(
-                            $extra: DetailsRouteExtra(item: item),
-                          ).push<void>(context),
+                          onTap: () {
+                            final source = widget.source;
+                            if (source != null) {
+                              unawaited(source.open(context, item));
+                              return;
+                            }
+                            DetailsRoute(
+                              $extra: DetailsRouteExtra(item: item),
+                            ).push<void>(context);
+                          },
                         ),
                       ),
                     );

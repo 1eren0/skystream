@@ -27,6 +27,7 @@ class StremioSourcesCard extends ConsumerWidget {
     required this.onOpen,
     this.episode,
     this.compact = false,
+    this.autofocus = false,
   });
 
   /// The season and episode this card resolves, or null for a movie.
@@ -41,6 +42,9 @@ class StremioSourcesCard extends ConsumerWidget {
 
   /// Passed through to [SourceSectionCard.compact].
   final bool compact;
+
+  /// Passed through to [SourceSectionAction.autofocus].
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -74,6 +78,7 @@ class StremioSourcesCard extends ConsumerWidget {
                 ),
           icon: Icons.search_rounded,
           onTap: onOpen,
+          autofocus: autofocus,
           // Full bleed on a phone; capped on a desktop, where the card sits in
           // a hero column that can run past a thousand points and a button
           // stretched across all of it reads as a banner.

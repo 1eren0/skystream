@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:challenge_browser/challenge_browser.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../network/clearance/challenge_triage.dart';
+import '../../network/clearance/clearance.dart';
+import '../../network/clearance/clearance_broker.dart';
 import '../models/nuvio_models.dart';
+import 'nuvio_clearance.dart';
 import 'nuvio_engine.dart';
 import 'nuvio_isolate_pool.dart';
 import 'nuvio_tmdb.dart';
@@ -31,7 +36,7 @@ NuvioRuntime nuvioRuntime(Ref ref) {
 /// starve fast ones.
 class NuvioRuntime {
   NuvioRuntime(this._tmdbKey, {NuvioIsolatePool? pool})
-    : _pool = pool ?? NuvioIsolatePool();
+    : _pool = pool ?? NuvioIsolatePool(broker: _answerWithApp);
 
   /// Scrapers call TMDB themselves; they get the key from the Nuvio tab.
   final String Function() _tmdbKey;
@@ -49,6 +54,114 @@ class NuvioRuntime {
 
   void dispose() => _pool.dispose();
 
+  static Future<Map<String, Object?>> _answerWithApp(
+    Map<dynamic, dynamic> call,
+  ) => answerCheck(
+    Clearance.instance.isReady ? ClearanceBroker(Clearance.instance) : null,
+    call,
+  );
+
+  /// The clearances a run starts with, with their check cookies only: a
+  /// scraper is third-party code, and a site's other cookies in the app's
+  /// browser can be a person's sign-in.
+  @visibleForTesting
+  static List<Map<String, Object?>> runGrants(Clearance clearance) => [
+    for (final live in clearance.liveClearances())
+      {
+        ...live,
+        'cookies': _checkCookies(
+          (live['cookies'] as Map? ?? const {}).cast<String, String>(),
+        ),
+      },
+  ];
+
+  /// [grant] as a scraper gets it: its check cookies only.
+  static NuvioGrant _scraperGrant(ClearanceGrant grant) => NuvioGrant(
+    site: grant.site,
+    cookies: _checkCookies(grant.cookies),
+    agent: grant.agent,
+  );
+
+  static Map<String, String> _checkCookies(Map<String, String> cookies) => {
+    for (final cookie in cookies.entries)
+      if (isCheckCookie(cookie.key)) cookie.key: cookie.value,
+  };
+
+  /// Answers a run's call about a bot check through [broker], as the app
+  /// answers CloudStream's engine: `challenged` (a request a site met with a
+  /// challenge), `fromPage` (a site that lets only the browser through) and
+  /// `solve` (`Cloudflare.solve`). Nothing without the app's clearances.
+  @visibleForTesting
+  static Future<Map<String, Object?>> answerCheck(
+    ClearanceBroker? broker,
+    Map<dynamic, dynamic> call,
+  ) async {
+    if (broker == null) return const {};
+    final source = call['source']?.toString();
+    final waiting = call['personWaiting'] == true;
+    InPageRequest? asked() {
+      final request = call['request'];
+      if (request is! Map || request['url'] is! String) return null;
+      return InPageRequest(
+        request['url'] as String,
+        method: request['method']?.toString() ?? 'GET',
+        headers: {
+          if (request['headers'] is Map)
+            for (final e in (request['headers'] as Map).entries)
+              if (e.value != null) e.key.toString(): e.value.toString(),
+        },
+        body: request['body']?.toString(),
+      );
+    }
+
+    Map<String, Object?> page(InPageResponse? response) => response == null
+        ? const {}
+        : NuvioAnswer(
+            response: {
+              'status': response.status,
+              'url': response.url.toString(),
+              'headers': response.headers,
+              'body': response.body,
+            },
+          ).toMap();
+
+    switch (call['op']) {
+      case 'challenged':
+        final request = asked();
+        if (request == null) return const {};
+        final answer = await broker.answerChallenge(
+          Uri.parse(request.url),
+          request,
+          source: source,
+          personWaiting: waiting,
+          retried: call['retried'] == true,
+        );
+        return switch (answer) {
+          SendWithGrant(:final grant) => NuvioAnswer(
+            grant: _scraperGrant(grant),
+          ).toMap(),
+          UsePageResponse(:final response) => page(response),
+          KeepChallenge() => const {},
+        };
+      case 'fromPage':
+        final request = asked();
+        if (request == null) return const {};
+        return page(await broker.sendFromPage(Uri.parse(request.url), request));
+      case 'solve':
+        final url = Uri.tryParse(call['url']?.toString() ?? '');
+        if (url == null || url.host.isEmpty) return const {};
+        final grant = await broker.solve(
+          url,
+          source: source,
+          personWaiting: waiting,
+        );
+        return grant == null
+            ? const {}
+            : NuvioAnswer(grant: _scraperGrant(grant)).toMap();
+    }
+    return const {};
+  }
+
   Future<List<NuvioStreamResult>> run({
     required String code,
     required String scraperId,
@@ -59,6 +172,8 @@ class NuvioRuntime {
     int? episode,
     Map<String, dynamic> settings = const {},
     Duration timeout = defaultTimeout,
+    String source = '',
+    bool personWaiting = false,
   }) async {
     final raw = await _pool.execute(
       NuvioEngineRequest(
@@ -72,6 +187,9 @@ class NuvioRuntime {
         settings: settings,
         tmdbKey: _tmdbKey(),
         timeoutMs: timeout.inMilliseconds,
+        source: source,
+        personWaiting: personWaiting,
+        grants: runGrants(Clearance.instance),
       ),
     );
 
@@ -115,6 +233,7 @@ class NuvioRuntime {
         tmdbKey: _tmdbKey(),
         timeoutMs: timeout.inMilliseconds,
         mode: 'settings',
+        grants: runGrants(Clearance.instance),
       ),
     );
     final decoded = _decode(raw);

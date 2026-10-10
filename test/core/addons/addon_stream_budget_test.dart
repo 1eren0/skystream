@@ -232,5 +232,6 @@ class _FakeClient extends AddonClient {
     required String id,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
   }) => handler(addon, type, id);
 }

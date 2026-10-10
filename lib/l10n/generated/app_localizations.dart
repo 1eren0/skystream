@@ -459,6 +459,24 @@ abstract class AppLocalizations {
   /// **'Version'**
   String get version;
 
+  /// No description provided for @openSourceLicences.
+  ///
+  /// In en, this message translates to:
+  /// **'Open-source licences'**
+  String get openSourceLicences;
+
+  /// No description provided for @openSourceLicencesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'SkyStream is free software under the GNU GPL v3'**
+  String get openSourceLicencesSubtitle;
+
+  /// The GPL notice on the licence page: copyright, the licence, no warranty, where the source is.
+  ///
+  /// In en, this message translates to:
+  /// **'Copyright © 2025–2026 SkyStream contributors.\nSkyStream is free software: you can redistribute it and modify it under the terms of the GNU General Public License, version 3. It comes with ABSOLUTELY NO WARRANTY. Its source code is at github.com/akashdh11/skystream.'**
+  String get appLegalese;
+
   /// No description provided for @enabled.
   ///
   /// In en, this message translates to:
@@ -3338,6 +3356,516 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No installed add-on matches \"{query}\".'**
   String addonManageNoMatch(String query);
+
+  /// Name of CloudStream, the app whose extensions SkyStream runs; a proper noun, never translated. Shown on the CloudStream screen and on badges marking its providers.
+  ///
+  /// In en, this message translates to:
+  /// **'CloudStream'**
+  String get cloudStream;
+
+  /// Search: tag on a section of SkyStream extensions' results; the app's name, never translated.
+  ///
+  /// In en, this message translates to:
+  /// **'SkyStream'**
+  String get searchTagSkyStream;
+
+  /// Search: tag on a section of a Stremio add-on's results; a proper noun, never translated.
+  ///
+  /// In en, this message translates to:
+  /// **'Stremio'**
+  String get searchTagStremio;
+
+  /// Search: tag on Nuvio's section, whose results open Nuvio's sources; a proper noun, never translated.
+  ///
+  /// In en, this message translates to:
+  /// **'Nuvio'**
+  String get searchTagNuvio;
+
+  /// Search: a Nuvio series result couldn't load its seasons from TMDB, so its episode picker can't open.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this series\' episodes'**
+  String get searchNuvioSeriesFailed;
+
+  /// Title of the screen, and of its Settings tile, for managing CloudStream extensions.
+  ///
+  /// In en, this message translates to:
+  /// **'CloudStream Extensions'**
+  String get cloudStreamExtensions;
+
+  /// Subtitle of the Settings tile that opens the CloudStream screen. ".cs3" is a file extension; keep it.
+  ///
+  /// In en, this message translates to:
+  /// **'Install and manage CloudStream (.cs3) extensions'**
+  String get cloudStreamExtensionsSubtitle;
+
+  /// Explains the CloudStream screen's switch while it is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Providers from installed extensions appear on Home, in search and in the provider list.'**
+  String get cloudStreamOn;
+
+  /// Explains the CloudStream screen's switch while it is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off: no CloudStream extension is loaded, and their providers are hidden everywhere. Nothing is uninstalled.'**
+  String get cloudStreamOff;
+
+  /// Button that checks every CloudStream repository for new extension versions.
+  ///
+  /// In en, this message translates to:
+  /// **'Check Updates'**
+  String get cloudStreamCheckUpdates;
+
+  /// The same button when updates are known; count is how many installed extensions have one.
+  ///
+  /// In en, this message translates to:
+  /// **'Check Updates ({count})'**
+  String cloudStreamCheckUpdatesCount(int count);
+
+  /// The check-updates button while the check runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get cloudStreamChecking;
+
+  /// Title of the dialog that adds a CloudStream repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Add CloudStream Repository'**
+  String get cloudStreamAddRepositoryTitle;
+
+  /// Body of the add-repository dialog. repo.json, plugins.json, cloudstreamrepo:// and megarepo are literal names; keep them.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a repository URL (repo.json), a plugin list URL (plugins.json) or a cloudstreamrepo:// link, or enter a shortcode such as megarepo.'**
+  String get cloudStreamAddRepositoryMessage;
+
+  /// Confirms the add-repository dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get cloudStreamAdd;
+
+  /// Message after a CloudStream repository was added: its name (a proper noun) and how many extensions it offers.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Added {name} · 1 extension} other{Added {name} · {count} extensions}}'**
+  String cloudStreamRepositoryAdded(int count, String name);
+
+  /// Adding a CloudStream repository failed; error is the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add repository: {error}'**
+  String cloudStreamCouldNotAdd(String error);
+
+  /// After checking for updates: no installed CloudStream extension has a newer version.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything is up to date'**
+  String get cloudStreamUpToDate;
+
+  /// After checking for updates: how many installed CloudStream extensions have a newer version.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 update available} other{{count} updates available}}'**
+  String cloudStreamUpdatesAvailable(int count);
+
+  /// After checking for updates: the repositories that could not be reached, by name (proper nouns), separated by commas.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check {names}'**
+  String cloudStreamCouldNotCheck(String names);
+
+  /// Refreshing one CloudStream repository failed: its name (a proper noun) and the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check {name}: {error}'**
+  String cloudStreamCouldNotCheckRepository(String name, String error);
+
+  /// Confirms removing a CloudStream repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get cloudStreamRemove;
+
+  /// Removing a CloudStream repository failed: its name (a proper noun) and the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove {name}: {error}'**
+  String cloudStreamCouldNotRemove(String name, String error);
+
+  /// The CloudStream screen's repositories tab before any repository was added.
+  ///
+  /// In en, this message translates to:
+  /// **'No repositories yet'**
+  String get cloudStreamNoRepositories;
+
+  /// Under a CloudStream repository's name: how many extensions it offers, and how many of them are installed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 extension} other{{count} extensions}} · {installed} installed'**
+  String cloudStreamRepositorySummary(int count, int installed);
+
+  /// Added to a CloudStream repository's summary when it could not be reached the last time it was checked.
+  ///
+  /// In en, this message translates to:
+  /// **'last check failed'**
+  String get cloudStreamLastCheckFailed;
+
+  /// Tooltip of the button that fetches a CloudStream repository again.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh Repository'**
+  String get cloudStreamRefreshRepository;
+
+  /// Under an installed CloudStream extension: the providers (sites) it adds, by name (proper nouns), separated by commas.
+  ///
+  /// In en, this message translates to:
+  /// **'Providers: {names}'**
+  String cloudStreamProviders(String names);
+
+  /// Under an installed CloudStream extension that the engine could not load; error is the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load: {error}'**
+  String cloudStreamCouldNotLoad(String error);
+
+  /// Tooltip of the button that installs a newer version of a CloudStream extension.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get cloudStreamUpdate;
+
+  /// Tooltip of the button that removes an installed CloudStream extension.
+  ///
+  /// In en, this message translates to:
+  /// **'Uninstall'**
+  String get cloudStreamUninstall;
+
+  /// A CloudStream extension, by name (a proper noun), was installed.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed {name}'**
+  String cloudStreamInstalled(String name);
+
+  /// A CloudStream extension, by name (a proper noun), was updated.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {name}'**
+  String cloudStreamUpdated(String name);
+
+  /// A CloudStream extension, by name (a proper noun), was uninstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed {name}'**
+  String cloudStreamUninstalled(String name);
+
+  /// A CloudStream extension downloaded but the engine could not load it: its name (a proper noun) and the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is installed, but it does not load: {error}'**
+  String cloudStreamInstalledNotLoading(String name, String error);
+
+  /// An action on a CloudStream extension failed; error is the reason, in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed: {error}'**
+  String cloudStreamFailed(String error);
+
+  /// Tag on a CloudStream extension its repository marks as not working.
+  ///
+  /// In en, this message translates to:
+  /// **'down'**
+  String get cloudStreamStatusDown;
+
+  /// Tag on a CloudStream extension its repository marks as slow.
+  ///
+  /// In en, this message translates to:
+  /// **'slow'**
+  String get cloudStreamStatusSlow;
+
+  /// Tag on a CloudStream extension its repository marks as a beta.
+  ///
+  /// In en, this message translates to:
+  /// **'beta'**
+  String get cloudStreamStatusBeta;
+
+  /// No description provided for @clearanceVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get clearanceVerify;
+
+  /// Above search results, while every bot check the search met is still being tried in a hidden page.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Checking 1 site automatically…} other{Checking {count} sites automatically…}}'**
+  String checksCheckingAll(int count);
+
+  /// Part of the summary above search results: sites whose bot check wants a person.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 site needs you} other{{count} sites need you}}'**
+  String checksNeedYou(int count);
+
+  /// Part of the summary above search results: sites whose bot check cleared.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} cleared'**
+  String checksCleared(int count);
+
+  /// Part of the summary above search results: sites still being checked automatically.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} checking'**
+  String checksChecking(int count);
+
+  /// Part of the summary above search results: sites that were unreachable, blocked, or sent the browser elsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 couldn\'t be checked} other{{count} couldn\'t be checked}}'**
+  String checksFailed(int count);
+
+  /// Above search results, while Verify gets a site's check.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening {site}\'s check…'**
+  String checksOpening(String site);
+
+  /// Shows each site that needs a person, one after another.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify all'**
+  String get checksVerifyAll;
+
+  /// Tooltip: opens the list of sites being checked.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the sites'**
+  String get checksShow;
+
+  /// Tooltip: closes the list of sites being checked.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide the sites'**
+  String get checksHide;
+
+  /// A site's row: an automatic try is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking automatically… {seconds} s'**
+  String checkStateChecking(int seconds);
+
+  /// A site's row: the automatic try wants a person.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs a quick check from you'**
+  String get checkStateNeedsYou;
+
+  /// A site's row: Verify is getting its check.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening the check… {seconds} s'**
+  String checkStateOpening(int seconds);
+
+  /// A site's row: its check cleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleared'**
+  String get checkStateCleared;
+
+  /// A site's row: its check cleared, and its extensions are searching again.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleared · searching again…'**
+  String get checkStateSearchingAgain;
+
+  /// A site's row: its page didn't load.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t reach the site'**
+  String get checkStateUnreachable;
+
+  /// A site's row: a block page, which no check clears.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked by the site; try without a VPN'**
+  String get checkStateBlocked;
+
+  /// A site's row: after its check, the site sent the browser to another site.
+  ///
+  /// In en, this message translates to:
+  /// **'Sends the browser to {host}; the extension may need updating'**
+  String checkStateSentElsewhere(String host);
+
+  /// A site's row: the person pressed Done, but the check is still there.
+  ///
+  /// In en, this message translates to:
+  /// **'Still not cleared'**
+  String get checkStateStillNotCleared;
+
+  /// A site's row: Android System WebView is too old for its check; nothing is tried until it's updated.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Android System WebView to clear this site\'s check'**
+  String get checkStateOutdated;
+
+  /// A site's row: Android System WebView is too old for its check, and this Android version can't update it.
+  ///
+  /// In en, this message translates to:
+  /// **'This device\'s browser is too old for this site\'s check'**
+  String get checkStateTooOld;
+
+  /// A site's row: its check passed, but the site still refuses requests; SkyStream waits before trying again.
+  ///
+  /// In en, this message translates to:
+  /// **'The check passed, but this site still refuses SkyStream. Trying again in a few minutes.'**
+  String get checkStateIneffective;
+
+  /// A site's row: its check came back after every clearance, even after a fresh start.
+  ///
+  /// In en, this message translates to:
+  /// **'This site keeps asking. Try later, or without a VPN.'**
+  String get checkStateKeepsAsking;
+
+  /// Button on an outdated-WebView row: opens Android System WebView in the Play Store.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get checkUpdateWebView;
+
+  /// A site's row: undo "Don't open this automatically".
+  ///
+  /// In en, this message translates to:
+  /// **'Ask again'**
+  String get checkAskAgain;
+
+  /// A site's row: its check won't open the sheet by itself, at the person's request.
+  ///
+  /// In en, this message translates to:
+  /// **'Won\'t open by itself'**
+  String get checkQuietNote;
+
+  /// After a site's name: the site it moved from.
+  ///
+  /// In en, this message translates to:
+  /// **'moved from {site}'**
+  String checkMovedFrom(String site);
+
+  /// In a site's row, when the engine couldn't say which CloudStream extension met its check.
+  ///
+  /// In en, this message translates to:
+  /// **'A CloudStream extension'**
+  String get checkCloudStreamExtension;
+
+  /// Under a spinner: the one site the screen waits on is being checked automatically.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking {site} automatically… {seconds} s'**
+  String checkLineChecking(String site, int seconds);
+
+  /// Home, or under a spinner: the one site the screen waits on needs a person.
+  ///
+  /// In en, this message translates to:
+  /// **'{site} needs a quick check'**
+  String checkLineNeedsYou(String site);
+
+  /// In an extension's settings sheet, in place of a part SkyStream can't draw yet (a web page).
+  ///
+  /// In en, this message translates to:
+  /// **'This part can\'t be shown in SkyStream yet.'**
+  String get extensionSheetCantShow;
+
+  /// Closes the top window of an extension's settings sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get extensionSheetClose;
+
+  /// In an extension's settings sheet's menu: closes every window, even one the extension won't let close.
+  ///
+  /// In en, this message translates to:
+  /// **'Force close'**
+  String get extensionSheetForceClose;
+
+  /// Tooltip of an extension's settings sheet's menu button.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get extensionSheetMore;
+
+  /// In an extension's settings sheet, when the extension's code failed on the person's action.
+  ///
+  /// In en, this message translates to:
+  /// **'The extension didn\'t take that: {error}'**
+  String extensionSheetError(String error);
+
+  /// A toast titled with an extension's name: the extension put text on the clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get extensionCopied;
+
+  /// Action of a toast showing a link an extension opened while its screen wasn't open: opens the link in the browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get extensionOpenLink;
+
+  /// Tooltip of the button that opens an installed CloudStream extension's own settings screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get cloudStreamSettings;
+
+  /// On an installed CloudStream extension's row while it reloads with its new settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Applying settings…'**
+  String get cloudStreamSettingsApplying;
+
+  /// Snackbar once an extension reloaded with its new settings.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s settings applied'**
+  String cloudStreamSettingsApplied(String name);
+
+  /// Snackbar when an extension's settings screen didn't open.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open {name}\'s settings: {error}'**
+  String cloudStreamSettingsFailed(String name, String error);
+
+  /// Snackbar when an extension didn't reload after its settings changed.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s settings are saved, but it didn\'t reload: {error}'**
+  String cloudStreamSettingsApplyFailed(String name, String error);
+
+  /// Button on an installed extension: opens the messages it showed while the app was busy (support, donate, notices).
+  ///
+  /// In en, this message translates to:
+  /// **'Support'**
+  String get cloudStreamSupport;
+
+  /// Snackbar when an extension's kept messages didn't open.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open {name}\'s messages: {error}'**
+  String cloudStreamSupportFailed(String name, String error);
+
+  /// Snackbar when an extension's code crashed while its settings screen was open.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s settings stopped: {error}'**
+  String cloudStreamSettingsStopped(String name, String error);
+
+  /// Player toast when a volume swipe that started under 100% stops at 100%: going past it into the boost takes a second swipe.
+  ///
+  /// In en, this message translates to:
+  /// **'Swipe up again to go past 100%'**
+  String get swipeAgainToBoost;
 }
 
 class _AppLocalizationsDelegate

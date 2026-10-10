@@ -130,6 +130,9 @@ class NuvioStreamService {
 
   void clearCache() => _cache.clear();
 
+  /// What a bot check a scraper's run meets is filed under.
+  static String sourceFor(String scraperId) => 'nuvio:$scraperId';
+
   /// Nuvio plugins are written against a *numeric TMDB id*. Feeding them an
   /// `tt…` or `tmdb:123` id is the difference between a provider answering and
   /// silently returning nothing, so normalise (and convert) first.
@@ -160,6 +163,9 @@ class NuvioStreamService {
     required String mediaType,
     int? season,
     int? episode,
+    bool personWaiting = false,
+    Set<String>? only,
+    bool fresh = false,
   }) async* {
     final repository = _ref.read(nuvioRepositoryProvider.notifier);
     var state = _ref.read(nuvioRepositoryProvider);
@@ -171,6 +177,7 @@ class NuvioStreamService {
     final type = NuvioScraperInfo.normalizeType(mediaType);
     final targets = state.activeScrapers
         .where((entry) => entry.scraper.supportsType(type))
+        .where((entry) => only == null || only.contains(entry.scraper.id))
         .toList();
 
     if (tmdbId.trim().isEmpty || targets.isEmpty) {
@@ -249,7 +256,8 @@ class NuvioStreamService {
         scraper.id,
         '${scraper.version}|${settings.isEmpty ? '' : jsonEncode(settings)}',
       );
-      final cached = _cache.lookup(key);
+      // A run again after a bot check cleared skips the answer it had.
+      final cached = fresh ? null : _cache.lookup(key);
       if (cached != null) {
         publish(scraper.id, scraper.name, cached);
         completed++;
@@ -277,6 +285,8 @@ class NuvioStreamService {
           season: season,
           episode: episode,
           settings: settings,
+          source: sourceFor(scraper.id),
+          personWaiting: personWaiting,
         );
         _cache.store(key, results);
         publish(scraper.id, scraper.name, results);

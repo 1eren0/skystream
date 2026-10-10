@@ -156,6 +156,17 @@ class AppLocalizationsKn extends AppLocalizations {
   String get version => 'ಆವೃತ್ತಿ';
 
   @override
+  String get openSourceLicences => 'ಓಪನ್-ಸೋರ್ಸ್ ಪರವಾನಗಿಗಳು';
+
+  @override
+  String get openSourceLicencesSubtitle =>
+      'SkyStream, GNU GPL v3 ಅಡಿಯಲ್ಲಿ ಉಚಿತ ತಂತ್ರಾಂಶವಾಗಿದೆ';
+
+  @override
+  String get appLegalese =>
+      'ಹಕ್ಕುಸ್ವಾಮ್ಯ © 2025–2026 SkyStream ಕೊಡುಗೆದಾರರು.\nSkyStream ಉಚಿತ ತಂತ್ರಾಂಶ: GNU ಜನರಲ್ ಪಬ್ಲಿಕ್ ಲೈಸೆನ್ಸ್, ಆವೃತ್ತಿ 3 ರ ನಿಯಮಗಳ ಅಡಿಯಲ್ಲಿ ನೀವು ಇದನ್ನು ಮರುಹಂಚಿಕೆ ಮಾಡಬಹುದು ಮತ್ತು ಮಾರ್ಪಡಿಸಬಹುದು. ಇದು ಯಾವುದೇ ಖಾತರಿ ಇಲ್ಲದೆ ಬರುತ್ತದೆ. ಇದರ ಮೂಲ ಕೋಡ್ github.com/akashdh11/skystream ನಲ್ಲಿದೆ.';
+
+  @override
   String get enabled => 'ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ';
 
   @override
@@ -1846,4 +1857,367 @@ class AppLocalizationsKn extends AppLocalizations {
   String addonManageNoMatch(String query) {
     return 'No installed add-on matches \"$query\".';
   }
+
+  @override
+  String get cloudStream => 'CloudStream';
+
+  @override
+  String get searchTagSkyStream => 'SkyStream';
+
+  @override
+  String get searchTagStremio => 'Stremio';
+
+  @override
+  String get searchTagNuvio => 'Nuvio';
+
+  @override
+  String get searchNuvioSeriesFailed =>
+      'ಈ ಸರಣಿಯ ಸಂಚಿಕೆಗಳನ್ನು ಲೋಡ್ ಮಾಡಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ';
+
+  @override
+  String get cloudStreamExtensions => 'CloudStream ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳು';
+
+  @override
+  String get cloudStreamExtensionsSubtitle =>
+      'CloudStream (.cs3) ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳನ್ನು ಸ್ಥಾಪಿಸಿ ಮತ್ತು ನಿರ್ವಹಿಸಿ';
+
+  @override
+  String get cloudStreamOn =>
+      'ಸ್ಥಾಪಿಸಿದ ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳ ಪ್ರೊವೈಡರ್‌ಗಳು ಹೋಮ್, ಹುಡುಕಾಟ ಮತ್ತು ಪ್ರೊವೈಡರ್ ಪಟ್ಟಿಯಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ.';
+
+  @override
+  String get cloudStreamOff =>
+      'ಆಫ್: ಯಾವುದೇ CloudStream ಎಕ್ಸ್‌ಟೆನ್ಶನ್ ಲೋಡ್ ಆಗುವುದಿಲ್ಲ, ಮತ್ತು ಅವುಗಳ ಪ್ರೊವೈಡರ್‌ಗಳು ಎಲ್ಲೆಡೆ ಮರೆಯಾಗುತ್ತವೆ. ಏನನ್ನೂ ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಲಾಗುವುದಿಲ್ಲ.';
+
+  @override
+  String get cloudStreamCheckUpdates => 'ಅಪ್‌ಡೇಟ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ';
+
+  @override
+  String cloudStreamCheckUpdatesCount(int count) {
+    return 'ಅಪ್‌ಡೇಟ್‌ಗಳನ್ನು ಪರಿಶೀಲಿಸಿ ($count)';
+  }
+
+  @override
+  String get cloudStreamChecking => 'ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…';
+
+  @override
+  String get cloudStreamAddRepositoryTitle => 'CloudStream ರೆಪೊಸಿಟರಿ ಸೇರಿಸಿ';
+
+  @override
+  String get cloudStreamAddRepositoryMessage =>
+      'ರೆಪೊಸಿಟರಿ URL (repo.json), ಪ್ಲಗಿನ್ ಪಟ್ಟಿ URL (plugins.json) ಅಥವಾ cloudstreamrepo:// ಲಿಂಕ್ ಅಂಟಿಸಿ, ಅಥವಾ megarepo ನಂತಹ ಶಾರ್ಟ್‌ಕೋಡ್ ನಮೂದಿಸಿ.';
+
+  @override
+  String get cloudStreamAdd => 'ಸೇರಿಸಿ';
+
+  @override
+  String cloudStreamRepositoryAdded(int count, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$name ಸೇರಿಸಲಾಗಿದೆ · $count ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳು',
+      one: '$name ಸೇರಿಸಲಾಗಿದೆ · 1 ಎಕ್ಸ್‌ಟೆನ್ಶನ್',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cloudStreamCouldNotAdd(String error) {
+    return 'ರೆಪೊಸಿಟರಿ ಸೇರಿಸಲಾಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get cloudStreamUpToDate => 'ಎಲ್ಲವೂ ಅಪ್‌ಡೇಟ್ ಆಗಿದೆ';
+
+  @override
+  String cloudStreamUpdatesAvailable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ಅಪ್‌ಡೇಟ್‌ಗಳು ಲಭ್ಯವಿವೆ',
+      one: '1 ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cloudStreamCouldNotCheck(String names) {
+    return '$names ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ';
+  }
+
+  @override
+  String cloudStreamCouldNotCheckRepository(String name, String error) {
+    return '$name ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get cloudStreamRemove => 'ತೆಗೆದುಹಾಕಿ';
+
+  @override
+  String cloudStreamCouldNotRemove(String name, String error) {
+    return '$name ತೆಗೆದುಹಾಕಲಾಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get cloudStreamNoRepositories => 'ಇನ್ನೂ ಯಾವುದೇ ರೆಪೊಸಿಟರಿಗಳಿಲ್ಲ';
+
+  @override
+  String cloudStreamRepositorySummary(int count, int installed) {
+    return '$count ಎಕ್ಸ್‌ಟೆನ್ಶನ್‌ಗಳು · $installed ಸ್ಥಾಪಿಸಲಾಗಿದೆ';
+  }
+
+  @override
+  String get cloudStreamLastCheckFailed => 'ಕೊನೆಯ ಪರಿಶೀಲನೆ ವಿಫಲವಾಗಿದೆ';
+
+  @override
+  String get cloudStreamRefreshRepository => 'ರೆಪೊಸಿಟರಿ ರಿಫ್ರೆಶ್ ಮಾಡಿ';
+
+  @override
+  String cloudStreamProviders(String names) {
+    return 'ಪ್ರೊವೈಡರ್‌ಗಳು: $names';
+  }
+
+  @override
+  String cloudStreamCouldNotLoad(String error) {
+    return 'ಲೋಡ್ ಆಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get cloudStreamUpdate => 'ಅಪ್‌ಡೇಟ್ ಮಾಡಿ';
+
+  @override
+  String get cloudStreamUninstall => 'ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿ';
+
+  @override
+  String cloudStreamInstalled(String name) {
+    return '$name ಸ್ಥಾಪಿಸಲಾಗಿದೆ';
+  }
+
+  @override
+  String cloudStreamUpdated(String name) {
+    return '$name ಅಪ್‌ಡೇಟ್ ಮಾಡಲಾಗಿದೆ';
+  }
+
+  @override
+  String cloudStreamUninstalled(String name) {
+    return '$name ತೆಗೆದುಹಾಕಲಾಗಿದೆ';
+  }
+
+  @override
+  String cloudStreamInstalledNotLoading(String name, String error) {
+    return '$name ಸ್ಥಾಪಿತವಾಗಿದೆ, ಆದರೆ ಲೋಡ್ ಆಗುತ್ತಿಲ್ಲ: $error';
+  }
+
+  @override
+  String cloudStreamFailed(String error) {
+    return 'ವಿಫಲವಾಗಿದೆ: $error';
+  }
+
+  @override
+  String get cloudStreamStatusDown => 'ಸ್ಥಗಿತ';
+
+  @override
+  String get cloudStreamStatusSlow => 'ನಿಧಾನ';
+
+  @override
+  String get cloudStreamStatusBeta => 'ಬೀಟಾ';
+
+  @override
+  String get clearanceVerify => 'ಪರಿಶೀಲಿಸಿ';
+
+  @override
+  String checksCheckingAll(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ಸೈಟ್‌ಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…',
+      one: '1 ಸೈಟ್ ಅನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String checksNeedYou(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ಸೈಟ್‌ಗಳಿಗೆ ನಿಮ್ಮ ಅಗತ್ಯವಿದೆ',
+      one: '1 ಸೈಟ್‌ಗೆ ನಿಮ್ಮ ಅಗತ್ಯವಿದೆ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String checksCleared(int count) {
+    return '$count ತೇರ್ಗಡೆ';
+  }
+
+  @override
+  String checksChecking(int count) {
+    return '$count ಪರಿಶೀಲನೆಯಲ್ಲಿ';
+  }
+
+  @override
+  String checksFailed(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ',
+      one: '1 ಪರಿಶೀಲಿಸಲಾಗಲಿಲ್ಲ',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String checksOpening(String site) {
+    return '$site ನ ಪರಿಶೀಲನೆ ತೆರೆಯಲಾಗುತ್ತಿದೆ…';
+  }
+
+  @override
+  String get checksVerifyAll => 'ಎಲ್ಲವನ್ನೂ ಪರಿಶೀಲಿಸಿ';
+
+  @override
+  String get checksShow => 'ಸೈಟ್‌ಗಳನ್ನು ತೋರಿಸಿ';
+
+  @override
+  String get checksHide => 'ಸೈಟ್‌ಗಳನ್ನು ಮರೆಮಾಡಿ';
+
+  @override
+  String checkStateChecking(int seconds) {
+    return 'ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ… $seconds ಸೆಕೆಂಡ್';
+  }
+
+  @override
+  String get checkStateNeedsYou => 'ನಿಮ್ಮಿಂದ ಒಂದು ಸಣ್ಣ ಪರಿಶೀಲನೆ ಬೇಕು';
+
+  @override
+  String checkStateOpening(int seconds) {
+    return 'ಪರಿಶೀಲನೆ ತೆರೆಯಲಾಗುತ್ತಿದೆ… $seconds ಸೆಕೆಂಡ್';
+  }
+
+  @override
+  String get checkStateCleared => 'ತೇರ್ಗಡೆಯಾಗಿದೆ';
+
+  @override
+  String get checkStateSearchingAgain =>
+      'ತೇರ್ಗಡೆಯಾಗಿದೆ · ಮತ್ತೆ ಹುಡುಕಲಾಗುತ್ತಿದೆ…';
+
+  @override
+  String get checkStateUnreachable => 'ಸೈಟ್ ತಲುಪಲಾಗಲಿಲ್ಲ';
+
+  @override
+  String get checkStateBlocked => 'ಸೈಟ್ ತಡೆದಿದೆ; VPN ಇಲ್ಲದೆ ಪ್ರಯತ್ನಿಸಿ';
+
+  @override
+  String checkStateSentElsewhere(String host) {
+    return 'ಬ್ರೌಸರ್ ಅನ್ನು $host ಗೆ ಕಳುಹಿಸುತ್ತದೆ; ವಿಸ್ತರಣೆಯನ್ನು ಅಪ್‌ಡೇಟ್ ಮಾಡಬೇಕಾಗಬಹುದು';
+  }
+
+  @override
+  String get checkStateStillNotCleared => 'ಇನ್ನೂ ತೇರ್ಗಡೆಯಾಗಿಲ್ಲ';
+
+  @override
+  String get checkStateOutdated =>
+      'ಈ ಸೈಟ್‌ನ ಪರಿಶೀಲನೆ ಪೂರ್ಣಗೊಳಿಸಲು Android System WebView ಅನ್ನು ಅಪ್‌ಡೇಟ್ ಮಾಡಿ';
+
+  @override
+  String get checkStateTooOld =>
+      'ಈ ಸಾಧನದ ಬ್ರೌಸರ್ ಈ ಸೈಟ್‌ನ ಪರಿಶೀಲನೆಗೆ ತುಂಬಾ ಹಳೆಯದು';
+
+  @override
+  String get checkStateIneffective =>
+      'ಪರಿಶೀಲನೆ ಪೂರ್ಣವಾಯಿತು, ಆದರೆ ಈ ಸೈಟ್ ಇನ್ನೂ SkyStream ಅನ್ನು ನಿರಾಕರಿಸುತ್ತಿದೆ. ಕೆಲವು ನಿಮಿಷಗಳಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಲಾಗುತ್ತದೆ.';
+
+  @override
+  String get checkStateKeepsAsking =>
+      'ಈ ಸೈಟ್ ಪದೇ ಪದೇ ಪರಿಶೀಲನೆ ಕೇಳುತ್ತಿದೆ. ನಂತರ ಅಥವಾ VPN ಇಲ್ಲದೆ ಪ್ರಯತ್ನಿಸಿ.';
+
+  @override
+  String get checkUpdateWebView => 'ಅಪ್‌ಡೇಟ್ ಮಾಡಿ';
+
+  @override
+  String get checkAskAgain => 'ಮತ್ತೆ ಕೇಳಿ';
+
+  @override
+  String get checkQuietNote => 'ತಾನಾಗಿ ತೆರೆಯುವುದಿಲ್ಲ';
+
+  @override
+  String checkMovedFrom(String site) {
+    return 'ಹಿಂದೆ $site ನಲ್ಲಿತ್ತು';
+  }
+
+  @override
+  String get checkCloudStreamExtension => 'ಒಂದು CloudStream ವಿಸ್ತರಣೆ';
+
+  @override
+  String checkLineChecking(String site, int seconds) {
+    return '$site ಅನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ… $seconds ಸೆಕೆಂಡ್';
+  }
+
+  @override
+  String checkLineNeedsYou(String site) {
+    return '$site ಗೆ ಒಂದು ಸಣ್ಣ ಪರಿಶೀಲನೆ ಬೇಕು';
+  }
+
+  @override
+  String get extensionSheetCantShow =>
+      'ಈ ಭಾಗವನ್ನು ಇನ್ನೂ SkyStream ನಲ್ಲಿ ತೋರಿಸಲಾಗುವುದಿಲ್ಲ.';
+
+  @override
+  String get extensionSheetClose => 'ಮುಚ್ಚಿ';
+
+  @override
+  String get extensionSheetForceClose => 'ಬಲವಂತವಾಗಿ ಮುಚ್ಚಿ';
+
+  @override
+  String get extensionSheetMore => 'ಇನ್ನಷ್ಟು';
+
+  @override
+  String extensionSheetError(String error) {
+    return 'ವಿಸ್ತರಣೆ ಇದನ್ನು ಸ್ವೀಕರಿಸಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get extensionCopied => 'ನಕಲಿಸಲಾಗಿದೆ';
+
+  @override
+  String get extensionOpenLink => 'ಲಿಂಕ್ ತೆರೆಯಿರಿ';
+
+  @override
+  String get cloudStreamSettings => 'ಸೆಟ್ಟಿಂಗ್‌ಗಳು';
+
+  @override
+  String get cloudStreamSettingsApplying =>
+      'ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಅನ್ವಯಿಸಲಾಗುತ್ತಿದೆ…';
+
+  @override
+  String cloudStreamSettingsApplied(String name) {
+    return '$name ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಅನ್ವಯಿಸಲಾಗಿದೆ';
+  }
+
+  @override
+  String cloudStreamSettingsFailed(String name, String error) {
+    return '$name ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ತೆರೆಯಲಾಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String cloudStreamSettingsApplyFailed(String name, String error) {
+    return '$name ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಉಳಿಸಲಾಗಿದೆ, ಆದರೆ ಅದು ಮರುಲೋಡ್ ಆಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String get cloudStreamSupport => 'ಬೆಂಬಲ';
+
+  @override
+  String cloudStreamSupportFailed(String name, String error) {
+    return '$name ಸಂದೇಶಗಳನ್ನು ತೆರೆಯಲಾಗಲಿಲ್ಲ: $error';
+  }
+
+  @override
+  String cloudStreamSettingsStopped(String name, String error) {
+    return '$name ಸೆಟ್ಟಿಂಗ್‌ಗಳು ನಿಂತುಹೋದವು: $error';
+  }
+
+  @override
+  String get swipeAgainToBoost => '100% ಮೀರಿ ಹೋಗಲು ಮತ್ತೆ ಮೇಲಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ';
 }

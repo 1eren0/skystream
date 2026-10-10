@@ -3,6 +3,7 @@
  * Runs real Nuvio provider bundles inside a real QuickJS build using the exact
  * polyfill SkyStream ships (lib/core/nuvio/data/nuvio_polyfill.dart).
  *
+ *   npm ci --prefix tool       (once: QuickJS and cheerio, from tool/package-lock.json)
  *   node tool/nuvio_qjs_harness.js <providers-dir> [--id 634649] [--type movie]
  *                                  [--only 4khdhub,hdhub4u] [--timeout 45]
  *

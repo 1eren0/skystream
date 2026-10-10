@@ -176,10 +176,9 @@ Future<void> _tapAt(WidgetTester tester, Offset at) async {
 
 /// Presses a control and waits for the press to actually resolve.
 ///
-/// A plain `pump()` is not enough anywhere in this tree: the bars sit inside
-/// the controls' own gesture absorber, which registers a double-tap of its
-/// own, and a double-tap recogniser holds the arena open until its timeout, so
-/// a button's tap is delivered ~300 ms after the finger leaves.
+/// With the double-tap window to spare: a tap that reaches the screen-wide
+/// layer, whose double-tap recogniser holds the arena open until its timeout,
+/// is delivered ~300 ms after the finger leaves.
 Future<void> _press(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
   await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));

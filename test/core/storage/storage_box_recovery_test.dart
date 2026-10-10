@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -33,8 +34,27 @@ void main() {
   // One directory for the whole file: the cache manager the reset empties is a
   // singleton that keeps the path it was first built with, so a per-test
   // directory leaves the second reset writing into a deleted one.
-  setUpAll(() {
+  //
+  // Built here, and given its folder, before any test runs. Built by the first
+  // reset instead, it starts making that folder without waiting, the reset
+  // deletes the temporary directory straight after, and about one run in
+  // twenty failed with "Creation failed ... libCachedImageData".
+  setUpAll(() async {
     scratch = Directory.systemTemp.createTempSync('hive_recovery_scratch');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => scratch.path,
+    );
+    final images = DefaultCacheManager();
+    try {
+      // Waits on the cache's database, which can't open under flutter_test, as
+      // in every reset below. Unawaited, that failure would be uncaught.
+      await images.emptyCache();
+    } catch (_) {
+      // Expected; see above.
+    }
+    await images.store.fileSystem.createFile('warm-up');
   });
 
   tearDownAll(() {

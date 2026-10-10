@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../core/addons/data/addon_client.dart';
+import '../../../core/addons/data/addon_repository.dart';
 import '../../../core/addons/data/addon_stream_service.dart';
+import '../../../core/network/clearance/clearance.dart';
 import '../../../core/addons/models/addon_meta.dart';
 import '../../../core/utils/responsive_breakpoints.dart';
 import '../../../shared/widgets/cards_wrapper.dart';
@@ -20,6 +23,7 @@ import 'addon_providers.dart';
 import 'addon_sources_sheet.dart';
 import 'widgets/stremio_sources_card.dart';
 import '../../../shared/focus/app_focus.dart';
+import '../../../shared/widgets/check_line.dart';
 
 /// Detail page for an add-on catalog entry, styled to match the TMDB Details Screen.
 /// Metadata comes from a `meta` add-on, playback from `stream` add-ons.
@@ -56,7 +60,19 @@ class _AddonDetailScreenState extends ConsumerState<AddonDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    final clearance = Clearance.instance;
+    _openedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
   }
+
+  /// When the page opened, on the checks' clock: the checks its add-ons meet
+  /// from then on stand under its details.
+  late final DateTime _openedAt;
+
+  /// What the add-ons' bot checks are filed under.
+  Set<String> get _addonSources => {
+    for (final addon in ref.read(addonRepositoryProvider).enabled)
+      AddonClient.sourceFor(addon),
+  };
 
   @override
   void dispose() {
@@ -192,8 +208,22 @@ class _AddonDetailScreenState extends ConsumerState<AddonDetailScreen> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  // A bot check one of the add-ons met: Verify, then the
+                  // details load again.
+                  CheckLines(
+                    sources: _addonSources,
+                    since: _openedAt,
+                    onCleared: (_) => ref.invalidate(
+                      addonMetaProvider(
+                        widget.type,
+                        widget.id,
+                        preferredAddonUrl: widget.addonUrl,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
+                    autofocus: true,
                     onPressed: () => ref.invalidate(
                       addonMetaProvider(
                         widget.type,
@@ -895,6 +925,8 @@ class _AddonDetailScreenState extends ConsumerState<AddonDetailScreen> {
 
     return StremioSourcesCard(
       compact: compact,
+      // The page's one way to its streams: a remote starts here.
+      autofocus: true,
       episode: isEpisode
           ? (
               season: firstVideo.season ?? activeSeason,

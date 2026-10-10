@@ -1,10 +1,16 @@
 package dev.akash.skystream
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.net.Uri
-import io.flutter.embedding.android.FlutterActivity
+import android.widget.FrameLayout
+import io.flutter.embedding.android.FlutterEngineConfigurator
+import io.flutter.embedding.android.FlutterFragment
+import io.flutter.embedding.android.RenderMode
+import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.plugins.util.GeneratedPluginRegister
 import io.flutter.plugin.common.MethodChannel
 import android.app.PictureInPictureParams
 import android.os.Build
@@ -14,7 +20,18 @@ import androidx.core.content.FileProvider
 import java.io.File
 import kotlin.math.roundToInt
 
-class MainActivity : FlutterActivity() {
+/**
+ * The app's only activity. CloudStream extensions cast their context to CloudStream's
+ * `MainActivity`, an `AppCompatActivity`, so this is one, hosting Flutter in a
+ * [FlutterFragment] the way `FlutterFragmentActivity` does rather than being a
+ * `FlutterActivity`.
+ */
+class MainActivity : com.lagradost.cloudstream3.MainActivity(), FlutterEngineConfigurator {
+    private var flutterFragment: FlutterFragment? = null
+
+    private val flutterEngine: FlutterEngine?
+        get() = flutterFragment?.flutterEngine
+
     private val CHANNEL = "dev.akash.skystream.player/pip"
     private val TV_CHANNEL = "dev.akash.skystream/tv_channel"
     private val PLAYER_CHANNEL = "dev.akash.skystream/external_player"
@@ -29,7 +46,8 @@ class MainActivity : FlutterActivity() {
     private var pipAspectRatio: Rational? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+        // A FlutterActivity registers plugins itself; a fragment's host has to.
+        GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         
         // PiP Channel
@@ -216,8 +234,28 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {}
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        switchLaunchThemeForNormalTheme()
         super.onCreate(savedInstanceState)
+        setContentView(FrameLayout(this).apply { id = FRAGMENT_CONTAINER_ID })
+        flutterFragment = supportFragmentManager.findFragmentByTag(TAG_FLUTTER_FRAGMENT) as FlutterFragment?
+            ?: FlutterFragment.withNewEngine()
+                .shouldAutomaticallyHandleOnBackPressed(true)
+                // Opaque, as FlutterFragmentActivity builds it. A fragment is
+                // transparent by default, which puts Flutter's surface above
+                // the whole window: platform views shown through hybrid
+                // composition (challenge_browser's page, in the check and
+                // sign-in sheets) were drawn beneath it, never seen.
+                .renderMode(RenderMode.surface)
+                .transparencyMode(TransparencyMode.opaque)
+                .build<FlutterFragment>()
+                .also {
+                    supportFragmentManager.beginTransaction()
+                        .add(FRAGMENT_CONTAINER_ID, it, TAG_FLUTTER_FRAGMENT)
+                        .commit()
+                }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val filter = android.content.IntentFilter(ACTION_MEDIA_CONTROL)
             // ContextCompat rather than registerReceiver(..., RECEIVER_NOT_EXPORTED)
@@ -320,7 +358,52 @@ class MainActivity : FlutterActivity() {
         return Rational((ratio * 10_000).roundToInt(), 10_000)
     }
 
+    /** The manifest's NormalTheme, as FlutterActivity applies it once the launch screen is up. */
+    private fun switchLaunchThemeForNormalTheme() {
+        try {
+            val metaData = packageManager.getActivityInfo(componentName, PackageManager.GET_META_DATA).metaData
+            val theme = metaData?.getInt("io.flutter.embedding.android.NormalTheme", -1) ?: -1
+            if (theme != -1) setTheme(theme)
+        } catch (e: PackageManager.NameNotFoundException) {
+        }
+    }
+
+    // Lifecycle calls a FlutterFragment needs from its host, as FlutterFragmentActivity forwards them.
+    override fun onPostResume() {
+        super.onPostResume()
+        flutterFragment?.onPostResume()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        flutterFragment?.onNewIntent(intent)
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        flutterFragment?.onUserLeaveHint()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        flutterFragment?.onTrimMemory(level)
+    }
+
+    @Deprecated("Forwarded for plugins that still use startActivityForResult")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        flutterFragment?.onActivityResult(requestCode, resultCode, data)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        flutterFragment?.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     companion object {
+        private const val TAG_FLUTTER_FRAGMENT = "flutter_fragment"
+        private val FRAGMENT_CONTAINER_ID = android.view.View.generateViewId()
+
         /**
          * Android's documented ceiling is 2.39:1 (and its reciprocal). Held a
          * hair inside it so a film that *is* exactly 2.39:1 cannot land on the

@@ -312,10 +312,6 @@ void main() {
   /// failed to find.
   group('Back on a locked phone', () {
     /// Locks through the padlock, the way a viewer does.
-    ///
-    /// `settle` rather than one pump: the bars are wrapped in the controls'
-    /// gesture absorber, whose double-tap recogniser holds the arena open for
-    /// its timeout, so a button press lands ~300 ms after the finger leaves.
     Future<void> lock(WidgetTester tester) async {
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
       expect(

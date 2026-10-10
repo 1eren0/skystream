@@ -48,6 +48,10 @@ class HotstarPlayerStyle {
   /// amber so it reads clearly against the blue progress and grey track.
   static const Color skipSegment = Color(0xFFFFC107);
 
+  /// The volume rail above 100 %, where libVLC amplifies: VLC's player draws
+  /// its boost in this orange (its `orange700`).
+  static const Color volumeBoost = Color(0xFFF57C00);
+
   // --- Motion ---
   static const Duration controlFadeDuration = Duration(milliseconds: 220);
   static const Duration fastMotionDuration = Duration(milliseconds: 160);

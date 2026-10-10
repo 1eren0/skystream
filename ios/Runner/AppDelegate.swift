@@ -152,5 +152,55 @@ import UserNotifications
 #endif
 
     downloadContinuedProcessingChannel = channel
+
+    // The player turns a handset to fit the video and lets go on the way out,
+    // but iOS keeps a turned interface for as long as it is still allowed: the
+    // app stayed sideways in an upright hand, and for good under the rotation
+    // lock. The player asks here for the device's own orientation, which UIKit
+    // reports with the lock applied.
+    let orientationChannel = FlutterMethodChannel(
+      name: "dev.akash.skystream/orientation",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    orientationChannel.setMethodCallHandler { call, result in
+      guard call.method == "followDevice" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let fallback = (call.arguments as? [String: Any])?["fallback"] as? String
+      // A turn of the main queue later, after the engine has applied the
+      // release the player sent first.
+      DispatchQueue.main.async {
+        AppDelegate.followDeviceOrientation(fallback: fallback)
+        result(nil)
+      }
+    }
+  }
+
+  /// Turns the app to the device's orientation. Face up, face down, or no
+  /// reading at all (a simulator has no accelerometer) turns it to `fallback`
+  /// instead, the way it was before the player turned it.
+  private static func followDeviceOrientation(fallback: String?) {
+    guard #available(iOS 16.0, *) else {
+      UIViewController.attemptRotationToDeviceOrientation()
+      return
+    }
+    let mask: UIInterfaceOrientationMask
+    switch UIDevice.current.orientation {
+    case .portrait: mask = .portrait
+    case .portraitUpsideDown: mask = .portraitUpsideDown
+    // A device turned left shows its interface turned right.
+    case .landscapeLeft: mask = .landscapeRight
+    case .landscapeRight: mask = .landscapeLeft
+    default:
+      switch fallback {
+      case "portrait": mask = .portrait
+      case "landscape": mask = .landscape
+      default: return
+      }
+    }
+    for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+      scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask))
+    }
   }
 }

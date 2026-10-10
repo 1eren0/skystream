@@ -48,6 +48,8 @@ void main() {
             ..headers.set('location', 'https://cutt.ly/404');
         case '/missing':
           request.response.statusCode = 404;
+        case '/busy':
+          request.response.statusCode = 429;
         default:
           request.response.statusCode = 404;
       }
@@ -112,9 +114,18 @@ void main() {
       expect(await service.resolveShortLink('$base/missing'), isNull);
     });
 
+    test('a shortener turning the lookup away is not "no such code"', () {
+      expect(
+        service.resolveShortLink('$base/busy'),
+        throwsA(isA<DioException>()),
+      );
+    });
+
     test('recognises the shortener dead ends', () {
       expect(service.isDeadEnd('https://cutt.ly/404'), isTrue);
       expect(service.isDeadEnd('https://cutt.ly/'), isTrue);
+      expect(service.isDeadEnd('https://py.md/404'), isTrue);
+      expect(service.isDeadEnd('https://py.md'), isTrue);
       expect(service.isDeadEnd(''), isTrue);
       expect(service.isDeadEnd('https://example.com/x.json'), isFalse);
     });

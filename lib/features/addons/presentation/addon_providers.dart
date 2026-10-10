@@ -267,7 +267,9 @@ Future<AddonMeta?> addonMeta(
     for (final requestType in manifest.requestTypesFor('meta', type)) {
       try {
         final meta = await client
-            .meta(addon, type: requestType, id: id)
+            // A person opened the title: a check that wants a click opens
+            // the check sheet.
+            .meta(addon, type: requestType, id: id, personWaiting: true)
             .timeout(ceiling);
         if (meta != null) return meta;
       } on TimeoutException {

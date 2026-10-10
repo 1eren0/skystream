@@ -78,6 +78,8 @@ lib/generated_plugin_registrant.dart
 
 # Project Specific
 *.g.dart
+# Except Pigeon's Dart bindings, committed with the platform ones it writes beside them
+!packages/challenge_browser/lib/src/messages.g.dart
 *.sky
 assets/plugins/
 # Torrent Server Binaries (re-downloadable via scripts/download_torrserver.sh)
@@ -89,7 +91,8 @@ skystream-plugins/
 skystream-tools/
 tree-shaking-test*.js
 
-node_modules/
+# No trailing slash: a symlink named node_modules is a file to git, and `node_modules/` let one in.
+node_modules
 # Widget Preview related
 .widget_preview/
 
@@ -98,6 +101,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Local builds' and tests' keys, for --dart-define-from-file (CI writes its own).
+/dart-defines.json
 
 reports/*
 research_notes/*

@@ -21,11 +21,18 @@ class TraktService implements TrackingService {
   static const String _kRefreshTokenKey = 'trakt_refresh_token';
   static const String _kExpiresAtKey = 'trakt_token_expires_at';
 
-  /// Trakt's device tokens last 90 days. Refreshing a day early means an
-  /// app that is opened at all regularly never presents an expired token,
-  /// and a device that has been off for a month still recovers on the first
-  /// call because the reactive 401 path below covers what the clock missed.
+  /// Trakt's access tokens last 7 days (90 before its 2026 authentication
+  /// change). Refreshing a day early means an app that is opened at all
+  /// regularly never presents an expired token, and a device that has been
+  /// off for a month still recovers on the first call because the reactive
+  /// 401 path below covers what the clock missed.
   static const Duration _refreshSkew = Duration(days: 1);
+
+  /// Where sign-in and token refreshes go: Trakt's docs ask for
+  /// `auth.trakt.tv` for every OAuth call now. `api.trakt.tv/oauth` still
+  /// answers, with no end date announced. The rest of the API stays on
+  /// `api.trakt.tv`.
+  static const String _authBase = 'https://auth.trakt.tv';
 
   /// Trakt requires a redirect_uri on the refresh grant even though the device
   /// flow never used one; this is their documented out-of-band placeholder.
@@ -82,7 +89,7 @@ class TraktService implements TrackingService {
     try {
       talker.debug('TraktService: Initiating Device PIN Flow...');
       final response = await _dio.post<dynamic>(
-        'https://api.trakt.tv/oauth/device/code',
+        '$_authBase/oauth/device/code',
         data: {'client_id': _clientId},
       );
 
@@ -112,7 +119,7 @@ class TraktService implements TrackingService {
         try {
           talker.debug('TraktService: Polling for token...');
           final tokenResponse = await _dio.post<dynamic>(
-            'https://api.trakt.tv/oauth/device/token',
+            '$_authBase/oauth/device/token',
             data: {
               'code': deviceCode,
               'client_id': _clientId,
@@ -157,9 +164,10 @@ class TraktService implements TrackingService {
   /// Persists an access/refresh pair from a token or refresh response.
   ///
   /// The previous implementation kept only `access_token` and threw away
-  /// `refresh_token` and `expires_in`, so roughly 90 days after connecting,
-  /// every Trakt call started 401-ing with nothing able to recover it and
-  /// nothing in the UI saying so.
+  /// `refresh_token` and `expires_in`, so once the token expired (90 days
+  /// then, 7 now), every Trakt call started 401-ing with nothing able to
+  /// recover it and nothing in the UI saying so. Trakt's refresh tokens are
+  /// single-use: each refresh's new one replaces the old.
   Future<void> _storeTokens(Map<String, dynamic> data) async {
     _accessToken = data['access_token'].toString();
     final refresh = data['refresh_token']?.toString();
@@ -178,10 +186,13 @@ class TraktService implements TrackingService {
       _expiresAtMs = null;
     }
 
-    await _storage.write(_kAccessTokenKey, _accessToken!);
+    // The refresh token first: the one it replaces is already spent, so an
+    // app killed before this write would sign the person out at its next
+    // refresh. Any write after it missing just costs one more refresh.
     if (_refreshToken != null) {
       await _storage.write(_kRefreshTokenKey, _refreshToken!);
     }
+    await _storage.write(_kAccessTokenKey, _accessToken!);
     if (_expiresAtMs != null) {
       await _storage.write(_kExpiresAtKey, _expiresAtMs!.toString());
     } else {
@@ -242,7 +253,7 @@ class TraktService implements TrackingService {
     try {
       talker.debug('TraktService: Refreshing access token...');
       final response = await _dio.post<dynamic>(
-        'https://api.trakt.tv/oauth/token',
+        '$_authBase/oauth/token',
         data: {
           'refresh_token': refresh,
           'client_id': _clientId,
@@ -264,11 +275,13 @@ class TraktService implements TrackingService {
       return false;
     } on DioException catch (e) {
       final status = e.response?.statusCode;
-      // A 4xx is Trakt telling us the grant is dead: revoked, reused or
-      // expired. Anything else — no response at all, a timeout, a 5xx — is the
-      // network, and logging someone out because their train went into a
-      // tunnel would be a worse bug than the one this fixes.
-      if (status != null && status >= 400 && status < 500) {
+      // A 400 (invalid_grant) or 401 (invalid_client) is Trakt telling us the
+      // grant is dead: revoked, reused, expired, or issued before its 2026
+      // authentication change. Anything else — no response at all, a timeout,
+      // a 5xx, a rate limit (429) or a bot check (403) — spends nothing, and
+      // logging someone out because their train went into a tunnel would be a
+      // worse bug than the one this fixes.
+      if (status == 400 || status == 401) {
         await _clearSession('refresh rejected with $status');
       } else {
         talker.error('TraktService: Token refresh failed, will retry', e);

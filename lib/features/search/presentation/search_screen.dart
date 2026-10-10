@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/extensions/extension_manager.dart';
 import '../../../core/utils/layout_constants.dart';
 import '../../../core/utils/responsive_breakpoints.dart';
 import 'search_history_provider.dart';
@@ -13,6 +14,8 @@ import 'widgets/search_result_section.dart';
 import 'widgets/search_header_bar.dart';
 import 'widgets/search_suggestion_row.dart';
 import 'widgets/bouncy_entry_animation.dart';
+import 'widgets/check_section.dart';
+import '../../../shared/widgets/cards_wrapper.dart';
 import '../../../shared/widgets/loading_indicator.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -30,6 +33,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final FocusNode _liveTvFocusNode = FocusNode();
   final FocusNode _firstSuggestionFocusNode = FocusNode();
   final FocusNode _firstResultFocusNode = FocusNode();
+  final FocusNode _checksFocusNode = FocusNode();
 
   /// Whether the recents-and-suggestions panel is covering the results.
   ///
@@ -83,51 +87,53 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       }
       return KeyEventResult.ignored;
     };
+  }
 
-    _moviesShowsFocusNode.onKeyEvent = (node, event) {
-      if (event is KeyDownEvent) {
-        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          // Back into the bar, at the control the pill actually sits next
-          // to: the clear button when there is one, else the field.
-          if (_controller.text.isNotEmpty) {
-            _clearButtonFocusNode.requestFocus();
-          } else {
-            _focusNode.requestFocus();
-          }
-          return KeyEventResult.handled;
+  /// The scope pill's keys. Not on the pills' own nodes: each pill is a
+  /// [CardsWrapper], whose [Focus] replaces a node's key handler with its
+  /// own. Keys it leaves bubble up to here.
+  KeyEventResult _pillKeys(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (_moviesShowsFocusNode.hasPrimaryFocus) {
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        // Back into the bar, at the control the pill actually sits next
+        // to: the clear button when there is one, else the field.
+        if (_controller.text.isNotEmpty) {
+          _clearButtonFocusNode.requestFocus();
+        } else {
+          _focusNode.requestFocus();
         }
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          _liveTvFocusNode.requestFocus();
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          return _focusBelowBar();
-        }
-      }
-      return KeyEventResult.ignored;
-    };
-
-    _liveTvFocusNode.onKeyEvent = (node, event) {
-      if (event is KeyDownEvent) {
-        if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          _moviesShowsFocusNode.requestFocus();
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          return _focusBelowBar();
-        }
-      }
-      return KeyEventResult.ignored;
-    };
-
-    _firstResultFocusNode.onKeyEvent = (node, event) {
-      if (event is KeyDownEvent &&
-          event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        _focusNode.requestFocus();
         return KeyEventResult.handled;
       }
+      if (key == LogicalKeyboardKey.arrowRight) {
+        _liveTvFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) return _focusBelowBar();
+    } else if (_liveTvFocusNode.hasPrimaryFocus) {
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        _moviesShowsFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) return _focusBelowBar();
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Up from the first result, which is a [CardsWrapper] too ([_pillKeys]).
+  KeyEventResult _resultKeys(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.arrowUp ||
+        !_firstResultFocusNode.hasPrimaryFocus) {
       return KeyEventResult.ignored;
-    };
+    }
+    if (_checksShown) {
+      _checksFocusNode.requestFocus();
+    } else {
+      _focusNode.requestFocus();
+    }
+    return KeyEventResult.handled;
   }
 
   /// The selected half of the scope pill, which is where a walk rightwards
@@ -150,6 +156,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _firstSuggestionFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
+    // The checks the search met sit between the bar and the results.
+    if (_checksShown) {
+      _checksFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
     final resultsState = ref.read(searchResultsProvider).asData?.value;
     final hasResults =
         resultsState != null &&
@@ -160,6 +171,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
     return KeyEventResult.ignored;
   }
+
+  /// Whether the check section is on screen. A node keeps its last context
+  /// after it leaves the tree, so the context alone doesn't say.
+  bool get _checksShown => _checksFocusNode.context?.mounted ?? false;
 
   void _onTextChanged() {
     if (!mounted) return;
@@ -225,6 +240,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _liveTvFocusNode.dispose();
     _firstSuggestionFocusNode.dispose();
     _firstResultFocusNode.dispose();
+    _checksFocusNode.dispose();
     super.dispose();
   }
 
@@ -276,27 +292,33 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         body: Column(
           children: [
             const SizedBox(height: 24),
-            SearchHeaderBar(
-              textController: _controller,
-              searchFocusNode: _focusNode,
-              clearButtonFocusNode: _clearButtonFocusNode,
-              moviesShowsFocusNode: _moviesShowsFocusNode,
-              liveTvFocusNode: _liveTvFocusNode,
-              isCompact: false,
-              // The recents and suggestions hang under the field as a
-              // flyout here rather than covering the results, which on a
-              // desktop-sized window would blank most of the screen to show
-              // four rows of text.
-              flyout: _buildFlyout(context),
-              onDismissFlyout: () {
-                if (mounted) setState(() => _isPanelOpen = false);
-              },
-              onSubmitted: _submitSearch,
-              onChanged: (val) {
-                ref
-                    .read(searchSuggestionControllerProvider.notifier)
-                    .onQueryChanged(val);
-              },
+            Focus(
+              canRequestFocus: false,
+              skipTraversal: true,
+              includeSemantics: false,
+              onKeyEvent: _pillKeys,
+              child: SearchHeaderBar(
+                textController: _controller,
+                searchFocusNode: _focusNode,
+                clearButtonFocusNode: _clearButtonFocusNode,
+                moviesShowsFocusNode: _moviesShowsFocusNode,
+                liveTvFocusNode: _liveTvFocusNode,
+                isCompact: false,
+                // The recents and suggestions hang under the field as a
+                // flyout here rather than covering the results, which on a
+                // desktop-sized window would blank most of the screen to show
+                // four rows of text.
+                flyout: _buildFlyout(context),
+                onDismissFlyout: () {
+                  if (mounted) setState(() => _isPanelOpen = false);
+                },
+                onSubmitted: _submitSearch,
+                onChanged: (val) {
+                  ref
+                      .read(searchSuggestionControllerProvider.notifier)
+                      .onQueryChanged(val);
+                },
+              ),
             ),
             Expanded(
               child: Padding(
@@ -562,6 +584,36 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildResultsView(BuildContext context) {
+    final state = ref.watch(searchResultsProvider).asData?.value;
+    final startedAt = state?.startedAt;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (startedAt != null)
+          CheckSection(
+            since: startedAt,
+            // The extensions', and the add-ons' that searched with them.
+            providers: [
+              ...ref.read(extensionManagerProvider.notifier).getAllProviders(),
+              ...?state?.others,
+            ],
+            rerunning: state!.rerunning,
+            focusNode: _checksFocusNode,
+          ),
+        Expanded(
+          child: Focus(
+            canRequestFocus: false,
+            skipTraversal: true,
+            includeSemantics: false,
+            onKeyEvent: _resultKeys,
+            child: _buildResultsList(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultsList(BuildContext context) {
     final searchResultsAsync = ref.watch(searchResultsProvider);
     final l10n = AppLocalizations.of(context)!;
 
@@ -591,6 +643,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 providerName: pResult.providerName,
                 providerId: pResult.providerId,
                 results: pResult.results,
+                kind: pResult.kind,
+                source: pResult.source,
                 firstCardFocusNode: index == 0 ? _firstResultFocusNode : null,
               );
             },

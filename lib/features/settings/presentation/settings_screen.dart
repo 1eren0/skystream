@@ -70,6 +70,12 @@ class SettingsScreen extends ConsumerWidget {
                       onTap: () => const NuvioPluginsRoute().go(context),
                     ),
                     SettingsTile(
+                      icon: Icons.cloud_rounded,
+                      title: l10n.cloudStreamExtensions,
+                      subtitle: l10n.cloudStreamExtensionsSubtitle,
+                      onTap: () => const CloudStreamRoute().go(context),
+                    ),
+                    SettingsTile(
                       icon: Icons.dashboard_customize_rounded,
                       title: 'Stremio Add-ons',
                       subtitle: 'Manage and discover installed add-ons',
@@ -261,6 +267,19 @@ class SettingsScreen extends ConsumerWidget {
           onTap: () => launchUrl(
             Uri.parse('https://t.me/+Ez5Vsv2pUUFjZmNl'),
             mode: LaunchMode.externalApplication,
+          ),
+        ),
+        // GPL-3.0 asks an interactive program to show its legal notices. The
+        // page lists SkyStream's licence beside every dependency's.
+        SettingsTile(
+          icon: Icons.gavel_rounded,
+          title: l10n.openSourceLicences,
+          subtitle: l10n.openSourceLicencesSubtitle,
+          onTap: () => showLicensePage(
+            context: context,
+            applicationName: 'SkyStream',
+            applicationVersion: versionAsync.value,
+            applicationLegalese: l10n.appLegalese,
           ),
         ),
         SettingsTile(

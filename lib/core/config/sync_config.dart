@@ -24,10 +24,11 @@ class SyncConfig {
   static const String malClientSecret = String.fromEnvironment(
     'MAL_CLIENT_SECRET',
   );
-  // MAL OAuth redirect URI. WebViewAuthDialog matches incoming redirects
-  // against this by host equality, not string prefix, so it has to stay a
-  // parseable URI rather than a fragment.
-  static const String malRedirectUri = 'http://localhost';
+
+  /// The redirect MyAnimeList's and AniList's clients have registered.
+  /// SkyStream's own browser catches it before it loads, so nothing listens
+  /// there: lib/features/tracking/sign_in/.
+  static const String signInRedirect = 'http://localhost';
 
   static const String simklClientId = String.fromEnvironment('SIMKL_CLIENT_ID');
   static const String simklClientSecret = String.fromEnvironment(

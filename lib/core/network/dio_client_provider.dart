@@ -1,8 +1,11 @@
 import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import 'clearance/clearance.dart';
 import 'doh_service.dart';
 import 'http_defaults.dart';
 
@@ -52,8 +55,7 @@ Dio dioClient(Ref ref) {
       final client = HttpClient();
       client.idleTimeout = const Duration(minutes: 5);
       client.maxConnectionsPerHost = 10;
-      client
-          .connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) async {
+      client.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) async {
         final host = uri.host;
 
         // Helper to upgrade the socket to TLS if the scheme is https
@@ -112,6 +114,12 @@ Dio dioClient(Ref ref) {
       return client;
     },
   );
+
+  // Bot checks (Cloudflare, DDoS-Guard): a cleared site's requests carry its
+  // clearance, and a check is solved and the request sent again. See
+  // clearance/clearance.dart.
+  final clearance = Clearance.instance.interceptorFor(dio);
+  if (clearance != null) dio.interceptors.add(clearance);
 
   return dio;
 }

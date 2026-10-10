@@ -6,16 +6,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/addons/data/addon_client.dart';
 import '../../../core/addons/data/addon_playback_launcher.dart';
 import '../../../core/addons/data/addon_repository.dart';
 import '../../../core/addons/data/addon_stream_service.dart';
 import '../../../core/addons/data/debrid_service.dart';
+import '../../../core/addons/models/addon_manifest.dart';
 import '../../../core/addons/models/addon_meta.dart';
 import '../../../core/addons/models/addon_stream_source.dart';
 import '../../../core/domain/entity/multimedia_item.dart';
+import '../../../core/network/clearance/clearance.dart';
+import '../../../core/network/clearance/site_checks.dart';
 import '../../../core/services/download_service.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/focus/app_focus.dart';
+import '../../../shared/focus/row_traversal.dart';
+import '../../../shared/focus/text_field_keys.dart';
+import '../../../shared/widgets/check_line.dart';
 import '../../details/presentation/playback_launcher.dart';
 import '../../settings/presentation/player_settings_provider.dart';
 import '../../sources/presentation/source_sheet_widgets.dart';
@@ -69,6 +76,17 @@ class AddonSourcesSheet extends ConsumerStatefulWidget {
 class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
   StreamSubscription<AddonStreamProgress>? _sub;
   AddonStreamProgress _result = const AddonStreamProgress(isLoading: true);
+
+  /// The add-ons' own progress, and each ask again of add-ons whose bot check
+  /// cleared after they had answered; [_result] is them merged.
+  AddonStreamProgress _main = const AddonStreamProgress(isLoading: true);
+  final Map<String, ({Set<String> ids, AddonStreamProgress progress})> _reruns =
+      {};
+  final List<StreamSubscription<AddonStreamProgress>> _rerunSubs = [];
+
+  /// When the add-ons were asked, on the checks' clock: the checks they meet
+  /// from then on are the sheet's lines.
+  DateTime _startedAt = DateTime.now();
   bool _disposed = false;
   bool _showDetails = false;
   bool _hdOnly = false;
@@ -76,7 +94,13 @@ class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
   String? _debridStatus;
 
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocus = FocusNode();
+
+  /// Up and down leave the field while the keyboard is put away, and Select
+  /// brings it back - see [remoteTextFieldKeys].
+  final FocusNode _searchFocus = FocusNode(
+    debugLabel: 'links search',
+    onKeyEvent: remoteTextFieldKeys,
+  );
   bool _searchOpen = false;
   String _searchQuery = '';
 
@@ -95,6 +119,9 @@ class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
   void dispose() {
     _disposed = true;
     _sub?.cancel();
+    for (final sub in _rerunSubs) {
+      sub.cancel();
+    }
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -162,17 +189,94 @@ class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
 
     setState(() => _result = const AddonStreamProgress(isLoading: true));
     await _sub?.cancel();
+    for (final sub in _rerunSubs) {
+      await sub.cancel();
+    }
+    _rerunSubs.clear();
+    _reruns.clear();
+    final clearance = Clearance.instance;
+    _startedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
+    // A person opened the sheet: a check that wants a click opens its sheet.
     _sub = ref
         .read(addonStreamServiceProvider)
         .resolve(
           addons: ref.read(addonRepositoryProvider).enabled,
           request: widget.request,
           forceRefresh: forceRefresh,
+          personWaiting: true,
         )
         .listen((progress) {
           if (_disposed) return;
-          setState(() => _result = progress);
+          _main = progress;
+          setState(() => _result = _merged());
         });
+  }
+
+  List<ManagedAddon> get _streamAddons => AddonStreamService.streamProvidersOf(
+    ref.read(addonRepositoryProvider).enabled,
+  );
+
+  AddonStreamProgress _merged() {
+    var streams = _main.streams;
+    var statuses = _main.statuses;
+    var loading = _main.isLoading;
+    for (final rerun in _reruns.values) {
+      final names = {for (final s in rerun.progress.statuses) s.addonName};
+      streams = [
+        for (final stream in streams)
+          if (!rerun.ids.contains(stream.addonId)) stream,
+        ...rerun.progress.streams,
+      ];
+      statuses = [
+        for (final status in statuses)
+          if (!names.contains(status.addonName)) status,
+        ...rerun.progress.statuses,
+      ];
+      loading = loading || rerun.progress.isLoading;
+    }
+    return AddonStreamProgress(
+      streams: streams,
+      statuses: statuses,
+      completedCount: _main.completedCount,
+      totalCount: _main.totalCount,
+      isLoading: loading,
+      error: _main.error,
+    );
+  }
+
+  /// [check] cleared: the add-ons that met it and had answered are asked
+  /// again, past their cached answer.
+  void _rerunAfter(SiteCheck check) {
+    if (_disposed) return;
+    final names = {for (final a in _streamAddons) a.id: a.displayName};
+    final ids = <String>{
+      for (final source in check.sources)
+        if (source.startsWith('addon:')) source.substring('addon:'.length),
+    };
+    ids.removeWhere((id) {
+      final status = _result.statuses
+          .where((s) => s.addonName == names[id])
+          .firstOrNull;
+      return status == null || status.outcome == AddonQueryOutcome.pending;
+    });
+    if (ids.isEmpty) return;
+    final key = (ids.toList()..sort()).join(',');
+    _rerunSubs.add(
+      ref
+          .read(addonStreamServiceProvider)
+          .resolve(
+            addons: ref.read(addonRepositoryProvider).enabled,
+            request: widget.request,
+            forceRefresh: true,
+            personWaiting: true,
+            only: ids,
+          )
+          .listen((progress) {
+            if (_disposed) return;
+            _reruns[key] = (ids: ids, progress: progress);
+            setState(() => _result = _merged());
+          }),
+    );
   }
 
   List<AddonStreamSource> get _visible => _result.streams
@@ -568,163 +672,100 @@ class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Telemetry Status Strip
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              kSourceSheetGutter,
-              4,
-              kSourceSheetGutter,
-              4,
-            ),
-            child: Row(
+          // Above the streams, UP and DOWN go row by row: the status line's
+          // Details stands right of the filters, outside their column.
+          FocusTraversalGroup(
+            policy: RowTraversalPolicy(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Text(
-                    _result.isLoading
-                        ? 'Asking add-ons… '
-                              '${_result.completedCount}/${_result.totalCount}'
-                        : '${_result.streams.length} links from '
-                              '${_result.respondedCount} add-on(s)',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _result.isLoading
-                          ? cs.primary
-                          : cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (_result.isLoading)
-                  SizedBox(
-                    width: 80,
-                    child: LinearProgressIndicator(
-                      value: _result.totalCount == 0
-                          ? null
-                          : _result.completedCount / _result.totalCount,
-                      minHeight: 2.5,
-                      backgroundColor: glass.ink.withValues(alpha: 0.1),
-                      valueColor: AlwaysStoppedAnimation(cs.primary),
-                    ),
-                  )
-                else if (_result.statuses.isNotEmpty)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(50, 26),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () =>
-                        setState(() => _showDetails = !_showDetails),
-                    child: Text(
-                      _showDetails ? 'Hide' : 'Details',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          if (_debridStatus != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                kSourceSheetGutter,
-                0,
-                kSourceSheetGutter,
-                4,
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _debridStatus!,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: cs.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          if (_showDetails) _details(theme, cs),
-
-          // Filter Chips Rail
-          SizedBox(
-            height: 34,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: kSourceSheetGutter,
-              ),
-              children: [
+                // Telemetry Status Strip
                 Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: SourceFilterChip(
-                    text: '1080p+',
-                    selected: _hdOnly,
-                    outline: glass.tint(0.15),
-                    onSelected: (value) => setState(() => _hdOnly = value),
+                  padding: const EdgeInsets.fromLTRB(
+                    kSourceSheetGutter,
+                    4,
+                    kSourceSheetGutter,
+                    4,
                   ),
-                ),
-                for (final filter in _KindFilter.values)
-                  if (filter == _KindFilter.all ||
-                      _result.streams.any(filter.matches))
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: SourceFilterChip(
-                        text: filter.label,
-                        selected: _kind == filter,
-                        outline: glass.tint(0.15),
-                        onSelected: (_) => setState(() => _kind = filter),
-                      ),
-                    ),
-              ],
-            ),
-          ),
-
-          if (_searchOpen) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                kSourceSheetGutter,
-                6,
-                kSourceSheetGutter,
-                0,
-              ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocus,
-                textInputAction: TextInputAction.search,
-                onChanged: (value) => setState(() => _searchQuery = value),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                  suffixIcon: _searchQuery.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: l10n.discoverClearSearch,
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          onPressed: _clearSearch,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _result.isLoading
+                              ? 'Asking add-ons… '
+                                    '${_result.completedCount}/${_result.totalCount}'
+                              : '${_result.streams.length} links from '
+                                    '${_result.respondedCount} add-on(s)',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: _result.isLoading
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                  hintText: l10n.addonSourcesSearchHint,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
+                      ),
+                      if (_result.isLoading)
+                        SizedBox(
+                          width: 80,
+                          child: LinearProgressIndicator(
+                            value: _result.totalCount == 0
+                                ? null
+                                : _result.completedCount / _result.totalCount,
+                            minHeight: 2.5,
+                            backgroundColor: glass.ink.withValues(alpha: 0.1),
+                            valueColor: AlwaysStoppedAnimation(cs.primary),
+                          ),
+                        )
+                      else if (_result.statuses.isNotEmpty)
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(50, 26),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () =>
+                              setState(() => _showDetails = !_showDetails),
+                          child: Text(
+                            _showDetails ? 'Hide' : 'Details',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            ),
-            if (_result.streams.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: SizedBox(
+
+                if (_debridStatus != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      kSourceSheetGutter,
+                      0,
+                      kSourceSheetGutter,
+                      4,
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _debridStatus!,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                if (_showDetails) _details(theme, cs),
+
+                // Filter Chips Rail
+                SizedBox(
                   height: 34,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
@@ -732,27 +773,115 @@ class _AddonSourcesSheetState extends ConsumerState<AddonSourcesSheet> {
                       horizontal: kSourceSheetGutter,
                     ),
                     children: [
-                      for (final name in addonStreamProviderLabels(
-                        _result.streams,
-                      ))
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: SourceFilterChip(
-                            text: name,
-                            selected:
-                                _searchQuery.trim().toLowerCase() ==
-                                name.toLowerCase(),
-                            outline: glass.tint(0.15),
-                            onSelected: (selected) =>
-                                _applyProviderFilter(name, selected: selected),
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: SourceFilterChip(
+                          text: '1080p+',
+                          selected: _hdOnly,
+                          outline: glass.tint(0.15),
+                          onSelected: (value) =>
+                              setState(() => _hdOnly = value),
                         ),
+                      ),
+                      for (final filter in _KindFilter.values)
+                        if (filter == _KindFilter.all ||
+                            _result.streams.any(filter.matches))
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: SourceFilterChip(
+                              text: filter.label,
+                              selected: _kind == filter,
+                              outline: glass.tint(0.15),
+                              onSelected: (_) => setState(() => _kind = filter),
+                            ),
+                          ),
                     ],
                   ),
                 ),
-              ),
-          ],
 
+                if (_searchOpen) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      kSourceSheetGutter,
+                      6,
+                      kSourceSheetGutter,
+                      0,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      textInputAction: TextInputAction.search,
+                      onChanged: (value) =>
+                          setState(() => _searchQuery = value),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: l10n.discoverClearSearch,
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                onPressed: _clearSearch,
+                              ),
+                        hintText: l10n.addonSourcesSearchHint,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_result.streams.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: SizedBox(
+                        height: 34,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: kSourceSheetGutter,
+                          ),
+                          children: [
+                            for (final name in addonStreamProviderLabels(
+                              _result.streams,
+                            ))
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: SourceFilterChip(
+                                  text: name,
+                                  selected:
+                                      _searchQuery.trim().toLowerCase() ==
+                                      name.toLowerCase(),
+                                  outline: glass.tint(0.15),
+                                  onSelected: (selected) =>
+                                      _applyProviderFilter(
+                                        name,
+                                        selected: selected,
+                                      ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+
+                // The bot checks the sheet's add-ons met, with Verify: right above
+                // the streams they hold back, the first stop UP from them on TV.
+                CheckLines(
+                  sources: {
+                    for (final addon in _streamAddons)
+                      AddonClient.sourceFor(addon),
+                  },
+                  since: _startedAt,
+                  onCleared: _rerunAfter,
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 6),
 
           // Stream Source List (Structured with Top Pick & Ready to play)

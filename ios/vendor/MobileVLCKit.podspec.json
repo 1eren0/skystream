@@ -1,6 +1,6 @@
 {
   "name": "MobileVLCKit",
-  "version": "3.7.3",
+  "version": "3.7.4",
   "summary": "MobileVLCKit is an Objective-C wrapper for libvlc's external interface on iOS.",
   "homepage": "https://code.videolan.org/videolan/VLCKit",
   "license": {
@@ -62,8 +62,8 @@
     "Benjamin Adolphi": "b.adolphi@gmail.com"
   },
   "source": {
-    "http": "https://github.com/akashdh11/skystream/releases/download/vlckit-3.7.3/MobileVLCKit-3.7.3.tar.xz",
-    "sha256": "592265d60369c17abbe0223da367ae6aa23cebe0ea4f9b1bb2232ca595cd25f9"
+    "http": "https://download.videolan.org/pub/cocoapods/prod/MobileVLCKit-3.0-20260922-1512.tar.xz",
+    "sha256": "c649c4c47bd065b3a5511746361b5a9066a34033f2df9cbc9454409c0f363b52"
   },
   "ios": {
     "vendored_frameworks": "MobileVLCKit.xcframework"
@@ -92,5 +92,5 @@
     "CLANG_CXX_LANGUAGE_STANDARD": "c++14",
     "CLANG_CXX_LIBRARY": "libc++"
   },
-  "description": "MobileVLCKit is an Objective-C wrapper for libvlc's external interface on iOS.\n\nVENDORED COPY -- do not edit by hand except to bump the version.\n\nIdentical to the upstream MobileVLCKit 3.7.3 podspec except for `source`, which points at a SkyStream release asset instead of download.videolan.org. VideoLAN publishes these frameworks nowhere else: no mirror carries /pub/cocoapods/, there are no GitHub release assets, and the SPM manifest points at the same host. So when that host went down on 2026-09-20 it took the macOS and iOS builds with it, and a podspec `source` accepts exactly one URL -- there is no mirror list to fall back to the way windows/CMakeLists.txt has one.\n\nThe payload is the upstream framework: it was unpacked from the CocoaPods cache, which CocoaPods had itself filled only after verifying VideoLAN's published archive against\n  0d04059906962ddc9a7bd1ebaa12e1f9ae85eb2466116a97a2f46886dd27a0a9\n  (https://download.videolan.org/pub/cocoapods/prod/MobileVLCKit-3.7.3-319ed2c0-79128878.tar.xz)\nThe repacked tarball is byte-identical on extraction, verified with diff -rq, so the sha256 below is this archive's rather than VideoLAN's. To re-anchor to the upstream digest, download the URL above once that host is reachable, upload it under the same release tag, and restore both fields from the upstream spec."
+  "description": "MobileVLCKit is an Objective-C wrapper for libvlc's external interface on iOS. VENDORED COPY -- do not edit by hand except to bump the version. Identical to the upstream MobileVLCKit 3.7.4 podspec (VLC 3.0.24, built 2026-09-22), source and digest included: it downloads from download.videolan.org, by choice (2026-10-02). If that host goes down again, as it did on 2026-09-20, restore a SkyStream-hosted copy as 3.7.3 had: upload the archive as a release asset under a `vlckit-3.7.4` tag and point `source.http` there; the sha256 stays VideoLAN's as long as the bytes are unchanged."
 }

@@ -3,9 +3,10 @@ import '../../l10n/generated/app_localizations.dart';
 /// What the launch-time extension pass changed, and the toasts that say so.
 ///
 /// Each extension system reports on its own - SkyStream plugins, Nuvio
-/// scrapers, Stremio add-ons - and the launch merges the reports. However
-/// much happened, that is at most three toasts: the toast stack holds four,
-/// and a fifth pushes the oldest off before anyone has read it.
+/// scrapers, Stremio add-ons, CloudStream extensions - and the launch merges
+/// the reports. However much happened, that is at most three toasts: the
+/// toast stack holds four, and a fifth pushes the oldest off before anyone
+/// has read it.
 class ExtensionUpdateReport {
   const ExtensionUpdateReport({
     this.updated = const <String>[],
@@ -36,7 +37,9 @@ class ExtensionUpdateReport {
   final List<String> updated;
 
   /// Repositories that a collection the user follows listed for the first
-  /// time, and that were added: their names, under the collection's name.
+  /// time, and that were added: their names, under the collection's name. A
+  /// CloudStream plugin that adds repositories (MegaRepo's) counts as a
+  /// collection, under the plugin's name.
   final Map<String, List<String>> newRepositories;
 
   /// Plugins that a repository listed for the first time: their names, under

@@ -14,11 +14,15 @@
 ///     silently bought a Windows plugin that drives DDC/CI — I²C over the
 ///     display cable — at its registrar and again on `WM_CLOSE`, for a feature
 ///     `vlc_player_controls.dart` returns early from on desktop. Users reported
-///     SkyStream resetting their monitor's brightness.
+///     SkyStream resetting their monitor's brightness. It is gone now, with
+///     `flutter_volume_controller`: the player's own plugin, `vlc_player`,
+///     does both on Android and iOS and registers nothing new anywhere.
 ///   * `flutter_inappwebview` was added for the Cloudflare bypass. It silently
 ///     bought a Windows plugin whose constructor builds a WinRT dispatcher
 ///     queue, a Graphics.Capture probe, a hardware D3D11 device and a
 ///     compositor before any Dart runs — none of which this app ever uses.
+///     It is gone now: bot checks and tracker sign-in moved to
+///     `challenge_browser` (webview roadmap, Phase 2).
 ///
 /// This test is the ledger. It does not judge; it makes a change to the native
 /// surface **impossible to make silently**. When it fails, the diff names the
@@ -49,24 +53,22 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
   'android': {
     'android_file_picker',
     'background_downloader',
+    // Read before adding, per this file's rule. Registration sets up the
+    // plugin's message channels and, on Android, iOS and macOS, a platform
+    // view factory. No browser, renderer, window or GPU device exists until a
+    // page is created for a bot check (core/network/clearance), and none
+    // stays after it; Windows creates no WebView2 environment until then.
+    'challenge_browser',
     'connectivity_plus',
+    // Read before adding, per this file's rule. `onAttachedToEngine` sets up
+    // one method channel and points the engine's log, toast and event hooks at
+    // logcat, a Toast and that channel; as an ActivityAware plugin it hands
+    // CloudStream's code the current Activity. The engine itself, and every
+    // extension, loads on the first CloudStream call, never at registration.
+    'cs3_engine',
     'device_info_plus',
     'dynamic_color',
     'flutter_displaymode',
-    // Read before adding, per this file's rule. `onAttachedToEngine` sets up a
-    // method channel, an event channel and an `AudioManager` wrapper, and
-    // reads or writes nothing. The one global side effect is in the stream
-    // handler, not the registrar: while a listener is attached it points the
-    // Activity's `volumeControlStream` at STREAM_MUSIC, so the hardware rocker
-    // moves media volume rather than the ringer. `onCancel` puts it back to
-    // USE_DEFAULT_STREAM_TYPE, and the player cancels on dispose, so it does
-    // not outlive the screen the way screen_brightness_windows' write did.
-    'flutter_volume_controller',
-    // Transitive, from flutter_volume_controller: the first-party helper that
-    // hands a plugin the Activity's lifecycle. Registers an observer and
-    // nothing else.
-    'flutter_plugin_android_lifecycle',
-    'flutter_inappwebview_android',
     'flutter_js_ng',
     'flutter_secure_storage',
     'flutter_torrent_server',
@@ -76,20 +78,34 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
     'open_file_android',
     'package_info_plus',
     'permission_handler_android',
-    'screen_brightness_android',
     'share_plus',
     'shared_preferences_android',
     'sqflite_android',
     'url_launcher_android',
+    // Also the player's brightness and system volume. `onAttachedToEngine`
+    // sets up a method channel, an event channel and a platform view factory;
+    // the volume's worker thread starts on the first volume call, the
+    // broadcast receiver while the player listens, and the Activity's
+    // `volumeControlStream` is pointed at media only while the player says it
+    // is on screen.
     'vlc_player',
     'wakelock_plus',
   },
   'ios': {
     'background_downloader',
+    // Read before adding, per this file's rule. Registration sets up the
+    // plugin's message channels and, on Android, iOS and macOS, a platform
+    // view factory. No browser, renderer, window or GPU device exists until a
+    // page is created for a bot check (core/network/clearance), and none
+    // stays after it; Windows creates no WebView2 environment until then.
+    'challenge_browser',
     'connectivity_plus',
+    // See the Android note. `register` sets up one method channel and notes
+    // where the engine's jars are; its worker threads and the embedded Java VM
+    // start on the first CloudStream call, never at registration.
+    'cs3_engine',
     'device_info_plus',
     'file_picker_darwin',
-    'flutter_inappwebview_ios',
     'flutter_js_ng',
     'flutter_secure_storage_darwin',
     'flutter_torrent_server',
@@ -97,39 +113,30 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
     'open_file_ios',
     'package_info_plus',
     'permission_handler_apple',
-    // See the Android note. On iOS `register` wires two channels and
-    // constructs an off-screen `MPVolumeView`, which is the documented way to
-    // set the system volume and does nothing until used. The side effect is
-    // again in the listener rather than the registrar: `onListen` sets an
-    // `AVAudioSession` category. The player only ever starts that listener on
-    // a handset, and never on desktop, where the routing is libVLC's own gain.
-    'flutter_volume_controller',
-    'screen_brightness_ios',
     'share_plus',
     'shared_preferences_foundation',
     'sqflite_darwin',
     'url_launcher_ios',
+    // See the Android note. The off-screen `MPVolumeView` is built on the
+    // first volume call, and no audio session is touched at all.
     'vlc_player',
     'wakelock_plus',
   },
   'macos': {
-    // Channels only at `register`; the AVAudioSession work is in the
-    // listener, which the player never starts on a desktop - see
-    // volume_routing.dart, where desktop is `engineOnly`.
-    'flutter_volume_controller',
+    // Read before adding, per this file's rule. Registration sets up the
+    // plugin's message channels and, on Android, iOS and macOS, a platform
+    // view factory. No browser, renderer, window or GPU device exists until a
+    // page is created for a bot check (core/network/clearance), and none
+    // stays after it; Windows creates no WebView2 environment until then.
+    'challenge_browser',
     'connectivity_plus',
     'device_info_plus',
     'dynamic_color',
     'file_picker_darwin',
-    'flutter_inappwebview_macos',
     'flutter_js_ng',
     'flutter_secure_storage_darwin',
     'open_file_mac',
     'package_info_plus',
-    // Desktop has no touch rail, so nothing reaches brightness here. Kept only
-    // because macOS does not use DDC/CI for the built-in display the way the
-    // Windows plugin does; revisit if that ever stops being true.
-    'screen_brightness_macos',
     'screen_retriever_macos',
     'share_plus',
     'shared_preferences_foundation',
@@ -140,9 +147,11 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
     'window_manager',
   },
   'linux': {
-    // Channels only at `register_with_registrar`. ALSA is not touched until a
-    // method call, and the player makes none on a desktop.
-    'flutter_volume_controller',
+    // Read before adding, per this file's rule. Registration sets up the
+    // plugin's message channels; no WebKitGTK view or web context exists until
+    // a page is created for a bot check. It needs libwebkit2gtk-4.1 to build
+    // (CI installs it) and the runner's GtkOverlay around Flutter's view.
+    'challenge_browser',
     'dynamic_color',
     'flutter_js_ng',
     'flutter_secure_storage_linux',
@@ -152,39 +161,16 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
     'url_launcher_linux',
     'vlc_player',
     'window_manager',
-    // Deliberately absent: there is no flutter_inappwebview_linux in 6.1.5, so
-    // Linux has no Cloudflare bypass. If one appears here, a dependency bump
-    // has endorsed the 6.2.0-beta line, whose CMake hard-fails without five
-    // apt packages CI does not install — that breaks the release artifact leg.
-    // Decide in the PR, not on release day.
   },
   'windows': {
-    // THE ONE TO WATCH. Unlike the other four platforms, the Windows plugin's
-    // constructor runs at `RegisterWithRegistrar` and does real work:
-    // `CoInitialize(NULL)`, then `IMMDeviceEnumerator` ->
-    // `GetDefaultAudioEndpoint(eRender, eConsole)` -> `Activate
-    // (IAudioEndpointVolume)`, held until the plugin is destroyed.
-    //
-    // It is not the screen_brightness_windows bug: that one *wrote* to the
-    // monitor at its registrar and again on WM_CLOSE, and leaked a handle per
-    // failed probe. This reads and holds, writes nothing, and releases in its
-    // destructor. But it is COM initialisation and an endpoint activation at
-    // startup for a feature Windows never uses - the player's desktop routing
-    // is libVLC's own gain and calls none of this.
-    //
-    // Left in rather than stubbed because the package is not federated, so
-    // there is no per-platform implementation to override the way
-    // packages/screen_brightness_windows overrides one. If this ever needs to
-    // go, the move is to put the Android and iOS side into packages/
-    // vlc_player instead, which already registers on both and would add no new
-    // surface here at all.
-    'flutter_volume_controller',
+    // Read before adding, per this file's rule. Registration sets up the
+    // plugin's message channels and, on Android, iOS and macOS, a platform
+    // view factory. No browser, renderer, window or GPU device exists until a
+    // page is created for a bot check (core/network/clearance), and none
+    // stays after it; Windows creates no WebView2 environment until then.
+    'challenge_browser',
     'connectivity_plus',
     'dynamic_color',
-    // The D3D11 device at registration. Kept on purpose: Windows Cloudflare
-    // support depends on it. See the WebViewEnvironment work in
-    // cloudflare_bypass.dart.
-    'flutter_inappwebview_windows',
     'flutter_js_ng',
     'flutter_secure_storage_windows',
     'jni',
@@ -192,11 +178,6 @@ const Map<String, Set<String>> _expected = <String, Set<String>>{
     // gated — but its registrar only builds method and event channels, so it is
     // not worth a stub package to remove.
     'permission_handler_windows',
-    // OUR STUB, not upstream: packages/screen_brightness_windows is a no-op
-    // registrar that keeps the real plugin's DDC/CI traffic off Windows. The
-    // "Vendored Forks Resolve From Path" CI step asserts it still resolves from
-    // the vendored path; this only asserts it is still the thing registering.
-    'screen_brightness_windows',
     'screen_retriever_windows',
     'share_plus',
     'url_launcher_windows',

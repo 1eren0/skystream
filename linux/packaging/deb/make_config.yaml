@@ -12,6 +12,7 @@ depends:
   - libvlc5
   - vlc-plugin-base
   - libasound2
+  - libwebkit2gtk-4.1-0
 installed_size: 0
 icon: ios/Runner/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png
 categories:

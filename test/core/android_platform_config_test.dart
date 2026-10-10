@@ -163,6 +163,18 @@ void main() {
     });
   });
 
+  group('Flutter inside its fragment', () {
+    test('is opaque, so pages shown through hybrid composition are seen', () {
+      // A FlutterFragment is transparent by default, which puts Flutter's
+      // surface above the whole window: challenge_browser's page, shown in
+      // the check and sign-in sheets through hybrid composition, was drawn
+      // beneath it and never seen. FlutterFragmentActivity builds it opaque.
+      final String source = _read(_mainActivity);
+      expect(source, contains('.renderMode(RenderMode.surface)'));
+      expect(source, contains('.transparencyMode(TransparencyMode.opaque)'));
+    });
+  });
+
   group('picture-in-picture window shape', () {
     test('MainActivity shapes the window from the video size', () {
       // A source guard, not a behavioural one: the aspect ratio only exists on

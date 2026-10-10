@@ -1,14 +1,24 @@
 package com.lingjhf.vlc_player
 
+import android.app.Activity
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 /** Android implementation for the vlc_player plugin. */
-class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
     private val players = HashMap<Long, VlcPlayerPlatformView>()
     private var channel: MethodChannel? = null
     private var binding: FlutterPlugin.FlutterPluginBinding? = null
+
+    // The device's volume and brightness, for the player's swipes. The
+    // brightness is the activity window's, so it waits for an activity.
+    private var systemVolume: VlcSystemVolume? = null
+    private var systemVolumeEvents: EventChannel? = null
+    private val screenBrightness = VlcScreenBrightness()
 
     // Texture players count down from -1 so their ids can never collide with
     // the platform-view ids the engine mints, which count up from 0. Both
@@ -20,6 +30,11 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         val messenger = binding.binaryMessenger
         channel = MethodChannel(messenger, CHANNEL_NAME).also {
             it.setMethodCallHandler(this)
+        }
+        val volume = VlcSystemVolume(binding.applicationContext)
+        systemVolume = volume
+        systemVolumeEvents = EventChannel(messenger, SYSTEM_VOLUME_CHANNEL).also {
+            it.setStreamHandler(volume)
         }
         binding.platformViewRegistry.registerViewFactory(
             VIEW_TYPE,
@@ -43,6 +58,11 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         // is the only method that arrives without it.
         if (call.method == "create") {
             createTexturePlayer(call, result)
+            return
+        }
+        // Ahead of the guard too: the device's volume and brightness name no
+        // player.
+        if (handleDevice(call, result)) {
             return
         }
 
@@ -185,9 +205,66 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        systemVolumeEvents?.setStreamHandler(null)
+        systemVolumeEvents = null
+        systemVolume?.dispose()
+        systemVolume = null
         players.values.toList().forEach { it.dispose() }
         players.clear()
         this.binding = null
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) = attach(binding.activity)
+
+    override fun onDetachedFromActivityForConfigChanges() = attach(null)
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) = attach(binding.activity)
+
+    override fun onDetachedFromActivity() = attach(null)
+
+    private fun attach(activity: Activity?) {
+        screenBrightness.activity = activity
+        systemVolume?.attach(activity)
+    }
+
+    /// The device's volume and brightness. Answers here are courtesies: with no
+    /// engine or activity to act on, a call does nothing rather than fail.
+    private fun handleDevice(call: MethodCall, result: MethodChannel.Result): Boolean {
+        val volume = systemVolume
+        when (call.method) {
+            "getSystemVolume" -> if (volume != null) volume.get(result) else result.success(null)
+            "setSystemVolume" -> {
+                val level = call.argument<Number>("level")?.toDouble()
+                if (level == null || level.isNaN()) {
+                    result.error("invalid_args", "A level is required.", null)
+                } else if (volume != null) {
+                    volume.set(level, result)
+                } else {
+                    result.success(null)
+                }
+            }
+            "setPlayerShown" -> {
+                volume?.setPlayerShown(call.argument<Boolean>("shown") == true)
+                result.success(null)
+            }
+            "isSystemVolumeFixed" -> if (volume != null) volume.isFixed(result) else result.success(false)
+            "getScreenBrightness" -> result.success(screenBrightness.level())
+            "setScreenBrightness" -> {
+                val level = call.argument<Number>("level")?.toDouble()
+                if (level == null || level.isNaN()) {
+                    result.error("invalid_args", "A level is required.", null)
+                } else {
+                    screenBrightness.set(level)
+                    result.success(null)
+                }
+            }
+            "resetScreenBrightness" -> {
+                screenBrightness.reset()
+                result.success(null)
+            }
+            else -> return false
+        }
+        return true
     }
 
     /// Builds a texture-backed player and hands Dart both ids it needs.
@@ -230,6 +307,7 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private companion object {
         const val CHANNEL_NAME = "vlc_player"
+        const val SYSTEM_VOLUME_CHANNEL = "vlc_player/system_volume"
         const val VIEW_TYPE = "plugins.lingjhf.com/vlc_player/view"
     }
 }

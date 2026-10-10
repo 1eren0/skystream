@@ -220,8 +220,14 @@ class AddonStreamService {
     required AddonStreamRequest request,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
+    Set<String>? only,
   }) async* {
-    final providers = streamProvidersOf(addons);
+    // [only]: the add-ons to ask again after a bot check they met cleared.
+    final providers = [
+      for (final addon in streamProvidersOf(addons))
+        if (only == null || only.contains(addon.id)) addon,
+    ];
 
     if (providers.isEmpty) {
       yield const AddonStreamProgress(
@@ -310,6 +316,7 @@ class AddonStreamService {
             id: id,
             forceRefresh: forceRefresh,
             cancelToken: cancelToken,
+            personWaiting: personWaiting,
           )
           .timeout(timeout);
     }

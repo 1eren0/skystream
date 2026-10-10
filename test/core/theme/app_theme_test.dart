@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +121,23 @@ void main() {
         }
       },
     );
+
+    test('SkyStream\'s own licence ships and is on the licence page', () async {
+      // Flutter's licence page lists what dependencies declare, never the app
+      // itself, so the app's GPL-3.0 text has to be registered by hand.
+      final licence = await rootBundle.loadString('LICENSE');
+      expect(licence, contains('GNU GENERAL PUBLIC LICENSE'));
+      expect(licence, contains('Version 3, 29 June 2007'));
+
+      AppTheme.createDarkTheme(null);
+      final entries = await LicenseRegistry.licenses.toList();
+      final own = entries.where((e) => e.packages.contains('SkyStream'));
+      expect(own, hasLength(1), reason: 'registered once, however often a theme is built');
+      expect(
+        own.single.paragraphs.map((p) => p.text).join('\n'),
+        contains('GNU GENERAL PUBLIC LICENSE'),
+      );
+    });
 
     test('the OFL licence text ships beside the font', () async {
       // SIL OFL 1.1 permits bundling the font inside an application; it also

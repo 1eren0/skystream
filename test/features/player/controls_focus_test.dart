@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/core/providers/device_info_provider.dart';
 import 'package:skystream/features/player/presentation/vlc/chrome_visibility_controller.dart';
+import 'package:skystream/features/player/presentation/player_brightness.dart';
 import 'package:skystream/features/player/presentation/system_volume.dart';
 import 'package:skystream/features/player/presentation/vlc/player_rail.dart';
 import 'package:skystream/features/player/presentation/vlc/player_slider_dialog.dart';
@@ -204,6 +205,7 @@ Future<VlcPlayerController> _pumpControls(
   PlayerSettings settings = const PlayerSettings(),
   bool isLive = false,
   SystemVolume? systemVolume,
+  PlayerBrightness? brightness,
 
   /// Whether the *device profile* says desktop, as opposed to [desktop], which
   /// only hands the controls an `onToggleFullscreen`. They agree on a real
@@ -246,6 +248,7 @@ Future<VlcPlayerController> _pumpControls(
         onToggleFullscreen: desktop ? () {} : null,
         isLive: isLive,
         systemVolumeFactory: systemVolume == null ? null : () => systemVolume,
+        brightnessFactory: brightness == null ? null : () => brightness,
         skipSegments: skipSegments,
         onSkipOutro: onSkipOutro,
         torrentStatus: torrentStatus,
@@ -371,8 +374,13 @@ class _FakeSystemVolume implements SystemVolume {
   /// Every level this app has written, in order.
   final List<double> writes = <double>[];
 
+  int reads = 0;
+
   @override
-  Future<double?> read() async => level;
+  Future<double?> read() async {
+    reads++;
+    return level;
+  }
 
   @override
   Future<void> write(double value) async {
@@ -382,6 +390,18 @@ class _FakeSystemVolume implements SystemVolume {
 
   @override
   Stream<double> get changes => _changes.stream;
+
+  /// Android's isVolumeFixed: Chromebooks, some TV boxes.
+  bool fixed = false;
+
+  @override
+  Future<bool> isFixed() async => fixed;
+
+  /// Every player-shown call, in order.
+  final List<bool> shown = <bool>[];
+
+  @override
+  Future<void> setPlayerShown(bool value) async => shown.add(value);
 
   /// The hardware rocker, which moves the stream with no call from the app.
   void rocker(double value) {
@@ -394,6 +414,36 @@ class _FakeSystemVolume implements SystemVolume {
     disposed = true;
     unawaited(_changes.close());
   }
+}
+
+/// The screen's brightness, faked.
+class _FakeBrightness implements PlayerBrightness {
+  double level = 0.5;
+  int reads = 0;
+  int resets = 0;
+
+  /// Holds the next read until completed, as a slow platform would.
+  Completer<double?>? held;
+
+  /// Every level this app has set, in order.
+  final List<double> sets = <double>[];
+
+  @override
+  Future<double?> read() async {
+    reads++;
+    final wait = held;
+    if (wait != null) return wait.future;
+    return level;
+  }
+
+  @override
+  void set(double value) {
+    level = value;
+    sets.add(value);
+  }
+
+  @override
+  void reset() => resets++;
 }
 
 Future<void> _tapControl(WidgetTester tester, Finder finder) async {
@@ -784,6 +834,16 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       expect(_volumes(engine).last, 175);
+
+      // A held Up is one step: at 25 apiece, repeats would reach the ceiling
+      // in a fifth of a second.
+      engine.calls.clear();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(_volumes(engine), [200]);
 
       _expectHidden(tester, reason: 'the rail says it, not the bars');
       await _snapshot(tester, state: 'paused', position: 60000);
@@ -1277,6 +1337,194 @@ void main() {
       await _snapshot(tester, state: 'paused');
     });
 
+    testWidgets('a handset whose volume is fixed keeps a gain of its own', (
+      tester,
+    ) async {
+      final engine = FakeVlcEngine();
+      final system = _FakeSystemVolume()..fixed = true;
+      await _pumpControls(
+        tester,
+        isTv: false,
+        engine: engine,
+        systemVolume: system,
+      );
+      await tester.pump();
+
+      await _tapControl(tester, find.byTooltip('Volume'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('50%'));
+      await tester.pumpAndSettle();
+
+      expect(_volumes(engine).last, 50, reason: 'all of it is libVLC gain');
+      expect(system.writes, isEmpty, reason: "the stream won't move");
+
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets('the player says it is on screen, and that it has gone', (
+      tester,
+    ) async {
+      final system = _FakeSystemVolume();
+      await _pumpControls(tester, isTv: false, systemVolume: system);
+      await tester.pump();
+      expect(system.shown, [true]);
+      await tester.pumpWidget(const SizedBox());
+      expect(system.shown, [true, false]);
+    });
+
+    testWidgets('a level change during a volume swipe keeps the rail up, and '
+        'the swipe carries on from it', (tester) async {
+      final system = _FakeSystemVolume();
+      await _pumpControls(tester, isTv: false, systemVolume: system);
+      await tester.pump();
+
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      final gesture = await tester.startGesture(
+        Offset(rect.right - 200, rect.center.dy),
+      );
+      // Past the slop: the swipe starts, and goes down from 100 %.
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+
+      // The rocker, or Android's safety limit read back after a raise.
+      system.rocker(0.3);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      expect(
+        find.byType(PlayerRail),
+        findsOneWidget,
+        reason: 'the finger is still down',
+      );
+      expect(find.text('30%'), findsOneWidget);
+
+      // A little further up carries on from 30 %, not from where the finger
+      // thought it was.
+      await gesture.moveBy(Offset(0, -rect.height / 200));
+      await tester.pump();
+      expect(system.writes.last, closeTo(0.31, 0.011));
+
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets('a volume swipe starts from the level read as it starts', (
+      tester,
+    ) async {
+      // iOS reports nothing while the film is paused, so the level can have
+      // moved with no word to the player: VLC's players read it as each
+      // swipe begins.
+      final system = _FakeSystemVolume();
+      await _pumpControls(tester, isTv: false, systemVolume: system);
+      await tester.pump();
+      system.level = 0.3;
+
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      final gesture = await tester.startGesture(
+        Offset(rect.right - 200, rect.center.dy),
+      );
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      // A tenth of the height is a tenth of the 200 % scale: 20 points.
+      await gesture.moveBy(Offset(0, -rect.height / 10));
+      await tester.pump();
+      expect(system.writes.last, closeTo(0.5, 0.011));
+
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets('a pause reads the level again', (tester) async {
+      // On iOS libVLC lets the audio session go as the film pauses, and the
+      // read is what takes it back (as VLC's player does), so the buttons
+      // still report while paused.
+      final system = _FakeSystemVolume();
+      await _pumpControls(tester, isTv: false, systemVolume: system);
+      await _snapshot(tester, state: 'playing');
+      await tester.pump();
+      final before = system.reads;
+      await _snapshot(tester, state: 'paused');
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(system.reads, before + 1);
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a swipe from under 100% stops at 100% and says to swipe '
+        'again; a swipe from 100% goes on into the boost', (tester) async {
+      // VLC's player: "Slide up again to go beyond 100%". The amplifier is
+      // never reached by accident.
+      final engine = FakeVlcEngine();
+      final system = _FakeSystemVolume()..level = 0.5;
+      await _pumpControls(
+        tester,
+        isTv: false,
+        engine: engine,
+        systemVolume: system,
+      );
+      await tester.pump();
+
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      final start = Offset(rect.right - 200, rect.center.dy);
+      await tester.dragFrom(start, Offset(0, -rect.height * 0.6));
+      await tester.pump();
+      expect(system.writes.last, 1.0);
+      expect(
+        _volumes(engine).every((v) => v == 100),
+        isTrue,
+        reason: 'no boost from a swipe that started under 100 %',
+      );
+      expect(find.text('Swipe up again to go past 100%'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+      await tester.dragFrom(start, Offset(0, -rect.height * 0.3));
+      await tester.pump();
+      expect(_volumes(engine).last, greaterThan(100));
+
+      await tester.pump(const Duration(seconds: 2));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets("the rail draws the boost from 100 %, as VLC's does, and has "
+        'none when the maximum is 100 %', (tester) async {
+      final system = _FakeSystemVolume();
+      await _pumpControls(tester, isTv: false, systemVolume: system);
+      await _tapControl(tester, find.byTooltip('Volume'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('150%'));
+      await tester.pumpAndSettle();
+      final rail = tester.widget<PlayerRail>(find.byType(PlayerRail));
+      expect(rail.value, 0.75);
+      expect(rail.boostFrom, 0.5);
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets('and no boost to draw where the maximum is 100 %', (
+      tester,
+    ) async {
+      final system = _FakeSystemVolume();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        systemVolume: system,
+        settings: const PlayerSettings(maxVolumePercent: 100),
+      );
+      await _tapControl(tester, find.byTooltip('Volume'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('50%'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PlayerRail>(find.byType(PlayerRail)).boostFrom,
+        isNull,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
     testWidgets('a desktop never touches the system stream', (tester) async {
       final engine = FakeVlcEngine();
       final system = _FakeSystemVolume();
@@ -1323,6 +1571,133 @@ void main() {
 
       await tester.pump(const Duration(seconds: 1));
       await _snapshot(tester, state: 'paused');
+    });
+  });
+
+  // The left half's swipe, which a touch form factor gets by default: read as
+  // the swipe starts, and set on every update, as VLC's players do it.
+  group('VlcPlayerControls brightness', () {
+    testWidgets('a swipe up on the left half brightens the screen from the '
+        'level it started at', (tester) async {
+      final brightness = _FakeBrightness();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        brightness: brightness,
+        systemVolume: _FakeSystemVolume(),
+      );
+
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      await tester.dragFrom(
+        Offset(rect.left + 200, rect.center.dy),
+        const Offset(0, -300),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(brightness.reads, 1, reason: 'once, as the swipe started');
+      expect(brightness.sets, isNotEmpty);
+      expect(
+        brightness.sets.last,
+        greaterThan(0.5),
+        reason: 'the swipe went up',
+      );
+
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    // The review found it: a set made before the read landed came from a
+    // stale level - after a volume swipe, a volume level - and with sets now
+    // immediate that flashed the screen to full.
+    testWidgets('a swipe sets nothing until the level it starts from is read, '
+        'then carries on from it', (tester) async {
+      final brightness = _FakeBrightness()..held = Completer<double?>();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        brightness: brightness,
+        systemVolume: _FakeSystemVolume(),
+      );
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      final gesture = await tester.startGesture(
+        Offset(rect.left + 200, rect.center.dy),
+      );
+      // Past the slop: the swipe starts, and asks for the level.
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      await gesture.moveBy(Offset(0, -rect.height / 10));
+      await tester.pump();
+      expect(brightness.sets, isEmpty, reason: 'no level to start from yet');
+
+      brightness.held!.complete(0.2);
+      await tester.pump();
+      expect(
+        brightness.sets.last,
+        closeTo(0.3, 0.02),
+        reason: 'the read level, with the travel made meanwhile',
+      );
+      await gesture.moveBy(Offset(0, -rect.height / 10));
+      await tester.pump();
+      expect(brightness.sets.last, closeTo(0.4, 0.02));
+
+      await gesture.up();
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+    });
+
+    testWidgets('closing the player gives the screen back, once, after a '
+        'swipe set it', (tester) async {
+      final brightness = _FakeBrightness();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        brightness: brightness,
+        systemVolume: _FakeSystemVolume(),
+      );
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      await tester.dragFrom(
+        Offset(rect.left + 200, rect.center.dy),
+        const Offset(0, 300),
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      await tester.pumpWidget(const SizedBox());
+      expect(brightness.resets, 1);
+    });
+
+    testWidgets('a player that never set it leaves the screen alone', (
+      tester,
+    ) async {
+      final brightness = _FakeBrightness();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        brightness: brightness,
+        systemVolume: _FakeSystemVolume(),
+      );
+      await tester.pumpWidget(const SizedBox());
+      expect(brightness.resets, 0);
+      expect(brightness.reads, 0);
+    });
+
+    testWidgets('a desktop has no brightness swipe', (tester) async {
+      final brightness = _FakeBrightness();
+      await _pumpControls(
+        tester,
+        isTv: false,
+        desktop: true,
+        desktopProfile: true,
+        brightness: brightness,
+        systemVolume: _FakeSystemVolume(),
+      );
+      final rect = tester.getRect(find.byType(VlcPlayerControls));
+      await tester.dragFrom(
+        Offset(rect.left + 200, rect.center.dy),
+        const Offset(0, -300),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(brightness.reads, 0);
+      expect(brightness.sets, isEmpty);
     });
   });
 
@@ -2621,6 +2996,25 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     });
 
+    // VLC's player steps on every repeat of a held key, as every desktop
+    // player does.
+    testWidgets('holding a volume key keeps stepping', (tester) async {
+      final engine = FakeVlcEngine();
+      await _pumpControls(tester, isTv: false, engine: engine);
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.audioVolumeUp);
+      await tester.pump();
+      expect(_volumes(engine), [105, 110, 115]);
+
+      await tester.pump(const Duration(seconds: 1));
+      await _snapshot(tester, state: 'paused');
+      debugDefaultTargetPlatformOverride = null;
+    });
+
     // The pre-mute level has to be whatever the viewer actually had, however
     // they got there: a rail drag never goes through the M branch, so a memory
     // written only there leaves unmute jumping to a hardcoded 100.
@@ -2951,8 +3345,7 @@ void main() {
       );
 
       // Through [_tapControl]: the cluster sits over the screen-wide
-      // double-tap recogniser, so a bare tap is held until that timeout the
-      // same way a bar button's is.
+      // double-tap recogniser, so a bare tap is held until that timeout.
       await _tapControl(tester, forward);
       expect(_seeks(engine), <int>[95000], reason: '65 s + one 30 s step');
       await _tapControl(tester, back);

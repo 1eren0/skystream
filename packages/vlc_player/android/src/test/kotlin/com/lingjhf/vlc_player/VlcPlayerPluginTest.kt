@@ -30,4 +30,33 @@ internal class VlcPlayerPluginTest {
             null,
         )
     }
+
+    @Test
+    fun onMethodCall_deviceCalls_answerWithoutAPlayer() {
+        // The device's volume and brightness name no player: answered ahead of the viewId guard, here with no engine
+        // or activity attached at all.
+        val plugin = VlcPlayerPlugin()
+
+        val brightness: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("getScreenBrightness", null), brightness)
+        Mockito.verify(brightness).success(null)
+
+        val fixed: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("isSystemVolumeFixed", null), fixed)
+        Mockito.verify(fixed).success(false)
+
+        val shown: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("setPlayerShown", mapOf("shown" to true)), shown)
+        Mockito.verify(shown).success(null)
+    }
+
+    @Test
+    fun onMethodCall_setSystemVolume_withoutALevel_returnsInvalidArgs() {
+        val plugin = VlcPlayerPlugin()
+
+        val result: MethodChannel.Result = Mockito.mock(MethodChannel.Result::class.java)
+        plugin.onMethodCall(MethodCall("setSystemVolume", emptyMap<String, Any>()), result)
+
+        Mockito.verify(result).error("invalid_args", "A level is required.", null)
+    }
 }

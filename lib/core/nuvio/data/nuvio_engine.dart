@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_js_ng/flutter_js.dart';
 
+import '../../network/clearance/challenge_triage.dart';
+import 'nuvio_clearance.dart';
 import 'nuvio_crypto.dart';
 import 'nuvio_dom.dart';
 import 'nuvio_polyfill.dart';
@@ -27,6 +29,17 @@ class NuvioEngineRequest {
   /// `streams` runs `getStreams(...)`, `settings` runs `onSettings()`.
   final String mode;
 
+  /// What a bot check the run meets is filed under (`nuvio:<scraper id>`).
+  final String source;
+
+  /// Whether a person waits on the run (the sources dialog), so a check that
+  /// wants a click opens the check sheet.
+  final bool personWaiting;
+
+  /// The app's live clearances when the run started
+  /// (`Clearance.liveClearances`), as plain maps for the worker.
+  final List<Map<String, Object?>> grants;
+
   const NuvioEngineRequest({
     required this.code,
     required this.scraperId,
@@ -39,6 +52,9 @@ class NuvioEngineRequest {
     this.tmdbKey = '',
     this.timeoutMs = 60000,
     this.mode = 'streams',
+    this.source = '',
+    this.personWaiting = false,
+    this.grants = const [],
   });
 
   Map<String, dynamic> toMap() => {
@@ -53,6 +69,9 @@ class NuvioEngineRequest {
     'tmdbKey': tmdbKey,
     'timeoutMs': timeoutMs,
     'mode': mode,
+    'source': source,
+    'personWaiting': personWaiting,
+    'grants': grants,
   };
 
   static NuvioEngineRequest fromMap(Map<dynamic, dynamic> map) =>
@@ -70,6 +89,13 @@ class NuvioEngineRequest {
         tmdbKey: map['tmdbKey']?.toString() ?? '',
         timeoutMs: (map['timeoutMs'] as num?)?.toInt() ?? 60000,
         mode: map['mode']?.toString() ?? 'streams',
+        source: map['source']?.toString() ?? '',
+        personWaiting: map['personWaiting'] == true,
+        grants: [
+          if (map['grants'] is List)
+            for (final grant in map['grants'] as List)
+              if (grant is Map) Map<String, Object?>.from(grant),
+        ],
       );
 }
 
@@ -86,10 +112,25 @@ class NuvioEngine {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  /// What `Cloudflare.solve` resolves to: the headers a scraper sends with
+  /// its retry, or null when the check wasn't cleared.
+  static Map<String, String>? cloudflareReply(NuvioGrant? grant) {
+    if (grant == null) return null;
+    return {
+      'Cookie': grant.cookies.entries
+          .map((e) => '${e.key}=${e.value}')
+          .join('; '),
+      'User-Agent': grant.agent,
+    };
+  }
+
   /// Executes [request] and returns the JSON document produced by the plugin.
+  /// [channel] reaches the main isolate for bot checks; without one, a run
+  /// uses the clearances it was handed and nothing more.
   static Future<String> execute(
     NuvioEngineRequest request, {
     void Function(String line)? onLog,
+    NuvioClearanceChannel? channel,
   }) async {
     final runtime = getJavascriptRuntime(
       xhr: false,
@@ -103,7 +144,14 @@ class NuvioEngine {
 
     final completer = Completer<String>();
     final dom = NuvioDom();
-    final http = NuvioEngineHttp();
+    final clock = NuvioRunClock();
+    final http = NuvioEngineHttp(
+      grants: [for (final grant in request.grants) ?NuvioGrant.fromMap(grant)],
+      channel: channel,
+      // Settings forms use the clearances there are; they never ask for one.
+      mayStart: request.mode == 'streams',
+      clock: clock,
+    );
     Timer? pump;
     // A response landing after the run finished must never touch a disposed
     // QuickJS context: that is a native use-after-free, not an exception.
@@ -251,16 +299,37 @@ class NuvioEngine {
         return null;
       });
 
+      runtime.onMessage('nuvio_cf_solve', (dynamic args) {
+        final data = asMap(args);
+        final id = data['id'];
+        if (id == null) return null;
+        unawaited(
+          http.solveFor(data['url']?.toString() ?? '').then((grant) {
+            if (disposed) return;
+            final reply = cloudflareReply(grant);
+            evalSafe(
+              'globalThis.__nuvio_settle(${jsonEncode(id.toString())}, '
+              '${reply == null ? 'null' : jsonEncode(reply)}, '
+              '${reply == null ? jsonEncode('Cloudflare check not cleared') : 'null'})',
+            );
+          }),
+        );
+        return null;
+      });
+
       // Promise jobs and timers only advance when QuickJS is pumped. Jobs are
       // drained often; timers are checked every ~32 ms, which is plenty for
-      // the retry/rate-limit sleeps scrapers use.
+      // the retry/rate-limit sleeps scrapers use. Timers run on the run's own
+      // time ([clock]), which stops while it waits on a bot check.
       var tickCounter = 0;
       pump = Timer.periodic(const Duration(milliseconds: 8), (_) {
         if (disposed) return;
         try {
           runtime.executePendingJob();
           if (++tickCounter % 4 == 0) {
-            runtime.evaluate('__nuvio_tick && __nuvio_tick();');
+            runtime.evaluate(
+              '__nuvio_tick && __nuvio_tick(${clock.running.inMilliseconds});',
+            );
           }
         } catch (_) {
           // A scraper throwing inside a microtask is its own problem.
@@ -279,12 +348,17 @@ class NuvioEngine {
         request.mode == 'settings' ? settingsCall : _streamsCall(request),
       );
 
-      return await completer.future.timeout(
-        Duration(milliseconds: request.timeoutMs),
-        onTimeout: () => jsonEncode({
-          'error': 'Timed out after ${request.timeoutMs ~/ 1000}s',
-        }),
-      );
+      // The run's budget counts only its own time: not a check being cleared.
+      return await Future.any([
+        completer.future,
+        clock
+            .expires(Duration(milliseconds: request.timeoutMs))
+            .then(
+              (_) => jsonEncode({
+                'error': 'Timed out after ${request.timeoutMs ~/ 1000}s',
+              }),
+            ),
+      ]);
     } finally {
       pump?.cancel();
       disposed = true;
@@ -352,9 +426,51 @@ class NuvioEngine {
 /// `dart:io` instead of Dio so it runs in a worker isolate, with cookies kept
 /// per scraper run (several providers hand out a session cookie on the first
 /// request and expect it back on the next one).
+///
+/// Bot checks go as for the app's own requests: the live clearances a run is
+/// handed ([grants]) go with every request to their sites, and a request a
+/// site meets with a challenge asks the main isolate ([channel]), which clears
+/// the check in the app's browser. It is sent again once with the clearance,
+/// or taken from a page on the site when the site lets only the browser
+/// through. A block page is the answer as it is.
 @visibleForTesting
 class NuvioEngineHttp {
-  NuvioEngineHttp();
+  NuvioEngineHttp({
+    List<NuvioGrant> grants = const [],
+    NuvioClearanceChannel? channel,
+    bool mayStart = true,
+    NuvioRunClock? clock,
+    Duration maxWait = defaultMaxWait,
+  }) : _grants = [...grants],
+       _channel = channel,
+       _mayStart = mayStart,
+       _clock = clock,
+       _waitLeft = maxWait;
+
+  /// Most a run waits on the main isolate in all: its clock stops meanwhile,
+  /// so a call that never came back would hold the run forever. A person
+  /// slower than this still has Verify, and the run again after it.
+  static const Duration defaultMaxWait = Duration(minutes: 2);
+
+  final List<NuvioGrant> _grants;
+  final NuvioClearanceChannel? _channel;
+
+  /// False in settings runs: they use the clearances there are, and never
+  /// ask for one.
+  final bool _mayStart;
+  final NuvioRunClock? _clock;
+  Duration _waitLeft;
+
+  /// A host's challenge being asked about, which other requests to it join.
+  final Map<String, Future<NuvioAnswer>> _asking = {};
+
+  /// Hosts that answered with a block page: `Cloudflare.solve` won't ask.
+  final Set<String> _blocked = {};
+
+  /// Hosts that refused a request of this run (403, 429, 503, or a check):
+  /// the only ones `Cloudflare.solve` asks about, so a scraper reaches the
+  /// app's browser for a site that stopped it, not any address it names.
+  final Set<String> _refused = {};
 
   /// Key used to report a failure inside the payload map.
   static const String errorKey = '__nuvioError';
@@ -390,6 +506,163 @@ class NuvioEngineHttp {
     final jar = _cookies[uri.host];
     if (jar == null || jar.isEmpty) return '';
     return jar.entries.map((e) => '${e.key}=${e.value}').join('; ');
+  }
+
+  bool get _canAsk => _channel != null && _mayStart && !_closed;
+
+  /// The grant that covers [host], the most specific first.
+  NuvioGrant? _grantFor(String host) {
+    NuvioGrant? best;
+    for (final grant in _grants) {
+      if (grant.covers(host) &&
+          (best == null || grant.site.length > best.site.length)) {
+        best = grant;
+      }
+    }
+    return best;
+  }
+
+  void _addGrant(NuvioGrant grant) {
+    _grants
+      ..removeWhere((g) => g.site == grant.site)
+      ..add(grant);
+  }
+
+  /// The Cookie header for [uri]: the scraper's own, else the run's jar, with
+  /// [grant]'s clearance cookies merged in and winning.
+  String _cookieHeader(
+    Uri uri,
+    Map<String, String> headers,
+    NuvioGrant? grant,
+  ) {
+    final own = headers.entries
+        .where((e) => e.key.toLowerCase() == 'cookie')
+        .firstOrNull
+        ?.value;
+    final cookies = <String, String>{};
+    if (own != null) {
+      for (final pair in own.split(';')) {
+        final at = pair.indexOf('=');
+        if (at > 0) {
+          cookies[pair.substring(0, at).trim()] = pair.substring(at + 1).trim();
+        }
+      }
+    } else {
+      cookies.addAll(_cookies[uri.host] ?? const {});
+    }
+    if (grant != null) cookies.addAll(grant.cookies);
+    return cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+  }
+
+  /// Asks the main isolate, the run's clock stopped meanwhile, for at most
+  /// what is left of the run's wait. [orElse] when it can't answer in time.
+  Future<T> _ask<T>(Future<T> Function() call, T orElse) async {
+    if (_waitLeft <= Duration.zero) return orElse;
+    final waited = Stopwatch()..start();
+    _clock?.pause();
+    try {
+      return await call().timeout(_waitLeft, onTimeout: () => orElse);
+    } catch (_) {
+      return orElse;
+    } finally {
+      _clock?.resume();
+      _waitLeft -= waited.elapsed;
+    }
+  }
+
+  /// [request]'s challenge on [host], asked once while others to the host
+  /// wait for the same answer. A page's response answers only the request
+  /// that asked: the others ask their own page.
+  Future<NuvioAnswer> _challenged(
+    String host,
+    Map<String, dynamic> request,
+  ) async {
+    final running = _asking[host];
+    if (running != null) {
+      final shared = await running;
+      if (shared.grant == null && shared.response != null) {
+        return _ask(() => _channel!.fromPage(request), const NuvioAnswer());
+      }
+      return NuvioAnswer(grant: shared.grant);
+    }
+    final call = _ask(
+      () => _channel!.challengedRequest(request, retried: false),
+      const NuvioAnswer(),
+    );
+    _asking[host] = call;
+    try {
+      return await call;
+    } finally {
+      _asking.remove(host)?.ignore();
+    }
+  }
+
+  /// `Cloudflare.solve(url)`: [url]'s clearance, asked for if need be. Null
+  /// for a host that didn't refuse this run or answered with a block page,
+  /// or when the check wasn't cleared.
+  Future<NuvioGrant?> solveFor(String url) async {
+    final host = Uri.tryParse(url)?.host ?? '';
+    if (!_canAsk ||
+        host.isEmpty ||
+        _blocked.contains(host) ||
+        !_refused.any(
+          (h) => h == host || h.endsWith('.$host') || host.endsWith('.$h'),
+        )) {
+      return null;
+    }
+    final grant = await _ask(() => _channel!.solve(url), null);
+    if (grant != null) _addGrant(grant);
+    return grant;
+  }
+
+  /// What [payload] says about its site's check, noting a host that refused
+  /// the request, and one that answered with a block page.
+  Triage _triage(Map<String, dynamic> payload) {
+    if (payload.containsKey(errorKey)) return Triage.none;
+    final status = (payload['status'] as num?)?.toInt() ?? 0;
+    final headers = (payload['headers'] as Map?) ?? const {};
+    var triage = triageHeaders(
+      status,
+      (name) => headers[name.toLowerCase()]?.toString(),
+    );
+    if (triage == Triage.unsure) {
+      triage = triageBody(payload['body']?.toString() ?? '');
+    } else if (triage == Triage.none && status == 200) {
+      // Anubis and HostAdmin answer 200 with their check.
+      triage = triagePage(
+        status,
+        (name) => headers[name.toLowerCase()]?.toString(),
+        payload['body']?.toString() ?? '',
+      );
+    }
+    final host = Uri.tryParse(payload['url']?.toString() ?? '')?.host;
+    if (host != null && host.isNotEmpty) {
+      if (triage == Triage.block) _blocked.add(host);
+      if (triage == Triage.challenge ||
+          status == 403 ||
+          status == 429 ||
+          status == 503) {
+        _refused.add(host);
+      }
+    }
+    return triage;
+  }
+
+  /// A response taken from a page on the site, as a fetch payload.
+  static Map<String, dynamic> _pagePayload(Map<String, dynamic> page) {
+    final status = (page['status'] as num?)?.toInt() ?? 0;
+    return {
+      'ok': status >= 200 && status < 300,
+      'status': status,
+      'statusText': '',
+      'url': page['url']?.toString() ?? '',
+      'redirected': false,
+      'headers': <String, String>{
+        for (final e in ((page['headers'] as Map?) ?? const {}).entries)
+          e.key.toString().toLowerCase(): e.value.toString(),
+      },
+      'body': page['body']?.toString() ?? '',
+    };
   }
 
   void _storeCookies(Uri uri, HttpClientResponse response) {
@@ -440,9 +713,11 @@ class NuvioEngineHttp {
             // Some header names are rejected by dart:io; skip them.
           }
         });
-        final cookieHeader = cookieHeaderFor(uri);
-        if (cookieHeader.isNotEmpty &&
-            !headers.keys.any((k) => k.toLowerCase() == 'cookie')) {
+        // A cleared site's cookie holds only with the agent it was issued to.
+        final grant = _grantFor(uri.host);
+        if (grant != null) request.headers.set('user-agent', grant.agent);
+        final cookieHeader = _cookieHeader(uri, headers, grant);
+        if (cookieHeader.isNotEmpty) {
           request.headers.set('cookie', cookieHeader);
         }
         if (body != null && body.isNotEmpty && method != 'GET') {
@@ -492,25 +767,64 @@ class NuvioEngineHttp {
       }
     }
 
-    try {
-      return await doFetch(persistent: true);
-    } on HandshakeException {
+    Future<Map<String, dynamic>> once() async {
       try {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        return await doFetch(persistent: false);
-      } catch (retryError) {
-        return {errorKey: retryError.toString()};
+        return await doFetch(persistent: true);
+      } on HandshakeException {
+        try {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          return await doFetch(persistent: false);
+        } catch (retryError) {
+          return {errorKey: retryError.toString()};
+        }
+      } on SocketException {
+        try {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          return await doFetch(persistent: false);
+        } catch (retryError) {
+          return {errorKey: retryError.toString()};
+        }
+      } catch (error) {
+        return {errorKey: error.toString()};
       }
-    } on SocketException {
-      try {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        return await doFetch(persistent: false);
-      } catch (retryError) {
-        return {errorKey: retryError.toString()};
-      }
-    } catch (error) {
-      return {errorKey: error.toString()};
     }
+
+    Map<String, dynamic> asked(String url) => {
+      'url': url,
+      'method': method,
+      'headers': headers,
+      'body': body,
+    };
+
+    // A site that lets only the browser through is asked from its page.
+    final start = Uri.tryParse(rawUrl);
+    final startGrant = start == null ? null : _grantFor(start.host);
+    if (_canAsk && startGrant != null && startGrant.browserOnly) {
+      final page = await _ask(
+        () => _channel!.fromPage(asked(rawUrl)),
+        const NuvioAnswer(),
+      );
+      if (page.response != null) return _pagePayload(page.response!);
+    }
+
+    final first = await once();
+    if (_triage(first) != Triage.challenge || !_canAsk) return first;
+    final at = first['url']?.toString() ?? rawUrl;
+    final answer = await _challenged(Uri.parse(at).host, asked(at));
+    if (answer.response != null) return _pagePayload(answer.response!);
+    final grant = answer.grant;
+    if (grant == null) return first;
+    _addGrant(grant);
+
+    final again = await once();
+    if (_triage(again) != Triage.challenge || !_canAsk) return again;
+    // Refused with a fresh clearance: the site lets only the browser through.
+    final atAgain = again['url']?.toString() ?? at;
+    final last = await _ask(
+      () => _channel!.challengedRequest(asked(atAgain), retried: true),
+      const NuvioAnswer(),
+    );
+    return last.response != null ? _pagePayload(last.response!) : again;
   }
 
   /// A video, audio or other binary body: a scraper fetching one only wants

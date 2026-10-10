@@ -333,7 +333,7 @@ void main() {
             'identical to the last one, and a paused engine sends none at all',
       );
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
 
     testWidgets('a film ticking the same shape does not push the settle back', (
@@ -354,7 +354,7 @@ void main() {
 
       expect(pinned, [landscape]);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
 
     testWidgets(
@@ -371,7 +371,7 @@ void main() {
 
         expect(pinned, [portrait]);
 
-        service.restoreOrientation(PlayerFormFactor.phone);
+        service.restoreOrientation();
       },
     );
 
@@ -391,7 +391,7 @@ void main() {
 
       expect(pinned, [landscape]);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
 
     testWidgets('a portrait clip pins portrait, on a phone and on a tablet', (
@@ -405,8 +405,8 @@ void main() {
 
       expect(pinned, [portrait, portrait]);
 
-      phone.restoreOrientation(PlayerFormFactor.phone);
-      tablet.restoreOrientation(PlayerFormFactor.tablet);
+      phone.restoreOrientation();
+      tablet.restoreOrientation();
     });
 
     testWidgets('a square video counts as landscape', (tester) async {
@@ -416,7 +416,7 @@ void main() {
 
       expect(pinned.single, landscape);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
 
     testWidgets('sizes that are not known yet are left alone', (tester) async {
@@ -443,7 +443,7 @@ void main() {
       await waitOutSettle(tester);
       expect(pinned, [portrait]);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
 
     testWidgets(
@@ -464,7 +464,7 @@ void main() {
         await waitOutSettle(tester);
         expect(pinned, [portrait]);
 
-        service.restoreOrientation(PlayerFormFactor.phone);
+        service.restoreOrientation();
       },
     );
 
@@ -511,23 +511,99 @@ void main() {
       await waitOutSettle(tester);
       expect(pinned, [portrait]);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
   });
 
   group('restoreOrientation', () {
     testWidgets(
-      'a phone that was pinned goes back to portrait, not to a free-for-all',
+      'a phone that was pinned goes back to the system\'s own orientation',
       (tester) async {
         final service = PlayerPlatformService();
         read(service, PlayerFormFactor.phone, landscapeBuffer);
         await waitOutSettle(tester);
         pinned.clear();
 
-        service.restoreOrientation(PlayerFormFactor.phone);
+        service.restoreOrientation();
 
-        expect(pinned.single, ['DeviceOrientation.portraitUp']);
+        // Not portraitUp: the app follows the device everywhere but the
+        // player, rotation lock and all.
+        expect(pinned.single, isEmpty);
       },
+    );
+
+    /// Every call the hand-back makes, in order, across both channels, for a
+    /// session that turned an upright handset to [shapes], one after another.
+    Future<List<String>> handBack(
+      WidgetTester tester, {
+      List<Size> shapes = const [landscapeBuffer],
+    }) async {
+      tester.view.physicalSize = const Size(1080, 1920);
+      addTearDown(tester.view.reset);
+      const followChannel = MethodChannel('dev.akash.skystream/orientation');
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') {
+          calls.add('preferred ${call.arguments}');
+        }
+        return null;
+      });
+      messenger.setMockMethodCallHandler(followChannel, (call) async {
+        calls.add('${call.method} ${call.arguments}');
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(followChannel, null),
+      );
+
+      final service = PlayerPlatformService();
+      for (final shape in shapes) {
+        read(service, PlayerFormFactor.phone, shape);
+        await waitOutSettle(tester);
+        // The pin has turned the handset.
+        tester.view.physicalSize = shape.width > shape.height
+            ? const Size(1920, 1080)
+            : const Size(1080, 1920);
+      }
+      calls.clear();
+
+      service.restoreOrientation();
+      await tester.pump();
+      return calls;
+    }
+
+    testWidgets(
+      'iOS is then asked to follow the device, which it does not by itself',
+      (tester) async {
+        // The way the app was before the player turned it: what iOS goes back
+        // to when the device can't say which way up it is.
+        expect(await handBack(tester), [
+          'preferred []',
+          'followDevice {fallback: portrait}',
+        ]);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    );
+
+    testWidgets(
+      'the way back is the way the app was before the first turn',
+      (tester) async {
+        // A landscape film, then a portrait clip: by the second pin the app
+        // was already sideways, which is not where the viewer came from.
+        expect(
+          await handBack(tester, shapes: [landscapeBuffer, portraitBuffer]),
+          ['preferred []', 'followDevice {fallback: portrait}'],
+        );
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+    );
+
+    testWidgets(
+      'Android follows the device by itself',
+      (tester) async {
+        expect(await handBack(tester), ['preferred []']);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.android),
     );
 
     testWidgets(
@@ -538,7 +614,7 @@ void main() {
         await waitOutSettle(tester);
         pinned.clear();
 
-        service.restoreOrientation(PlayerFormFactor.tablet);
+        service.restoreOrientation();
 
         expect(pinned.single, isEmpty);
       },
@@ -548,14 +624,12 @@ void main() {
         'alone', (tester) async {
       final service = PlayerPlatformService();
       // A stream that never resolved, or a viewer who changed their mind: the
-      // size never arrived, so nothing was pinned and nothing may be
-      // "restored". Pinning portraitUp here froze rotation app-wide for the
-      // rest of the process, because nothing else ever calls
-      // setPreferredOrientations.
+      // size never arrived, so nothing was pinned and there is nothing to
+      // hand back.
       read(service, PlayerFormFactor.phone, null, times: 4);
       await waitOutSettle(tester);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
 
       expect(pinned, isEmpty);
     });
@@ -567,7 +641,7 @@ void main() {
       read(service, PlayerFormFactor.phone, landscapeBuffer);
       await tester.pump(const Duration(milliseconds: 250));
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
       await waitOutSettle(tester);
 
       expect(
@@ -587,7 +661,10 @@ void main() {
         PlayerFormFactor.desktop,
         PlayerFormFactor.unknown,
       ]) {
-        PlayerPlatformService().restoreOrientation(form);
+        final service = PlayerPlatformService();
+        read(service, form, landscapeBuffer);
+        await waitOutSettle(tester);
+        service.restoreOrientation();
       }
 
       expect(pinned, isEmpty);
@@ -600,8 +677,8 @@ void main() {
       pinned.clear();
 
       service
-        ..restoreOrientation(PlayerFormFactor.phone)
-        ..restoreOrientation(PlayerFormFactor.phone);
+        ..restoreOrientation()
+        ..restoreOrientation();
 
       expect(pinned, hasLength(1));
     });
@@ -610,7 +687,7 @@ void main() {
       final service = PlayerPlatformService();
       read(service, PlayerFormFactor.phone, landscapeBuffer);
       await waitOutSettle(tester);
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
       pinned.clear();
 
       read(service, PlayerFormFactor.phone, landscapeBuffer);
@@ -624,8 +701,38 @@ void main() {
       await waitOutSettle(tester);
       expect(pinned.single, landscape);
 
-      service.restoreOrientation(PlayerFormFactor.phone);
+      service.restoreOrientation();
     });
+
+    testWidgets("an extension's full-screen window holds what it asked for, and goes back as the player does", (
+      tester,
+    ) async {
+      // Phase 7c's §5: the owner's one exception to no pins outside the player (2026-10-08).
+      tester.view.physicalSize = const Size(1080, 1920);
+      addTearDown(tester.view.reset);
+      const followChannel = MethodChannel('dev.akash.skystream/orientation');
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'SystemChrome.setPreferredOrientations') calls.add('preferred ${call.arguments}');
+        return null;
+      });
+      messenger.setMockMethodCallHandler(followChannel, (call) async {
+        calls.add('${call.method} ${call.arguments}');
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(followChannel, null));
+      final service = PlayerPlatformService();
+      service.pinOrientation(const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      await tester.pump();
+      tester.view.physicalSize = const Size(1920, 1080);
+      service.restoreOrientation();
+      await tester.pump();
+      expect(calls, [
+        'preferred [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]',
+        'preferred []',
+        'followDevice {fallback: portrait}',
+      ]);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
   });
 }
 

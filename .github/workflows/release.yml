@@ -35,7 +35,11 @@ permissions:
 env:
   # Pinned for the same reason as ci.yml: an unpinned `stable` means the
   # artifacts we ship are built by a newer SDK than the one CI gated on.
-  FLUTTER_VERSION: 3.47.5
+  FLUTTER_VERSION: 3.47.6
+  # Pinned for the same reason. The Windows runner image ships 6.7.1 today, and
+  # Inno Setup 7 installs to another folder and changes some defaults, so moving
+  # to it is a deliberate bump here.
+  INNO_SETUP_VERSION: 6.7.1
 
 jobs:
   version:
@@ -266,9 +270,11 @@ jobs:
           - arch: arm64
             torrserver_binary: TorrServer-darwin-arm64
             xcode_arch: arm64
+            java_arch: aarch64
           - arch: x64
             torrserver_binary: TorrServer-darwin-amd64
             xcode_arch: x86_64
+            java_arch: x64
     steps:
       - uses: actions/checkout@v7
       - name: Select Latest Xcode
@@ -296,6 +302,21 @@ jobs:
           find . -type f ! -name "${{ matrix.torrserver_binary }}" -delete
           ls -la
           
+
+      # CloudStream extensions run on Java on the desktop. The build carries a
+      # trimmed Java runtime made from this JDK
+      # (packages/cs3_engine/tool/build_runtime.dart), so users need no Java.
+      # The architecture is the build's own.
+      - name: Set Up Java For CloudStream's Runtime
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_arch }}
+
+      - name: Bundle CloudStream's Java Runtime
+        shell: bash
+        run: dart run packages/cs3_engine/tool/build_runtime.dart --java-home "$JAVA_HOME"
       - name: Generate dart-defines file
         shell: bash
         run: |
@@ -406,6 +427,7 @@ jobs:
           - os: windows-2022
             arch: x64
             torrserver_binary: TorrServer-windows-amd64.exe
+            java_arch: x64
           # arm64 on windows-11-arm is DISABLED, not forgotten. build_libs.sh
           # has always produced TorrServer-windows-arm64.exe and the desktop
           # plugin selects it by architecture at runtime, so that half is ready
@@ -446,6 +468,21 @@ jobs:
           Get-ChildItem -File | Where-Object { $_.Name -ne "${{ matrix.torrserver_binary }}" } | Remove-Item
           Get-ChildItem
 
+
+      # CloudStream extensions run on Java on the desktop. The build carries a
+      # trimmed Java runtime made from this JDK
+      # (packages/cs3_engine/tool/build_runtime.dart), so users need no Java.
+      # The architecture is the build's own.
+      - name: Set Up Java For CloudStream's Runtime
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_arch }}
+
+      - name: Bundle CloudStream's Java Runtime
+        shell: bash
+        run: dart run packages/cs3_engine/tool/build_runtime.dart --java-home "$JAVA_HOME"
       - name: Generate dart-defines file
         shell: bash
         run: |
@@ -469,14 +506,20 @@ jobs:
 
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup -y --no-progress
+        run: choco install innosetup --version=$env:INNO_SETUP_VERSION --allow-downgrade -y --no-progress
 
       - name: Build Installer (EXE)
         shell: pwsh
         run: |
           $Version = "${{ needs.version.outputs.version }}".TrimStart('v')
           $AppDir = "..\..\..\build\windows\${{ matrix.arch }}\runner\Release"
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$Version /DAppArch=${{ matrix.arch }} /DAppDir=$AppDir windows\packaging\exe\setup.iss
+          # The pinned version's compiler, wherever it installed itself. Its uninstall
+          # entry says where; ISCC.exe's own version resource reads 0.0.0.0.
+          $Inno = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayVersion -eq $env:INNO_SETUP_VERSION } |
+            Select-Object -First 1
+          if (-not $Inno) { throw "Inno Setup $env:INNO_SETUP_VERSION is not installed" }
+          & (Join-Path $Inno.InstallLocation 'ISCC.exe') /DAppVersion=$Version /DAppArch=${{ matrix.arch }} /DAppDir=$AppDir windows\packaging\exe\setup.iss
 
       - name: Compress Release (ZIP)
         shell: pwsh
@@ -513,6 +556,7 @@ jobs:
           - os: ubuntu-latest
             arch: x64
             torrserver_binary: TorrServer-linux-amd64
+            java_arch: x64
           # 22.04, deliberately, not ubuntu-latest. The runner's glibc becomes
           # the floor for the shipped .deb and tarball: 22.04 is glibc 2.35,
           # 24.04 is 2.39. Building arm64 on 24.04 silently drops every arm64
@@ -523,6 +567,7 @@ jobs:
           - os: ubuntu-22.04-arm
             arch: arm64
             torrserver_binary: TorrServer-linux-arm64
+            java_arch: aarch64
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -546,7 +591,8 @@ jobs:
           # 3. Install required libraries with --no-install-recommends to avoid fetching 190+ bloated recommended packages (tilix, pocketsphinx, etc.)
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev libvlc-dev libasound2-dev libsecret-1-dev
+            libgtk-3-dev liblzma-dev libvlc-dev libasound2-dev libsecret-1-dev \
+            libwebkit2gtk-4.1-dev
           
       - name: Install Flutter Dependencies
         run: |
@@ -563,6 +609,21 @@ jobs:
           find . -type f ! -name "${{ matrix.torrserver_binary }}" -delete
           ls -la
           
+
+      # CloudStream extensions run on Java on the desktop. The build carries a
+      # trimmed Java runtime made from this JDK
+      # (packages/cs3_engine/tool/build_runtime.dart), so users need no Java.
+      # The architecture is the build's own.
+      - name: Set Up Java For CloudStream's Runtime
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_arch }}
+
+      - name: Bundle CloudStream's Java Runtime
+        shell: bash
+        run: dart run packages/cs3_engine/tool/build_runtime.dart --java-home "$JAVA_HOME"
       - name: Generate dart-defines file
         shell: bash
         run: |

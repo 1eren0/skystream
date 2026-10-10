@@ -102,8 +102,8 @@ void main() {
     PlayerPlatformService.shapeSettleDelay + const Duration(milliseconds: 1),
   );
 
-  /// The screen on a handset: [PlayerFormFactor.phone] is the only profile the
-  /// orientation policy acts on that also restores to a fixed orientation.
+  /// The screen on a handset, which the orientation policy turns to fit the
+  /// video and hands back to the system on the way out.
   Future<void> pumpPhone(WidgetTester tester) => pumpPlayer(
     tester,
     isTv: false,
@@ -322,7 +322,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: texturePlatform);
 
-  testWidgets('leaving hands a pinned handset back to portrait', (
+  testWidgets('leaving hands a turned handset back to the system', (
     tester,
   ) async {
     await pumpPhone(tester);
@@ -333,9 +333,7 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
 
-    expect(pinned, [
-      ['DeviceOrientation.portraitUp'],
-    ]);
+    expect(pinned, [<String>[]]);
   }, variant: texturePlatform);
 
   testWidgets('a player closed before the first frame leaves rotation alone', (
@@ -346,9 +344,8 @@ void main() {
     pinned.clear();
 
     // No size ever arrived - an unresolvable stream, or a viewer who changed
-    // their mind while the spinner was up. Nothing was pinned, so nothing may
-    // be handed back: pinning portraitUp here would kill rotation app-wide for
-    // the rest of the process.
+    // their mind while the spinner was up. Nothing was pinned, so there is
+    // nothing to hand back.
     await tester.pumpWidget(const SizedBox());
 
     expect(pinned, isEmpty);

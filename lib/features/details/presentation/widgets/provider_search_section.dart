@@ -19,6 +19,7 @@ import '../../../../shared/widgets/loading_indicator.dart';
 
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
+import '../../../search/presentation/widgets/check_section.dart';
 import 'source_section_card.dart';
 
 part 'provider_search_section.g.dart';
@@ -139,6 +140,8 @@ class _ProviderSearchSectionState extends ConsumerState<ProviderSearchSection> {
 
     final plugins = ref.watch(extensionManagerProvider);
     final searchAsync = ref.watch(providerSearchProvider(widget.query));
+    final searchState = searchAsync.asData?.value;
+    final startedAt = searchState?.startedAt;
 
     Widget content;
     if (plugins.isEmpty) {
@@ -393,6 +396,21 @@ class _ProviderSearchSectionState extends ConsumerState<ProviderSearchSection> {
             AppLocalizations.of(context)!.errorPrefix(err.toString()),
           ),
         ),
+      );
+    }
+
+    if (startedAt != null) {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CheckSection(
+            since: startedAt,
+            providers: plugins,
+            rerunning: searchState!.rerunning,
+          ),
+          content,
+        ],
       );
     }
 

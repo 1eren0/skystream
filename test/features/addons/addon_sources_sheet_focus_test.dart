@@ -28,6 +28,8 @@ class _FakeService implements AddonStreamService {
     required AddonStreamRequest request,
     bool forceRefresh = false,
     dynamic cancelToken,
+    bool personWaiting = false,
+    Set<String>? only,
   }) async* {
     yield const AddonStreamProgress(
       streams: [

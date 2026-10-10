@@ -392,8 +392,10 @@ Future<void> pumpPlayer(
         ),
         playerSettingsProvider.overrideWithBuild((_, _) => settings),
         // Nothing here goes near a plugin: either the item is direct or the
-        // candidates are handed in already resolved.
-        activeProviderProvider.overrideWithValue(null),
+        // candidates are handed in already resolved, unless a test brings
+        // its own.
+        if (!brought(activeProviderProvider))
+          activeProviderProvider.overrideWithValue(null),
         if (!brought(historyRepositoryProvider))
           historyRepositoryProvider.overrideWithValue(NoHistory()),
         watchHistoryProvider.overrideWith(MuteWatchHistory.new),

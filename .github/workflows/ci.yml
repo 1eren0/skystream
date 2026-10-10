@@ -42,7 +42,7 @@ env:
   # Pinned rather than floating on `stable`: the analyzer, the lint set and the
   # gen-l10n output all move with the SDK, so an unpinned runner would rewrite
   # the baseline under us and fail a PR that touched nothing.
-  FLUTTER_VERSION: 3.47.5
+  FLUTTER_VERSION: 3.47.6
 
 jobs:
   analyze-and-test:
@@ -143,18 +143,9 @@ jobs:
       # the real one and it still compiles. No version constraint can catch it.
       # This step is the only thing that would notice.
       #
-      # Two different reasons to be in this list:
-      #   * A FORK at a higher version than upstream - this one was named
-      #     flutter_js at 0.9.0 against pub's 0.8.7 (a different engine, Bellard
-      #     QuickJS rather than QuickJS-NG), and vlc_player is 2.1.3 vs 2.1.2.
-      #   * A deliberate STUB, wired through `dependency_overrides`, whose whole
-      #     job is to keep an unwanted native plugin out of a platform build.
-      #     screen_brightness_windows is one: upstream drives DDC/CI at the
-      #     user's monitor from its registrar and writes brightness back on
-      #     WM_CLOSE, for a feature the desktop cannot reach. That stub is a
-      #     single deleted `dependency_overrides` line away from silently
-      #     restoring the real plugin - and nothing else in this workflow would
-      #     go red. See packages/screen_brightness_windows/README.md.
+      # Each is a FORK at a higher version than upstream - this one was named
+      # flutter_js at 0.9.0 against pub's 0.8.7 (a different engine, Bellard
+      # QuickJS rather than QuickJS-NG), and vlc_player is 2.1.3 vs 2.1.2.
       - name: Vendored Forks Resolve From Path
         run: |
           python3 - <<'PY'
@@ -162,8 +153,7 @@ jobs:
 
           lock = pathlib.Path('pubspec.lock').read_text()
           bad = []
-          for pkg in ('flutter_js_ng', 'vlc_player', 'flutter_torrent_server',
-                      'screen_brightness_windows'):
+          for pkg in ('flutter_js_ng', 'vlc_player', 'flutter_torrent_server'):
               m = re.search(r'^  %s:\n(?:.*\n)*?    source: (\w+)' % pkg, lock, re.M)
               if not m:
                   bad.append(f'{pkg}: not in pubspec.lock at all')
@@ -352,17 +342,20 @@ jobs:
           # `torrserver` is the one binary from assets/torrserver/ this target
           # actually uses; "" means it uses none. `out` is where the build
           # lands, for the artifact upload. Both mirror release.yml so the gate
-          # exercises the artifact users install.
-          ANDROID='{"name":"Android","os":"ubuntu-latest","build":"flutter build apk --debug","smoke":"","torrserver":"","out":"build/app/outputs/flutter-apk"}'
-          LINUX='{"name":"Linux","os":"ubuntu-latest","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-amd64","out":"build/linux/x64/debug/bundle"}'
+          # exercises the artifact users install. `java_arch` is the JDK the
+          # desktop builds make CloudStream's Java runtime from (see the
+          # "Bundle CloudStream's Java Runtime" step); "" means none, as
+          # Android compiles the engine in and iOS embeds its own VM.
+          ANDROID='{"name":"Android","os":"ubuntu-latest","build":"flutter build apk --debug","smoke":"","torrserver":"","out":"build/app/outputs/flutter-apk","java_arch":""}'
+          LINUX='{"name":"Linux","os":"ubuntu-latest","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-amd64","out":"build/linux/x64/debug/bundle","java_arch":"x64"}'
           # windows-2022, not windows-latest: the release and preview workflows
           # both pin windows-2022 (MSVC 17). On windows-latest the gate would
           # compile the vendored vlc_player C++ with Visual Studio 2026 / MSVC
           # 18 - a toolset no shipped build ever uses, so a break in either
           # direction goes unnoticed until release day.
-          WINDOWS='{"name":"Windows","os":"windows-2022","build":"flutter build windows --debug","smoke":"windows","torrserver":"TorrServer-windows-amd64.exe","out":"build/windows/x64/runner/Debug"}'
-          MACOS='{"name":"macOS","os":"macos-latest","build":"flutter build macos --debug","smoke":"macos","torrserver":"TorrServer-darwin-arm64","out":"build/macos/Build/Products/Debug"}'
-          IOS='{"name":"iOS","os":"macos-latest","build":"flutter build ios --debug --no-codesign","smoke":"","torrserver":"","out":"build/ios/iphoneos"}'
+          WINDOWS='{"name":"Windows","os":"windows-2022","build":"flutter build windows --debug","smoke":"windows","torrserver":"TorrServer-windows-amd64.exe","out":"build/windows/x64/runner/Debug","java_arch":"x64"}'
+          MACOS='{"name":"macOS","os":"macos-latest","build":"flutter build macos --debug","smoke":"macos","torrserver":"TorrServer-darwin-arm64","out":"build/macos/Build/Products/Debug","java_arch":"aarch64"}'
+          IOS='{"name":"iOS","os":"macos-latest","build":"flutter build ios --debug --no-codesign","smoke":"","torrserver":"","out":"build/ios/iphoneos","java_arch":""}'
           # The second architecture release.yml ships for Linux and macOS.
           # Without these the gate proves only that x64 Linux and arm64 macOS
           # compile, and an arm64-only or x86_64-only break stays invisible
@@ -377,8 +370,8 @@ jobs:
           # exercises the command that actually produces the shipped x64 app.
           # It gets no smoke test: the resulting binary is x86_64 and the
           # runner is arm64.
-          LINUX_ARM64='{"name":"Linux-arm64","os":"ubuntu-22.04-arm","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-arm64","out":"build/linux/arm64/debug/bundle"}'
-          MACOS_X64='{"name":"macOS-x64","os":"macos-latest","build":"flutter build macos --debug --config-only && cd macos && xcodebuild -workspace Runner.xcworkspace -configuration Debug -scheme Runner -derivedDataPath ../build/macos ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build","smoke":"","torrserver":"TorrServer-darwin-amd64","out":"build/macos/Build/Products/Debug"}'
+          LINUX_ARM64='{"name":"Linux-arm64","os":"ubuntu-22.04-arm","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-arm64","out":"build/linux/arm64/debug/bundle","java_arch":"aarch64"}'
+          MACOS_X64='{"name":"macOS-x64","os":"macos-latest","build":"flutter build macos --debug --config-only && cd macos && xcodebuild -workspace Runner.xcworkspace -configuration Debug -scheme Runner -derivedDataPath ../build/macos ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build","smoke":"","torrserver":"TorrServer-darwin-amd64","out":"build/macos/Build/Products/Debug","java_arch":"x64"}'
           CORE="[$ANDROID,$LINUX]"
           FULL="[$ANDROID,$LINUX,$WINDOWS,$MACOS,$IOS]"
           SHIPPED="[$ANDROID,$LINUX,$WINDOWS,$MACOS,$IOS,$LINUX_ARM64,$MACOS_X64]"
@@ -490,6 +483,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libvlc-dev libasound2-dev libsecret-1-dev \
+            libwebkit2gtk-4.1-dev \
             xvfb
 
       - name: Cache Pub Dependencies
@@ -577,6 +571,23 @@ jobs:
         if: matrix.name == 'macOS'
         run: flutter test test/core/extensions/engine/jsc_context_routing_test.dart
 
+      # CloudStream extensions run on Java on the desktop. Like release.yml, the
+      # build carries a trimmed Java runtime made from this JDK
+      # (packages/cs3_engine/tool/build_runtime.dart), so the artifact needs no
+      # Java on the machine it runs on. The architecture is the build's own:
+      # the macOS-x64 leg installs an x64 JDK and links it under Rosetta.
+      - name: Set Up Java For CloudStream's Runtime
+        if: matrix.java_arch != ''
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: ${{ matrix.java_arch }}
+
+      - name: Bundle CloudStream's Java Runtime
+        if: matrix.java_arch != ''
+        run: dart run packages/cs3_engine/tool/build_runtime.dart --java-home "$JAVA_HOME"
+
       - name: Build ${{ matrix.name }}
         run: ${{ matrix.build }}
 
@@ -631,15 +642,24 @@ jobs:
       #
       # xvfb on Linux: the runner is headless and a desktop Flutter app needs
       # an X server to open a window at all.
+      #
+      # integration_test/cloudstream/ is left out: those tests reach live sites
+      # and install extensions, so they run on request (CS3_E2E) and skip
+      # without it. So are integration_test/clearance/, which solves bot checks
+      # on live sites (CLEARANCE_E2E), and integration_test/sign_in/, which
+      # opens the system browser (SIGN_IN_E2E).
       - name: Smoke Test ${{ matrix.name }}
         if: matrix.smoke != ''
         env:
           DEVICE: ${{ matrix.smoke }}
         run: |
+          TESTS=()
+          while IFS= read -r test; do TESTS+=("$test"); done \
+            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' | sort)
           if [ "$DEVICE" = 'linux' ]; then
-            xvfb-run -a flutter test --no-pub integration_test -d "$DEVICE"
+            xvfb-run -a flutter test --no-pub "${TESTS[@]}" -d "$DEVICE"
           else
-            flutter test --no-pub integration_test -d "$DEVICE"
+            flutter test --no-pub "${TESTS[@]}" -d "$DEVICE"
           fi
 
   # Android and iOS cannot ride the build matrix above: neither runner has a
@@ -747,7 +767,8 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: flutter test --no-pub integration_test
+          # Not integration_test/cloudstream/, clearance/ or sign_in/; see the desktop smoke step.
+          script: flutter test --no-pub $(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*')
 
       - name: Boot iOS Simulator
         if: matrix.name == 'iOS'
@@ -762,4 +783,9 @@ jobs:
 
       - name: Smoke Test iOS
         if: matrix.name == 'iOS'
-        run: flutter test --no-pub integration_test -d "$SIM_UDID"
+        # Not integration_test/cloudstream/, clearance/ or sign_in/; see the desktop smoke step.
+        run: |
+          TESTS=()
+          while IFS= read -r test; do TESTS+=("$test"); done \
+            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' | sort)
+          flutter test --no-pub "${TESTS[@]}" -d "$SIM_UDID"

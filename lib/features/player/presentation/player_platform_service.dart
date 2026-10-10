@@ -61,11 +61,10 @@ final ValueNotifier<bool> fullScreenModeActive = ValueNotifier<bool>(false);
 /// Android phone are both `Platform.isAndroid`, and pinning a television to
 /// portrait is nonsense.
 enum PlayerFormFactor {
-  /// Rotates to match the video, and is handed back to portrait on exit.
+  /// Rotates to match the video, and is handed back to the system on exit.
   phone,
 
-  /// Rotates to match the video, but is released entirely on exit — a tablet
-  /// is watchable and browsable either way up.
+  /// Rotates to match the video, and is handed back to the system on exit.
   tablet,
 
   /// A fixed landscape panel. Orientation requests are meaningless.
@@ -127,6 +126,11 @@ class PlayerPlatformService {
     'dev.akash.skystream.player/pip',
   );
 
+  /// `AppDelegate.swift`'s: asks iOS to turn to the device's orientation.
+  static const MethodChannel _orientationChannel = MethodChannel(
+    'dev.akash.skystream/orientation',
+  );
+
   static const List<DeviceOrientation> _landscape = [
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -169,6 +173,11 @@ class PlayerPlatformService {
   /// inside one landscape film is silent, and nothing is restored unless
   /// something was pinned.
   Orientation? _pinnedOrientation;
+
+  /// Which way up the app was when this session first turned it: the system's
+  /// own choice, since nothing else in the app pins. iOS goes back to it on
+  /// the way out when the device can't say which way up it is.
+  Orientation? _orientationBeforePin;
 
   /// Returns whether the window actually shrank. False covers pre-Oreo, a
   /// device that refuses, and a user who has turned PiP off for this app,
@@ -332,6 +341,7 @@ class PlayerPlatformService {
     _shapeSettleTimer = Timer(shapeSettleDelay, () {
       _shapeSettleTimer = null;
       _shapeCandidate = null;
+      _orientationBeforePin ??= _viewOrientation();
       _pinnedOrientation = wanted;
       unawaited(
         SystemChrome.setPreferredOrientations(
@@ -351,35 +361,70 @@ class PlayerPlatformService {
     _shapeCandidate = null;
   }
 
-  /// Hands orientation back to the rest of the app on the way out.
+  /// Hands orientation back to the system on the way out.
   ///
-  /// Phones return to [DeviceOrientation.portraitUp]; anything else is
-  /// released with an empty list, meaning "whatever the manifest and
-  /// Info.plist already allow". Restoring `DeviceOrientation.values` instead
-  /// would unlock rotation app-wide and leave every other screen free to land
-  /// sideways.
+  /// An empty list: whatever the manifest and Info.plist allow, chosen by the
+  /// system, the user's rotation lock included. Outside the player the app
+  /// follows the device, as a native app does. On Android that is
+  /// `SCREEN_ORIENTATION_UNSPECIFIED`; `DeviceOrientation.values` would be
+  /// `FULL_USER`, which also turns a phone upside down.
   ///
-  /// Gated on [_pinnedOrientation] rather than on the form factor: a player
-  /// closed before the first frame decoded pinned nothing on the way in, and
-  /// pinning `portraitUp` on the way out would freeze rotation for the rest of
-  /// the process, since nothing else in the app ever calls
-  /// `setPreferredOrientations`. The form factor can also have changed
-  /// underneath us since the pin.
+  /// Gated on [_pinnedOrientation]: a player closed before the first frame
+  /// decoded pinned nothing on the way in, so there is nothing to hand back.
   ///
   /// Also the only thing that stops the settle clock, so it has to run on the
   /// way out of every session: a [shapeSettleDelay] timer outliving the screen
   /// would rotate the device under whatever came next.
-  void restoreOrientation(PlayerFormFactor form) {
+  void restoreOrientation() {
     _dropShapeCandidate();
     if (_pinnedOrientation == null) return;
     _pinnedOrientation = null;
-    unawaited(
-      SystemChrome.setPreferredOrientations(
-        form == PlayerFormFactor.phone
-            ? const [DeviceOrientation.portraitUp]
-            : const [],
-      ),
-    );
+    final before = _orientationBeforePin;
+    _orientationBeforePin = null;
+    unawaited(_handBackToSystem(before));
+  }
+
+  /// Holds [orientations] until [restoreOrientation]: an extension's full-screen window that asked for them, on an
+  /// iPhone (Phase 7c's §5; the owner's one exception to no pins outside the player, 2026-10-08).
+  void pinOrientation(List<DeviceOrientation> orientations) {
+    _dropShapeCandidate();
+    _orientationBeforePin ??= _viewOrientation();
+    _pinnedOrientation = orientations.contains(DeviceOrientation.portraitUp)
+        ? Orientation.portrait
+        : Orientation.landscape;
+    unawaited(SystemChrome.setPreferredOrientations(orientations));
+  }
+
+  /// The release, then on iOS a request to follow the device.
+  ///
+  /// iOS keeps a turned interface for as long as it is still allowed, so a
+  /// handset held upright stayed sideways after the player until it was
+  /// moved, and for good under the rotation lock. Android re-reads its own
+  /// settings at once. The request waits for the release, because iOS refuses
+  /// an orientation the player's pin still excludes.
+  ///
+  /// [before] is where iOS goes when the device has no reading: face up, face
+  /// down, or a simulator, which has no accelerometer.
+  Future<void> _handBackToSystem(Orientation? before) async {
+    await SystemChrome.setPreferredOrientations(const []);
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await _orientationChannel.invokeMethod<void>('followDevice', {
+        'fallback': ?before?.name,
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('PlayerPlatformService.followDevice: $e');
+    }
+  }
+
+  /// Which way up the app's window is, or null before it has a size.
+  static Orientation? _viewOrientation() {
+    final size = WidgetsBinding.instance.platformDispatcher.implicitView
+        ?.physicalSize;
+    if (size == null || size.isEmpty) return null;
+    return size.width > size.height
+        ? Orientation.landscape
+        : Orientation.portrait;
   }
 
   /// Leaves full screen, whatever put the window there.

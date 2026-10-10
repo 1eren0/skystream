@@ -14,8 +14,16 @@ class PlayerRail extends StatelessWidget {
     required this.value,
     required this.label,
     this.onLeft = true,
+    this.boostFrom,
     super.key,
   });
+
+  /// The track, the white level and the boost on top of it, for tests.
+  static const Key trackKey = ValueKey<String>('player-rail-track');
+  static const Key levelKey = ValueKey<String>('player-rail-level');
+  static const Key boostKey = ValueKey<String>('player-rail-boost');
+
+  static const double _trackHeight = 132;
 
   final IconData icon;
 
@@ -36,8 +44,20 @@ class PlayerRail extends StatelessWidget {
   /// also the side each of them was on before the engine rewrite.
   final bool onLeft;
 
+  /// Where the volume's boost starts, 0..1 of the track - 100 % of the
+  /// maximum - or null where there is none (brightness, a maximum of 100 %).
+  ///
+  /// As VLC's player draws it: the level is white up to here, and the share of
+  /// it above, which libVLC amplifies, is orange on top.
+  final double? boostFrom;
+
   @override
   Widget build(BuildContext context) {
+    final filled = value.clamp(0.0, 1.0);
+    final from = boostFrom?.clamp(0.0, 1.0);
+    // The white level stops where the boost starts; the rest is the boost's.
+    final level = from == null || filled <= from ? filled : from;
+    final boost = filled - level;
     return Align(
       alignment: onLeft ? Alignment.centerLeft : Alignment.centerRight,
       child: Padding(
@@ -63,19 +83,40 @@ class PlayerRail extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
+                  key: trackKey,
                   width: 6,
-                  height: 132,
+                  height: _trackHeight,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(3),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: FractionallySizedBox(
-                        heightFactor: value.clamp(0.0, 1.0),
-                        widthFactor: 1,
-                        child: const ColoredBox(
-                          color: HotstarPlayerStyle.primaryText,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(
+                          child: ColoredBox(
+                            color: HotstarPlayerStyle.trackInactive,
+                          ),
                         ),
-                      ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: _trackHeight * level,
+                          child: const ColoredBox(
+                            key: levelKey,
+                            color: HotstarPlayerStyle.primaryText,
+                          ),
+                        ),
+                        if (boost > 0)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: _trackHeight * level,
+                            height: _trackHeight * boost,
+                            child: const ColoredBox(
+                              key: boostKey,
+                              color: HotstarPlayerStyle.volumeBoost,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),

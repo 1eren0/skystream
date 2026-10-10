@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/domain/entity/multimedia_item.dart';
+import '../../../core/network/clearance/clearance.dart';
+import '../../../core/network/clearance/site_checks.dart';
 import '../../../core/network/link_probe_service.dart';
+import '../../../core/nuvio/data/nuvio_repository.dart';
 import '../../../core/nuvio/data/nuvio_stream_service.dart';
 import '../../../core/nuvio/models/nuvio_models.dart';
 import '../../../core/services/download_service.dart';
@@ -16,6 +19,8 @@ import '../../details/presentation/playback_launcher.dart';
 import '../../settings/presentation/player_settings_provider.dart';
 import 'source_sheet_widgets.dart';
 import '../../../shared/focus/app_focus.dart';
+import '../../../shared/focus/row_traversal.dart';
+import '../../../shared/widgets/check_line.dart';
 
 /// Why the source list came up empty, as far as the sheet can actually tell.
 ///
@@ -254,6 +259,16 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
   StreamSubscription<NuvioProgress>? _nuvioSub;
 
   NuvioProgress _nuvioResult = const NuvioProgress(isLoading: true);
+
+  /// The run's own progress, and each run again of scrapers whose bot check
+  /// cleared after they had finished; [_nuvioResult] is them merged.
+  NuvioProgress _mainResult = const NuvioProgress(isLoading: true);
+  final Map<String, ({Set<String> ids, NuvioProgress progress})> _reruns = {};
+  final List<StreamSubscription<NuvioProgress>> _rerunSubs = [];
+
+  /// When the run started, on the checks' clock: the checks its scrapers
+  /// meet from then on are its lines.
+  DateTime _runStartedAt = DateTime.now();
   bool _showDiagnostics = false;
 
   final Map<String, LinkProbeResult> _probes = {};
@@ -279,6 +294,9 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
   void dispose() {
     _disposed = true;
     _nuvioSub?.cancel();
+    for (final sub in _rerunSubs) {
+      sub.cancel();
+    }
     super.dispose();
   }
 
@@ -288,30 +306,113 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
   String get _searchId =>
       (_tmdbOverride ?? widget.target.tmdbId?.toString() ?? '').trim();
 
+  String get _mediaType =>
+      widget.episode != null ||
+          widget.target.contentType == MultimediaContentType.series ||
+          widget.target.contentType == MultimediaContentType.anime
+      ? 'tv'
+      : 'movie';
+
+  /// The active scrapers' names, by id.
+  Map<String, String> get _scraperNames => {
+    for (final entry in ref.read(nuvioRepositoryProvider).activeScrapers)
+      entry.scraper.id: entry.scraper.name,
+  };
+
   void _startNuvio() {
     final tmdbId = _searchId;
     if (tmdbId.isEmpty) {
       setState(() => _nuvioResult = const NuvioProgress(isLoading: false));
       return;
     }
-    final isSeries =
-        widget.episode != null ||
-        widget.target.contentType == MultimediaContentType.series ||
-        widget.target.contentType == MultimediaContentType.anime;
+    final clearance = Clearance.instance;
+    _runStartedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
 
+    // A person opened the sheet: a check that wants a click opens its sheet.
     _nuvioSub = ref
         .read(nuvioStreamServiceProvider)
         .resolve(
           tmdbId: tmdbId,
-          mediaType: isSeries ? 'tv' : 'movie',
+          mediaType: _mediaType,
           season: widget.episode?.season,
           episode: widget.episode?.episode,
+          personWaiting: true,
         )
         .listen((progress) {
           if (_disposed) return;
-          setState(() => _nuvioResult = progress);
+          _mainResult = progress;
+          setState(() => _nuvioResult = _merged());
           _scheduleProbes();
         });
+  }
+
+  NuvioProgress _merged() {
+    var streams = _mainResult.streams;
+    var statuses = _mainResult.statuses;
+    var loading = _mainResult.isLoading;
+    for (final rerun in _reruns.values) {
+      final names = {for (final s in rerun.progress.statuses) s.scraperName};
+      streams = [
+        for (final stream in streams)
+          if (!rerun.ids.contains(stream.scraperId)) stream,
+        ...rerun.progress.streams,
+      ];
+      statuses = [
+        for (final status in statuses)
+          if (!names.contains(status.scraperName)) status,
+        ...rerun.progress.statuses,
+      ];
+      loading = loading || rerun.progress.isLoading;
+    }
+    return NuvioProgress(
+      streams: streams,
+      statuses: statuses,
+      completedCount: _mainResult.completedCount,
+      totalCount: _mainResult.totalCount,
+      isLoading: loading,
+    );
+  }
+
+  /// [check] cleared: the scrapers that met it and had finished run again,
+  /// past their cached answer. One still running carries on with the
+  /// clearance in its own run.
+  void _rerunAfter(SiteCheck check) {
+    final tmdbId = _searchId;
+    if (_disposed || tmdbId.isEmpty) return;
+    final names = _scraperNames;
+    final ids = <String>{
+      for (final source in check.sources)
+        if (source.startsWith('nuvio:')) source.substring('nuvio:'.length),
+    };
+    ids.removeWhere((id) {
+      final status = _nuvioResult.statuses
+          .where((s) => s.scraperName == names[id])
+          .firstOrNull;
+      return status == null ||
+          status.outcome == NuvioScraperOutcome.pending ||
+          status.outcome == NuvioScraperOutcome.running;
+    });
+    if (ids.isEmpty) return;
+    final key = (ids.toList()..sort()).join(',');
+    _rerunSubs.add(
+      ref
+          .read(nuvioStreamServiceProvider)
+          .resolve(
+            tmdbId: tmdbId,
+            mediaType: _mediaType,
+            season: widget.episode?.season,
+            episode: widget.episode?.episode,
+            personWaiting: true,
+            only: ids,
+            fresh: true,
+          )
+          .listen((progress) {
+            if (_disposed) return;
+            _reruns[key] = (ids: ids, progress: progress);
+            setState(() => _nuvioResult = _merged());
+            _scheduleProbes();
+          }),
+    );
   }
 
   /// Re-runs the search with a title or TMDB id the user types.
@@ -338,6 +439,8 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
         _tmdbOverride = null;
       }
       _nuvioResult = const NuvioProgress(isLoading: true);
+      _mainResult = const NuvioProgress(isLoading: true);
+      _reruns.clear();
       _probes.clear();
       _probing.clear();
       // A new search is a new list; let it place focus again.
@@ -345,6 +448,10 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
       _focusedRowKey = null;
     });
     await _nuvioSub?.cancel();
+    for (final sub in _rerunSubs) {
+      await sub.cancel();
+    }
+    _rerunSubs.clear();
     _startNuvio();
   }
 
@@ -723,99 +830,123 @@ class _PluginSourcesSheetState extends ConsumerState<PluginSourcesSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Telemetry Status Strip
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              kSourceSheetGutter,
-              4,
-              kSourceSheetGutter,
-              4,
-            ),
-            child: Row(
+          // Above the streams, UP and DOWN go row by row: the status line's
+          // Details stands right of the filters, outside their column.
+          FocusTraversalGroup(
+            policy: RowTraversalPolicy(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Text(
-                    _isLoading
-                        ? 'Searching scrapers… '
-                              '${_nuvioResult.completedCount}/${_nuvioResult.totalCount}'
-                        : '$nuvioCount links found',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _isLoading ? cs.primary : cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
+                // Telemetry Status Strip
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    kSourceSheetGutter,
+                    4,
+                    kSourceSheetGutter,
+                    4,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _isLoading
+                              ? 'Searching scrapers… '
+                                    '${_nuvioResult.completedCount}/${_nuvioResult.totalCount}'
+                              : '$nuvioCount links found',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: _isLoading
+                                ? cs.primary
+                                : cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (_isLoading)
+                        SizedBox(
+                          width: 80,
+                          child: LinearProgressIndicator(
+                            value: _nuvioResult.totalCount == 0
+                                ? null
+                                : _nuvioResult.completedCount /
+                                      _nuvioResult.totalCount,
+                            minHeight: 2.5,
+                            backgroundColor: palette.tint(0.1),
+                            valueColor: AlwaysStoppedAnimation(cs.primary),
+                          ),
+                        )
+                      else if (_nuvioResult.hasWork)
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(50, 26),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () => setState(
+                            () => _showDiagnostics = !_showDiagnostics,
+                          ),
+                          child: Text(
+                            _showDiagnostics ? 'Hide' : 'Details',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                if (_isLoading)
-                  SizedBox(
-                    width: 80,
-                    child: LinearProgressIndicator(
-                      value: _nuvioResult.totalCount == 0
-                          ? null
-                          : _nuvioResult.completedCount /
-                                _nuvioResult.totalCount,
-                      minHeight: 2.5,
-                      backgroundColor: palette.tint(0.1),
-                      valueColor: AlwaysStoppedAnimation(cs.primary),
+
+                if (_showDiagnostics) _diagnosticsPanel(theme, cs),
+
+                // Filter Chips Rail
+                SizedBox(
+                  height: 34,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: kSourceSheetGutter,
                     ),
-                  )
-                else if (_nuvioResult.hasWork)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(50, 26),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    onPressed: () =>
-                        setState(() => _showDiagnostics = !_showDiagnostics),
-                    child: Text(
-                      _showDiagnostics ? 'Hide' : 'Details',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    children: [
+                      _chip(
+                        palette,
+                        text: '1080p+',
+                        selected: _hdOnly,
+                        onSelected: (value) => setState(() => _hdOnly = value),
+                      ),
+                      _chip(
+                        palette,
+                        text: 'Tested',
+                        selected: _verifiedOnly,
+                        onSelected: (value) =>
+                            setState(() => _verifiedOnly = value),
+                      ),
+                      for (final provider in providers)
+                        _chip(
+                          palette,
+                          text: provider,
+                          selected: _providerFilter.contains(provider),
+                          onSelected: (value) => setState(() {
+                            if (value) {
+                              _providerFilter.add(provider);
+                            } else {
+                              _providerFilter.remove(provider);
+                            }
+                          }),
+                        ),
+                    ],
                   ),
+                ),
+
+                // The bot checks this sheet's scrapers met, with Verify: right above
+                // the streams they hold back, the first stop UP from them on TV.
+                CheckLines(
+                  sources: {
+                    for (final id in _scraperNames.keys)
+                      NuvioStreamService.sourceFor(id),
+                  },
+                  since: _runStartedAt,
+                  onCleared: _rerunAfter,
+                ),
               ],
             ),
           ),
-
-          if (_showDiagnostics) _diagnosticsPanel(theme, cs),
-
-          // Filter Chips Rail
-          SizedBox(
-            height: 34,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: kSourceSheetGutter,
-              ),
-              children: [
-                _chip(
-                  palette,
-                  text: '1080p+',
-                  selected: _hdOnly,
-                  onSelected: (value) => setState(() => _hdOnly = value),
-                ),
-                _chip(
-                  palette,
-                  text: 'Tested',
-                  selected: _verifiedOnly,
-                  onSelected: (value) => setState(() => _verifiedOnly = value),
-                ),
-                for (final provider in providers)
-                  _chip(
-                    palette,
-                    text: provider,
-                    selected: _providerFilter.contains(provider),
-                    onSelected: (value) => setState(() {
-                      if (value) {
-                        _providerFilter.add(provider);
-                      } else {
-                        _providerFilter.remove(provider);
-                      }
-                    }),
-                  ),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 6),
 
           // Stream Source List (Structured with Top Pick, Ready, and Unavailable)

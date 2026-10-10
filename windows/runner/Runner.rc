@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "SkyStream" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "skystream" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 dev.akash.skystream. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025-2026 SkyStream contributors. Licensed under GPL-3.0." "\0"
             VALUE "OriginalFilename", "skystream.exe" "\0"
             VALUE "ProductName", "SkyStream" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

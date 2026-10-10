@@ -183,6 +183,9 @@ class _FakeNuvioService implements NuvioStreamService {
     required String mediaType,
     int? season,
     int? episode,
+    bool personWaiting = false,
+    Set<String>? only,
+    bool fresh = false,
   }) async* {
     yield const NuvioProgress(
       streams: [

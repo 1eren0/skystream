@@ -35,6 +35,19 @@ import 'package:talker_flutter/talker_flutter.dart';
 /// arrives here as a `permissionStatus` / `requestPermission` call.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // background_downloader 9.6 reads the network state through
+  // connectivity_plus the moment the downloader is built, below: on Wi-Fi,
+  // and no changes. Never removed, as the downloader lives for the process.
+  final TestDefaultBinaryMessenger messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  messenger.setMockMethodCallHandler(
+    const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+    (MethodCall call) async => <String>['wifi'],
+  );
+  messenger.setMockMethodCallHandler(
+    const MethodChannel('dev.fluttercommunity.plus/connectivity_status'),
+    (MethodCall call) async => null,
+  );
   // Must be the first FileDownloader() call in the process - the singleton
   // keeps whichever storage it was built with.
   FileDownloader(persistentStorage: _InMemoryDownloadStorage());

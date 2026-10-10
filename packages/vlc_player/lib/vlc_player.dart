@@ -14,3 +14,5 @@ export 'src/vlc_player_config.dart';
 export 'src/vlc_video_fit.dart';
 export 'src/vlc_player_controller.dart';
 export 'src/vlc_player_value.dart';
+export 'src/vlc_screen_brightness.dart';
+export 'src/vlc_system_volume.dart';

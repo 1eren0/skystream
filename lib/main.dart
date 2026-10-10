@@ -12,6 +12,7 @@ import 'package:flutter/services.dart'; // LogicalKeyboardKey, KeyDownEvent
 import 'package:flutter/foundation.dart'; // For kReleaseMode
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:challenge_browser/challenge_browser.dart' show PageDialog;
 
 import 'core/theme/theme_provider.dart';
 import 'core/router/app_router.dart';
@@ -22,11 +23,17 @@ import 'core/network/doh_service.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 
 import 'core/utils/app_utils.dart';
+import 'core/utils/linux_wakelock.dart';
 import 'features/extensions/providers/extensions_controller.dart';
 import 'core/addons/data/addon_repository.dart';
+import 'core/cloudstream/cloudstream_repository.dart';
+import 'core/cloudstream/extension_notices.dart';
+import 'core/cloudstream/extension_ui/extension_pages.dart';
 import 'core/models/extension_update_report.dart';
 import 'core/nuvio/data/nuvio_repository.dart';
 import 'features/extensions/widgets/extensions_sync_bridge.dart';
+import 'features/cloudstream/presentation/extension_ui/extension_page_dialog.dart';
+import 'features/cloudstream/presentation/extension_ui/extension_settings_flow.dart';
 import 'core/providers/update_provider.dart';
 import 'core/widgets/update_dialog.dart';
 import 'core/widgets/app_error_boundary.dart';
@@ -37,9 +44,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import 'core/providers/locale_provider.dart';
-import 'core/network/cloudflare_bypass.dart';
+import 'core/network/clearance/clearance.dart';
+import 'core/network/clearance/clearance_bridge.dart';
 import 'core/config/tmdb_config.dart';
-import 'core/providers/bootstrap_provider.dart' show quietDesktopBrightness;
 import 'core/providers/device_info_provider.dart';
 import 'shared/focus/app_focus.dart';
 import 'shared/widgets/loading_indicator.dart';
@@ -58,6 +65,10 @@ void main() async {
   installGlobalErrorHandlers();
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Before anything keeps the screen awake: Linux's wakelock leaked an
+  // inhibitor on each repeated enable (see linux_wakelock.dart).
+  installLinuxWakelock();
 
   // Cap Flutter's image cache. Default is 1000 entries / 100 MB which is too
   // generous for low-RAM TVs and even most phones — decoded TMDB posters fill
@@ -133,6 +144,8 @@ class _AppRootState extends State<AppRoot> {
       await Future.wait([
         _storageService.init(),
         DohService.instance.init(),
+        // Saved bot-check clearances; opens no browser.
+        Clearance.instance.init(),
         if (Platform.isAndroid)
           FlutterDisplayMode.setHighRefreshRate().catchError((Object e) {
             if (kDebugMode) debugPrint("Error setting high refresh rate: $e");
@@ -142,31 +155,12 @@ class _AppRootState extends State<AppRoot> {
       if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
         final alwaysOnTop = _storageService.isAlwaysOnTop();
         await windowManager.setAlwaysOnTop(alwaysOnTop);
-        // Stops screen_brightness issuing DDC/CI to the monitor on desktop.
-        // Here rather than in Bootstrap: bootstrapProvider is never read by
-        // anything, so Bootstrap.build() does not run in the shipped app and
-        // this is the init path that does.
-        //
-        // Deliberately not awaited. Nothing below depends on it, it swallows
-        // its own failures, and awaiting would put a plugin round-trip on the
-        // launch critical path - a channel call that never returns would be an
-        // app that never paints. Fire it and move on.
-        unawaited(quietDesktopBrightness());
       }
 
       if (mounted) {
         setState(() {
           _initialized = true;
         });
-        // Pre-warm the system WebView after the first frame so the initial
-        // render isn't delayed. This eliminates the frame jank that occurs
-        // when the CF bypass spawns its HeadlessInAppWebView cold during search.
-        if (Platform.isAndroid || Platform.isIOS) {
-          Future.delayed(
-            const Duration(seconds: 3),
-            CloudflareBypass.instance.prewarm,
-          );
-        }
       }
     } catch (e, stack) {
       if (mounted) {
@@ -210,7 +204,9 @@ class _AppRootState extends State<AppRoot> {
       // first - so there is no parent scope for dependencies to describe.
       // ignore: riverpod_lint/scoped_providers_should_specify_dependencies
       overrides: [storageServiceProvider.overrideWithValue(_storageService)],
-      child: const ExtensionsSyncBridge(child: MyApp()),
+      child: const ExtensionsSyncBridge(
+        child: ClearanceBridge(child: MyApp()),
+      ),
     );
   }
 }
@@ -223,6 +219,10 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> {
+  StreamSubscription<ExtensionUpdateReport>? _cloudStreamNews;
+  StreamSubscription<ExtensionNotice>? _cloudStreamNotices;
+  StreamSubscription<WaitingScreen>? _cloudStreamWaiting;
+
   @override
   void initState() {
     super.initState();
@@ -231,9 +231,24 @@ class _MyAppState extends ConsumerState<MyApp> {
     // Applied here rather than in `main` because it reads through a provider,
     // which needs the scope this widget sits inside.
     ref.read(fullScreenModeProvider.notifier).initialize();
+    // A page's own dialog its extension left to the app: SkyStream's, over whatever shows (Phase 7c).
+    ExtensionPages.shared.dialogs = _showPageDialog;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(downloadServiceProvider).init();
       unawaited(_loadInstalledExtensions());
+      // CloudStream providers are listed from what was installed; no engine starts here.
+      // Repositories its plugins add (MegaRepo's) are announced like a collection's.
+      _cloudStreamNews = ref.read(cloudStreamRepositoryProvider.notifier).watchNews().listen((report) {
+        if (mounted) _announceExtensionUpdates(report);
+      });
+      // An extension's toasts, copies and links: the engine leaves them to the app on the desktops and iOS.
+      _cloudStreamNotices = ref.read(cloudStreamRepositoryProvider.notifier).watchNotices().listen((notice) {
+        if (mounted) _showExtensionNotice(notice);
+      });
+      // A window an extension shows while the person waits on it (a title opening, its links): in the sheet.
+      _cloudStreamWaiting = ref.read(cloudStreamRepositoryProvider.notifier).watchWaitingScreens().listen((screen) {
+        if (mounted) unawaited(_showWaitingScreen(screen));
+      });
       _checkAppUpdates();
       unawaited(_checkExtensionsUpdates());
     });
@@ -242,6 +257,10 @@ class _MyAppState extends ConsumerState<MyApp> {
   @override
   void dispose() {
     FocusManager.instance.removeEarlyKeyEventHandler(_handleEarlyKeyEvent);
+    unawaited(_cloudStreamNews?.cancel());
+    unawaited(_cloudStreamNotices?.cancel());
+    unawaited(_cloudStreamWaiting?.cancel());
+    if (ExtensionPages.shared.dialogs == _showPageDialog) ExtensionPages.shared.dialogs = null;
     super.dispose();
   }
 
@@ -351,15 +370,16 @@ class _MyAppState extends ConsumerState<MyApp> {
   static const Duration _extensionsCheckDelay = Duration(seconds: 15);
 
   /// Brings every extension system up to date in the background - SkyStream
-  /// plugins, Nuvio scrapers and Stremio add-ons - and says what changed:
-  /// what was updated, which repositories a followed collection brought in,
-  /// and which plugins appeared in a repository.
+  /// plugins, Nuvio scrapers, Stremio add-ons and CloudStream extensions - and
+  /// says what changed: what was updated, which repositories a followed
+  /// collection (or a CloudStream plugin like MegaRepo's) brought in, and
+  /// which plugins appeared in a repository.
   ///
   /// Every launch, on any connection. Extensions scrape sites that change
   /// under them, and the app's core job - finding something to play - runs on
   /// them, so a stale one is the difference between a title playing and not.
-  /// The three run side by side, each on its own, so one that fails does not
-  /// hold the others back.
+  /// They run side by side, each on its own, so one that fails does not hold
+  /// the others back.
   Future<void> _checkExtensionsUpdates() async {
     await Future<void>.delayed(_extensionsCheckDelay);
     if (!mounted) return;
@@ -372,6 +392,10 @@ class _MyAppState extends ConsumerState<MyApp> {
       _updating(
         'Nuvio scrapers',
         () => ref.read(nuvioRepositoryProvider.notifier).autoUpdate(),
+      ),
+      _updating(
+        'CloudStream extensions',
+        () => ref.read(cloudStreamRepositoryProvider.notifier).autoUpdate(),
       ),
       _updating(
         'Stremio add-ons',
@@ -423,6 +447,35 @@ class _MyAppState extends ConsumerState<MyApp> {
         icon: Icons.extension_rounded,
       );
     }
+  }
+
+  /// An extension's toast, copy or link, with the router's strings (see [_announceExtensionUpdates]).
+  void _showExtensionNotice(ExtensionNotice notice) {
+    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) return;
+    final l10n = AppLocalizations.of(navContext);
+    if (l10n == null) return;
+    unawaited(showExtensionNotice(notice, l10n: l10n, notifications: ref.read(notificationServiceProvider)));
+  }
+
+  /// A page's own alert, confirm or prompt its extension left to the app (see [showExtensionPageDialog]), over whatever
+  /// shows; cancelled when nothing can show it.
+  Future<({bool accept, String? text})> _showPageDialog(PageDialog dialog, Future<void> gone) async {
+    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) return (accept: false, text: null);
+    return showExtensionPageDialog(navContext, dialog, gone: gone);
+  }
+
+  /// An extension's window the person waits on, in the sheet over whatever shows (see [showExtensionWindows]).
+  Future<void> _showWaitingScreen(WaitingScreen screen) async {
+    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) {
+      await screen.session.close(force: true);
+      screen.session.dispose();
+      return;
+    }
+    final tv = ref.read(deviceProfileProvider).value?.isTv ?? false;
+    await showExtensionWindows(navContext, session: screen.session, name: screen.name, tv: tv);
   }
 
   Future<void> _toggleFullscreen() async {

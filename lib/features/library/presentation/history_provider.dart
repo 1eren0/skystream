@@ -17,6 +17,9 @@ class WatchHistory extends _$WatchHistory {
   }
 
   void refresh() {
+    // The writes before a refresh are awaited, and the provider can be disposed meanwhile
+    // (the app closing while the player saves its position).
+    if (!ref.mounted) return;
     final repository = ref.read(historyRepositoryProvider);
     state = repository.getWatchHistory();
   }

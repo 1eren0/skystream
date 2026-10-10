@@ -24,6 +24,7 @@ import '../../../core/extensions/extension_manager.dart';
 import '../../../core/extensions/providers.dart';
 import '../../../core/storage/history_repository.dart';
 import '../../../core/network/http_defaults.dart';
+import '../../../core/network/clearance/clearance.dart';
 import '../../../core/network/probe_answer.dart';
 import '../../../core/utils/app_utils.dart';
 import '../../../core/utils/stream_quality_sorter.dart';
@@ -64,8 +65,15 @@ class ResolvedPlayback {
 /// A CDN that ties a signed URL to the requesting agent will 403 if the probe,
 /// the licence fetch and the engine disagree — and libVLC's own default
 /// User-Agent is rejected outright by many of them.
+///
+/// A stream on a site holding a bot-check clearance carries it: the site's
+/// cookies, and the agent they hold under unless the plugin set its own.
 Map<String, String> playbackHeaders(StreamResult stream) {
-  final headers = <String, String>{...?stream.headers};
+  var headers = <String, String>{...?stream.headers};
+  final uri = Uri.tryParse(stream.url);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+    headers = Clearance.instance.withClearance(uri, headers);
+  }
   final hasUserAgent = headers.keys.any((k) => k.toLowerCase() == 'user-agent');
   if (!hasUserAgent) headers['User-Agent'] = kDefaultBrowserUserAgent;
   return headers;
@@ -159,6 +167,10 @@ enum StreamResolutionFailure {
   loadFailed,
   cancelled,
   noStreams,
+
+  /// An extension's own full-screen screen took the Play and left nothing to
+  /// play: the player leaves quietly, with nothing to say.
+  extensionScreen,
 }
 
 /// Resolution failed in a way worth showing the user.
@@ -180,6 +192,7 @@ class StreamResolutionException implements Exception {
     StreamResolutionFailure.loadFailed => 'Could not load sources: $detail',
     StreamResolutionFailure.cancelled => 'Cancelled.',
     StreamResolutionFailure.noStreams => 'No streams found.',
+    StreamResolutionFailure.extensionScreen => 'The extension showed its own screen.',
   };
 
   @override
@@ -198,6 +211,8 @@ String describeStreamFailure(
   ),
   StreamResolutionFailure.cancelled => l10n.playerResolutionCancelled,
   StreamResolutionFailure.noStreams => l10n.playerNoStreamsFound,
+  // Never shown: the player leaves.
+  StreamResolutionFailure.extensionScreen => l10n.playerNothingToPlay,
 };
 
 /// Where one candidate's health probe has got to.
@@ -295,6 +310,8 @@ Future<ResolvedPlayback> resolvePlayback({
   } else {
     try {
       raw = await provider!.loadStreams(videoUrl);
+    } on ExtensionScreenEnded {
+      throw const StreamResolutionException(StreamResolutionFailure.extensionScreen);
     } catch (e) {
       throw StreamResolutionException(
         StreamResolutionFailure.loadFailed,

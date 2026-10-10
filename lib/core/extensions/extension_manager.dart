@@ -145,6 +145,38 @@ class ExtensionManager extends _$ExtensionManager {
     return [];
   }
 
+  /// Providers from other extension systems (CloudStream), by source. They sit beside the JS
+  /// plugins' providers in [state] and are left alone by plugin syncs.
+  final Map<String, List<SkyStreamProvider>> _externalProviders = {};
+
+  /// Sources expected to report through [setExternalProviders] that have not yet.
+  final Set<String> _pendingExternalSources = {};
+
+  /// Declares that [source] will report its providers later. Until it does, a saved active
+  /// provider that is missing is waited for rather than forgotten.
+  void expectExternalSource(String source) {
+    if (!_externalProviders.containsKey(source)) _pendingExternalSources.add(source);
+  }
+
+  /// Whether a source declared with [expectExternalSource] has not reported yet.
+  bool hasPendingExternalSources() => _pendingExternalSources.isNotEmpty;
+
+  /// Replaces [source]'s providers with [providers].
+  void setExternalProviders(String source, List<SkyStreamProvider> providers) {
+    final previous = {
+      for (final p in _externalProviders[source] ?? const <SkyStreamProvider>[]) p.packageName,
+    };
+    _externalProviders[source] = List.unmodifiable(providers);
+    _pendingExternalSources.remove(source);
+    state = [
+      ...state.where((p) => !previous.contains(p.packageName)),
+      ...providers,
+    ];
+  }
+
+  bool _isExternal(SkyStreamProvider provider) =>
+      _externalProviders.values.any((list) => list.contains(provider));
+
   /// Called by the extensions feature when installed plugins change, so core
   /// stays independent of the feature.
   Future<void> syncFromPlugins(List<ExtensionPlugin> installed) async {
@@ -255,6 +287,7 @@ class ExtensionManager extends _$ExtensionManager {
       final providersToRemove = <SkyStreamProvider>[];
 
       for (final provider in state) {
+        if (_isExternal(provider)) continue;
         if (!_belongsToInstalled(provider.packageName, installedPackageNames)) {
           providersToRemove.add(provider);
         }
@@ -664,7 +697,9 @@ class ActiveProvider extends _$ActiveProvider {
         state = p;
         _targetProviderId = null;
         ref.read(providerResolutionLoadingProvider.notifier).set(false);
-      } else {
+      } else if (!ref
+          .read(extensionManagerProvider.notifier)
+          .hasPendingExternalSources()) {
         // Full sync finished and provider is truly gone — clear stale setting.
         _targetProviderId = null;
         ref.read(settingsRepositoryProvider).setActiveProviderId(null);
@@ -687,7 +722,10 @@ class ActiveProvider extends _$ActiveProvider {
           state = p;
           _targetProviderId = null;
           ref.read(providerResolutionLoadingProvider.notifier).set(false);
-        } else if (ref.read(pluginSyncCompleteProvider)) {
+        } else if (ref.read(pluginSyncCompleteProvider) &&
+            !ref
+                .read(extensionManagerProvider.notifier)
+                .hasPendingExternalSources()) {
           // Full sync is done and the provider is still missing — it was
           // removed/uninstalled. Clear the stale setting.
           _targetProviderId = null;

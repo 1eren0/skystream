@@ -206,6 +206,8 @@ dart run build_runner build --delete-conflicting-outputs
 flutter run
 ```
 
+The challenge browser's platform bindings (`packages/challenge_browser`) come from Pigeon and are committed, so a fresh clone builds without it. After changing `packages/challenge_browser/pigeons/messages.dart`, regenerate them from that folder with `dart run pigeon --input pigeons/messages.dart`.
+
 ## 🤝 Contributing
 
 We welcome contributions of all kinds! Whether you are fixing a bug, adding a feature, or helping with translations, your help is appreciated.
@@ -251,4 +253,9 @@ SkyStream is a streaming client and does not host any content. All media is stre
 
 ## License
 
-[MIT](LICENSE)
+SkyStream is licensed under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-only). It runs
+CloudStream extensions with CloudStream's own library, which is GPL-3.0, so the app that ships it
+is too. Each package in `packages/` keeps its own licence.
+
+Until 1 October 2026 this README said MIT. Versions published before then, and the contributions
+made to them, remain available under the MIT License.

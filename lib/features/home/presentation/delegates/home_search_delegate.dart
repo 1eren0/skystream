@@ -14,6 +14,8 @@ import '../../../search/presentation/widgets/search_suggestion_row.dart';
 
 import 'package:skystream/shared/widgets/multimedia_card.dart';
 
+import '../../../../core/network/clearance/clearance.dart';
+import '../../../../shared/widgets/check_line.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../../core/utils/responsive_breakpoints.dart';
 
@@ -283,6 +285,12 @@ class _HomeSearchResultsState extends ConsumerState<_HomeSearchResults> {
   bool isLoading = true;
   ProviderSearchResult? result;
 
+  /// When the search went out: a bot check its plugin met since is the one
+  /// the spinner, or the empty results, stand over. The search gives up on a
+  /// check that wants a person after the automatic try, so the empty results
+  /// come well after the check was met.
+  DateTime? _searchedAt;
+
   @override
   void initState() {
     super.initState();
@@ -299,12 +307,18 @@ class _HomeSearchResultsState extends ConsumerState<_HomeSearchResults> {
 
   Future<void> _performSearch() async {
     // Recorded on the way into the search, not on the way out: a query that
-    // returned nothing is still one the user made and may want back.
-    unawaited(ref.read(searchHistoryProvider.notifier).add(widget.query));
+    // returned nothing is still one the user made and may want back. Once
+    // the current build is over: the first search starts in initState, and
+    // a provider changed while widgets build is an error.
+    final history = ref.read(searchHistoryProvider.notifier);
+    final query = widget.query;
+    unawaited(Future.microtask(() => history.add(query)));
 
+    final clearance = Clearance.instance;
     setState(() {
       isLoading = true;
       result = null;
+      _searchedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
     });
 
     final SkyStreamProvider? provider = ref.read(activeProviderProvider);
@@ -337,7 +351,22 @@ class _HomeSearchResultsState extends ConsumerState<_HomeSearchResults> {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Center(child: AppLoadingIndicator());
+      final provider = ref.read(activeProviderProvider);
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const AppLoadingIndicator(),
+            // No search again here when it clears: the request waiting on
+            // the check carries on by itself.
+            CheckLine(
+              source: provider?.checkSource,
+              since: _searchedAt,
+              offerVerify: true,
+            ),
+          ],
+        ),
+      );
     }
 
     if (result == null || result!.results.isEmpty) {
@@ -352,6 +381,12 @@ class _HomeSearchResultsState extends ConsumerState<_HomeSearchResults> {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
+            CheckLine(
+              source: ref.read(activeProviderProvider)?.checkSource,
+              since: _searchedAt,
+              offerVerify: true,
+              onCleared: _performSearch,
+            ),
             Text(
               'No Results Found',
               style: TextStyle(

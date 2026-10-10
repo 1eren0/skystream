@@ -7,22 +7,33 @@ import 'package:skystream/core/domain/entity/multimedia_item.dart';
 import 'package:skystream/core/storage/secure_token_storage.dart';
 import 'package:skystream/features/tracking/data/trakt_service.dart';
 
-/// Trakt device tokens expire after ~90 days. Before this suite the service
-/// stored only `access_token`, so on day 91 every call 401'd, nothing could
-/// renew it, and the account tile still read "Connected" forever.
+/// Trakt access tokens expire: after 7 days since Trakt's 2026 authentication
+/// change, 90 before it. Before this suite the service stored only
+/// `access_token`, so once it expired every call 401'd, nothing could renew
+/// it, and the account tile still read "Connected" forever.
 ///
 /// Everything here is asserted against the wire: which requests the service
-/// makes, in what order, and with which bearer token.
+/// makes, on which host, in what order, and with which bearer token. Sign-in
+/// and refresh go to `auth.trakt.tv`, as Trakt's docs now ask; everything else
+/// stays on `api.trakt.tv`.
 class _FakeTokenStorage implements SecureTokenStorage {
   _FakeTokenStorage([Map<String, String>? seed]) : values = {...?seed};
 
   final Map<String, String> values;
+
+  /// Writes left before the app is "killed": every later write throws, as one the process never made.
+  int? writesLeft;
 
   @override
   Future<String?> read(String key) async => values[key];
 
   @override
   Future<void> write(String key, String value) async {
+    final left = writesLeft;
+    if (left != null) {
+      if (left <= 0) throw StateError('killed');
+      writesLeft = left - 1;
+    }
     values[key] = value;
   }
 
@@ -95,8 +106,8 @@ void main() {
   );
   final episode = Episode(name: 'E1', url: 'e1', season: 1, episode: 1);
 
-  /// A session that expired yesterday — the state a real user is in three
-  /// months after connecting.
+  /// A session that expired yesterday — the state a real user is in a week
+  /// after connecting.
   Map<String, String> expiredSession() => {
     accessKey: 'stale-access',
     refreshKey: 'good-refresh',
@@ -106,12 +117,12 @@ void main() {
         .toString(),
   };
 
-  /// A session with two months left on it.
+  /// A session with five days left on it.
   Map<String, String> liveSession() => {
     accessKey: 'live-access',
     refreshKey: 'good-refresh',
     expiryKey: now
-        .add(const Duration(days: 60))
+        .add(const Duration(days: 5))
         .millisecondsSinceEpoch
         .toString(),
   };
@@ -119,7 +130,7 @@ void main() {
   Map<String, dynamic> refreshedTokens() => {
     'access_token': 'fresh-access',
     'refresh_token': 'fresh-refresh',
-    'expires_in': 7776000,
+    'expires_in': 604800,
     'created_at': now.millisecondsSinceEpoch ~/ 1000,
   };
 
@@ -159,7 +170,7 @@ void main() {
 
         expect(ok, isTrue);
         expect(adapter.paths, [
-          'https://api.trakt.tv/oauth/token',
+          'https://auth.trakt.tv/oauth/token',
           'https://api.trakt.tv/scrobble/stop',
         ]);
         expect(adapter.bodyAt(0)['grant_type'], 'refresh_token');
@@ -182,7 +193,7 @@ void main() {
       expect(store.values[refreshKey], 'fresh-refresh');
       expect(
         int.parse(store.values[expiryKey]!),
-        now.add(const Duration(seconds: 7776000)).millisecondsSinceEpoch,
+        now.add(const Duration(seconds: 604800)).millisecondsSinceEpoch,
       );
     });
 
@@ -217,7 +228,7 @@ void main() {
       expect(ok, isTrue);
       expect(adapter.paths, [
         'https://api.trakt.tv/scrobble/stop',
-        'https://api.trakt.tv/oauth/token',
+        'https://auth.trakt.tv/oauth/token',
         'https://api.trakt.tv/scrobble/stop',
       ]);
       expect(adapter.bearerAt(2), 'Bearer fresh-access');
@@ -245,7 +256,7 @@ void main() {
 
         expect(
           adapter.paths
-              .where((p) => p == 'https://api.trakt.tv/oauth/token')
+              .where((p) => p == 'https://auth.trakt.tv/oauth/token')
               .length,
           1,
         );
@@ -260,14 +271,56 @@ void main() {
         final store = _FakeTokenStorage();
         final service = serviceWith(expiredSession(), store);
 
-        adapter.reply = (_) =>
-            _json(const {'error': 'invalid_grant'}, status: 400);
+        // Trakt's answer for a refresh token it no longer knows, such as one
+        // issued before its 2026 authentication change.
+        adapter.reply = (_) => _json(const {
+          'error': 'invalid_grant',
+          'error_description': 'session not found',
+        }, status: 400);
 
         final ok = await service.markWatched(item, episode);
 
         expect(ok, isFalse);
         expect(await service.isLoggedIn, isFalse);
         expect(store.values, isEmpty);
+      },
+    );
+
+    test('a refused refresh that leaves the grant alive (429, 403) keeps the session', () async {
+      // Trakt answers a used-up or unknown grant with 400 (invalid_grant)
+      // and a bad client with 401. A rate limit or a bot check spends
+      // nothing: signing the person out for one would be the bug.
+      for (final status in [429, 403]) {
+        final store = _FakeTokenStorage();
+        final service = serviceWith(expiredSession(), store);
+
+        adapter.reply = (_) =>
+            _json(const {'error': 'slow down'}, status: status);
+
+        final ok = await service.markWatched(item, episode);
+
+        expect(ok, isFalse, reason: '$status');
+        expect(await service.isLoggedIn, isTrue, reason: '$status');
+        expect(store.values[refreshKey], 'good-refresh', reason: '$status');
+      }
+    });
+
+    test(
+      'an app killed while it stores a refresh keeps the new refresh token',
+      () async {
+        // Refresh tokens are single-use: the old one is spent the moment
+        // Trakt answers. Stored after the access token, a kill between the two
+        // writes kept the spent one, and the next refresh signed them out.
+        final store = _FakeTokenStorage();
+        final service = serviceWith(expiredSession(), store);
+        adapter.reply = (options) => options.path.endsWith(_tokenUrl)
+            ? _json(refreshedTokens())
+            : _json(const {}, status: 201);
+        store.writesLeft = 1;
+
+        await service.markWatched(item, episode);
+
+        expect(store.values[refreshKey], 'fresh-refresh');
       },
     );
 
@@ -318,7 +371,7 @@ void main() {
           return _json({
             'user_code': 'ABCD1234',
             'device_code': 'dev-code',
-            'verification_url': 'https://trakt.tv/activate',
+            'verification_url': 'https://auth.trakt.tv/activate',
             // Keeps the poll loop from sleeping for real seconds.
             'interval': 0,
           });
@@ -326,7 +379,7 @@ void main() {
         return _json({
           'access_token': 'granted-access',
           'refresh_token': 'granted-refresh',
-          'expires_in': 7776000,
+          'expires_in': 604800,
           'created_at': now.millisecondsSinceEpoch ~/ 1000,
         });
       };
@@ -334,11 +387,15 @@ void main() {
       final ok = await service.login();
 
       expect(ok, isTrue);
+      expect(adapter.paths, [
+        'https://auth.trakt.tv/oauth/device/code',
+        'https://auth.trakt.tv/oauth/device/token',
+      ]);
       expect(store.values['trakt_access_token'], 'granted-access');
       expect(store.values['trakt_refresh_token'], 'granted-refresh');
       expect(
         int.parse(store.values['trakt_token_expires_at']!),
-        now.add(const Duration(seconds: 7776000)).millisecondsSinceEpoch,
+        now.add(const Duration(seconds: 604800)).millisecondsSinceEpoch,
       );
     });
   });

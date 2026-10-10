@@ -42,6 +42,7 @@ import 'package:skystream/core/extensions/models/extension_repository.dart';
 import 'package:skystream/core/extensions/providers.dart';
 import 'package:skystream/core/extensions/services/plugin_storage_service.dart';
 import 'package:skystream/core/extensions/services/repository_service.dart';
+import 'package:skystream/core/providers/device_info_provider.dart';
 import 'package:skystream/core/providers/update_provider.dart';
 import 'package:skystream/core/router/app_router.dart';
 import 'package:skystream/core/services/download_service.dart';
@@ -232,7 +233,13 @@ void main() {
   }
 
   /// Boots the tree `main()` boots, with one plugin repository added.
-  Future<ProviderContainer> boot(WidgetTester tester) async {
+  ///
+  /// [profile] stands in for the device the launch measures; without one it
+  /// is the host's own.
+  Future<ProviderContainer> boot(
+    WidgetTester tester, {
+    DeviceProfile? profile,
+  }) async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       ExtensionsController.repoUrlsKey: <String>[_repoUrl],
     });
@@ -244,6 +251,9 @@ void main() {
         repositoryServiceProvider.overrideWithValue(repos),
         extensionManagerProvider.overrideWith(() => manager),
         downloadServiceProvider.overrideWith(_NoopDownloadService.new),
+        // Resolved after the first frame, as the real one is.
+        if (profile != null)
+          deviceProfileProvider.overrideWith((ref) async => profile),
         updateControllerProvider.overrideWith(_NoopUpdateController.new),
         appRouterProvider.overrideWithValue(
           GoRouter(
@@ -341,6 +351,38 @@ void main() {
         <String>[_repoUrl],
         reason: 'the launch never checked for plugin updates',
       );
+    }),
+  );
+
+  testWidgets(
+    'a launch leaves orientation to the system',
+    (WidgetTester tester) async => onHostPlatform(() async {
+      final List<List<String>> pinned = <List<String>>[];
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall call) async {
+          if (call.method == 'SystemChrome.setPreferredOrientations') {
+            pinned.add(List<String>.from(call.arguments as List<Object?>));
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      await boot(tester, profile: const DeviceProfile());
+
+      expect(
+        pinned,
+        isEmpty,
+        reason: 'a phone follows the device everywhere but the player',
+      );
+
+      await settleLaunchTimers(tester);
     }),
   );
 

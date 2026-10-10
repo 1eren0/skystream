@@ -12,6 +12,7 @@ import '../../../../core/addons/models/addon_manifest.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../../../../shared/widgets/text_input_dialog.dart';
 import '../../../../shared/focus/app_focus.dart';
+import '../../../../shared/focus/text_field_keys.dart';
 import '../addon_providers.dart';
 import '../../../../core/utils/layout_constants.dart';
 
@@ -64,9 +65,17 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  /// Up and down leave the field while the keyboard is put away, and Select
+  /// brings it back - see [remoteTextFieldKeys].
+  final FocusNode _searchNode = FocusNode(
+    debugLabel: 'installed add-ons search',
+    onKeyEvent: remoteTextFieldKeys,
+  );
+
   @override
   void dispose() {
     _searchController.dispose();
+    _searchNode.dispose();
     super.dispose();
   }
 
@@ -347,6 +356,7 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
           const SizedBox(height: 10),
           TextField(
             controller: _searchController,
+            focusNode: _searchNode,
             textInputAction: TextInputAction.search,
             onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(

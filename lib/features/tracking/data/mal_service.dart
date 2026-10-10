@@ -19,9 +19,8 @@ class MalService implements TrackingService {
   final SecureTokenStorage _storage;
 
   static const String _clientId = SyncConfig.malClientId;
-  // MAL OAuth redirect — held in [SyncConfig.malRedirectUri] for parity with
-  // the auth-URL builder in account_settings_screen.
-  static const String _redirectUri = SyncConfig.malRedirectUri;
+  // The client's registered redirect, which the sign-in sheet catches.
+  static const String _redirectUri = SyncConfig.signInRedirect;
 
   static const String _kAccessTokenKey = 'mal_access_token';
   static const String _kRefreshTokenKey = 'mal_refresh_token';
@@ -110,11 +109,13 @@ class MalService implements TrackingService {
   }
 
   /// Exchange the authorization code for access + refresh tokens.
-  /// Called from the UI after capturing the redirect URL.
+  /// Called from the UI after capturing the redirect URL. [redirectUri] is the
+  /// one the authorization request named: MyAnimeList requires the same.
   Future<bool> exchangeCodeForToken(
     String redirectUrl,
-    String codeVerifier,
-  ) async {
+    String codeVerifier, {
+    String redirectUri = _redirectUri,
+  }) async {
     try {
       final uri = Uri.parse(redirectUrl);
       final code = uri.queryParameters['code'];
@@ -131,7 +132,7 @@ class MalService implements TrackingService {
         'grant_type': 'authorization_code',
         'code': code,
         'code_verifier': codeVerifier,
-        'redirect_uri': _redirectUri,
+        'redirect_uri': redirectUri,
       };
 
       if (SyncConfig.malClientSecret.isNotEmpty) {

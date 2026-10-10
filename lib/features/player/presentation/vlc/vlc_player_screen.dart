@@ -14,6 +14,7 @@ import 'package:vlc_player/vlc_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/domain/entity/multimedia_item.dart';
+import '../../../../core/network/clearance/clearance.dart';
 import '../../../../core/network/dio_client_provider.dart';
 import '../../../../core/network/http_defaults.dart';
 import '../../../../core/providers/device_info_provider.dart';
@@ -26,6 +27,7 @@ import '../../../../core/storage/episode_watch_repository.dart';
 import '../../../../core/storage/history_repository.dart';
 import '../../../../core/utils/app_utils.dart';
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../../shared/widgets/check_line.dart';
 import '../../domain/episode_navigator.dart';
 import '../../../skip/data/skip_service.dart';
 import '../../domain/clear_key.dart';
@@ -353,6 +355,16 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// file, a direct link, or sources a sheet already gathered.
   String? _pluginName;
 
+  /// When the plugin was asked for links: a bot check met since is the one
+  /// the startup view waits on.
+  DateTime? _linksAskedAt;
+
+  /// The bot checks the app meets, for the startup view's line.
+  StreamSubscription<void>? _checkChanges;
+
+  /// Counts the seconds of the check the links wait on, while it's tried.
+  Timer? _checkTick;
+
   /// The episode currently playing. Mutable because advancing swaps media on
   /// this same State rather than pushing a new route.
   Episode? _episode;
@@ -603,6 +615,10 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// stops something it actually started.
   bool _startedTorrent = false;
 
+  /// Whether [_handBack] has run: Back runs it as the route starts to leave,
+  /// and [dispose] would otherwise ask again.
+  bool _handedBack = false;
+
   /// Intro/outro bands for the current episode. Usually empty: both sources
   /// are opt-in and off by default.
   List<SkipSegment> _skipSegments = const <SkipSegment>[];
@@ -666,6 +682,32 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _container = ProviderScope.containerOf(context, listen: false);
+    // Told again whenever the route comes back on top: a quiet end waits for
+    // it (see [_leaveWhenOnTop]).
+    if (_leaveOnTop) _leaveWhenOnTop();
+  }
+
+  /// Set once the Play ended quietly with a screen over the player: an
+  /// extension's own full-screen screen (a game).
+  var _leaveOnTop = false;
+
+  /// Back to the title once the player is on top, with nothing said: the Play
+  /// ended quietly because an extension's own full-screen screen (a game) took
+  /// it (Phase 7c's §4). A screen still over the player stays until it goes:
+  /// removing the player's page would take it too (Review Focus 1).
+  void _leaveWhenOnTop() {
+    _leaveOnTop = true;
+    // A dependency: didChangeDependencies runs again once the route is current.
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive || !route.isCurrent) return;
+    _leaveOnTop = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _disposed) return;
+      final navigator = Navigator.of(context);
+      if (!navigator.canPop()) return;
+      _handBack();
+      navigator.pop();
+    });
   }
 
   T _read<T>(ProviderListenable<T> provider) {
@@ -735,6 +777,15 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // missed - see [_windowSpoke] for which of the two wins.
     _platform.addWindowListener(this);
     unawaited(_seedFullscreen());
+    // A bot check the links wait on shows on the startup view, and only
+    // there: once a video plays, the checks met elsewhere redraw nothing.
+    if (Clearance.instance.isReady) {
+      _checkChanges = Clearance.instance.checks.changes.listen((_) {
+        if (!mounted || _disposed || _stage != _Stage.resolving) return;
+        setState(() {});
+        _keepCheckTick();
+      });
+    }
     // Held for startup, then handed to playback - see [_syncPlayingState].
     // Resolving a cold magnet link can take minutes with nothing playing, and
     // a screen that sleeps through it never gets to the video.
@@ -939,6 +990,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       _pluginName = _preloaded == null
           ? pluginFor(_read, widget.item, _videoUrl)?.name
           : null;
+      _linksAskedAt = DateTime.now();
       // Plugin resolution is a network round trip and can be the longest part
       // of startup. The view narrates it from what [_onCandidates] and
       // [_onProbe] record, and a row picked during the probe race ends it.
@@ -1024,6 +1076,12 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       _awaitingFirstOpen = false;
       await _openAttempt(first, startAt: _resumePosition);
     } catch (e) {
+      // An extension's own full-screen screen (a game) took the Play and left
+      // nothing to play: back to the title, with nothing said.
+      if (e is StreamResolutionException && e.failure == StreamResolutionFailure.extensionScreen) {
+        if (mounted && !_disposed) _leaveWhenOnTop();
+        return;
+      }
       final l10n = _l10n;
       _fail(switch ((e, l10n)) {
         (final StreamResolutionException f, final AppLocalizations t) =>
@@ -3302,7 +3360,12 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// No `unknown` guard: the service's own form-factor gate handles a profile
   /// that is still resolving, and also disarms a settle that a change of form
   /// factor has invalidated.
+  ///
+  /// Nothing once [_handBack] has run: the engine plays on while the route
+  /// leaves, and its next tick would start the settle again and turn the page
+  /// underneath sideways.
   void _syncOrientation(VlcPlayerValue value) {
+    if (_handedBack) return;
     _platform.applyVideoOrientation(
       _form,
       renderedSize: value.displayVideoSize,
@@ -3432,6 +3495,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // straight into playback - Back leaves the app, which is what it would
     // have done without the PopScope in the way.
     if (navigator.canPop()) {
+      _handBack();
       navigator.pop();
     } else {
       unawaited(SystemNavigator.pop());
@@ -3739,6 +3803,8 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _lockEscape?.cancel();
     _watchdog?.cancel();
     _firstFrameDeadline?.cancel();
+    unawaited(_checkChanges?.cancel());
+    _checkTick?.cancel();
     // After the controls, which unmount first and stop listening; its hide
     // clock is still armed and nothing else would stop it.
     _chrome.dispose();
@@ -3758,25 +3824,36 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // while it tears the PiP window down, and a handler left registered closes
     // over a screen that no longer exists.
     _platform.detachPipListener();
-    // A window left full screen after the video closes traps the user in a
-    // chrome-less shell. Not gated on _isFullscreen: that only tracks the
-    // toggles we issued, and is wrong whenever the OS window control was used
-    // instead - which is exactly when this matters.
-    unawaited(_platform.exitFullscreen());
+    _handBack();
     _controller.removeListener(_onPlaybackValue);
     _controller.dispose();
     // The torrent server seeds in the background; nothing else stops it.
     if (_startedTorrent) unawaited(_read(torrentServiceProvider).stop());
     WakelockPlus.disable();
-    // Hands orientation back the way this device wants it, rather than
-    // unlocking rotation app-wide, which would leave every other screen free
-    // to land sideways for the rest of the process.
-    _platform.restoreOrientation(_form);
+    super.dispose();
+  }
+
+  /// Gives the device back as the rest of the app wants it: the handset's
+  /// rotation, the system bars, a desktop window out of full screen.
+  ///
+  /// From Back, before the pop, so all three start with the route's exit
+  /// transition (300 to 500 ms) rather than after it; and from [dispose], for
+  /// a route that went any other way. Once only.
+  void _handBack() {
+    if (_handedBack) return;
+    _handedBack = true;
+    // A window left full screen after the video closes traps the user in a
+    // chrome-less shell. Not gated on _isFullscreen: that only tracks the
+    // toggles we issued, and is wrong whenever the OS window control was used
+    // instead - which is exactly when this matters.
+    unawaited(_platform.exitFullscreen());
+    // Hands orientation back to the system: outside the player the app
+    // follows the device, the user's rotation lock included.
+    _platform.restoreOrientation();
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.manual,
       overlays: SystemUiOverlay.values,
     );
-    super.dispose();
   }
 
   /// The buffer the viewer asked for, in megabytes.
@@ -4241,10 +4318,51 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   }) {
     if (_stage == _Stage.failed) return _error;
     if (sources.isEmpty) {
+      final checking = _checkWait(l10n);
+      if (checking != null) return checking;
       final plugin = _pluginName;
       return plugin == null ? l10n.loading : l10n.playerGettingLinks(plugin);
     }
     return _status.isEmpty ? null : _status;
+  }
+
+  /// The bot check the plugin's links wait on, while it's tried: one line,
+  /// counted in seconds by [_checkTick].
+  String? _checkWait(AppLocalizations l10n) {
+    final clearance = Clearance.instance;
+    final asked = _linksAskedAt;
+    if (!clearance.isReady || asked == null) return null;
+    final source = pluginFor(_read, widget.item, _videoUrl)?.checkSource;
+    return checkLineText(
+      clearance.checks,
+      source,
+      asked.subtract(const Duration(seconds: 5)),
+      l10n,
+    );
+  }
+
+  /// Runs [_checkTick] while the check the links wait on is tried.
+  void _keepCheckTick() {
+    final clearance = Clearance.instance;
+    final asked = _linksAskedAt;
+    final check =
+        !clearance.isReady || asked == null || _stage != _Stage.resolving
+        ? null
+        : clearance.checks.latestFor(
+            pluginFor(_read, widget.item, _videoUrl)?.checkSource,
+            since: asked.subtract(const Duration(seconds: 5)),
+          );
+    if (check?.pending ?? false) {
+      _checkTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || _disposed) return;
+        // The startup view is gone: so is its clock.
+        if (_stage != _Stage.resolving) return _keepCheckTick();
+        setState(() {});
+      });
+    } else {
+      _checkTick?.cancel();
+      _checkTick = null;
+    }
   }
 
   /// `S1 E3 · Name` for an episode of a series, or null for anything else.

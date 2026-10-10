@@ -11,19 +11,20 @@ import 'package:skystream/l10n/generated/app_localizations.dart';
 import 'widgets/settings_widgets.dart';
 import 'widgets/settings_dialogs.dart';
 import 'widgets/tracking_auth_dialog.dart';
-import 'widgets/webview_auth_dialog.dart';
 import 'player_settings_provider.dart';
 import 'general_settings_provider.dart';
 import '../../../core/network/doh_service.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../core/config/tmdb_config.dart';
-import '../../../core/config/sync_config.dart';
 import '../../tracking/presentation/tracking_auth_provider.dart';
 import '../../tracking/data/simkl_service.dart';
 import '../../tracking/data/trakt_service.dart';
 import '../../tracking/data/mal_service.dart';
 import '../../tracking/data/anilist_service.dart';
+import '../../tracking/sign_in/sign_in_runner.dart';
+import '../../tracking/sign_in/tracker_sign_in.dart';
+import '../../../core/providers/device_info_provider.dart';
 import '../../../core/storage/settings_repository.dart';
 import '../../../core/services/notification_service.dart';
 
@@ -50,6 +51,26 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
     _malFocusNode.dispose();
     _anilistFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Signs in to [provider] in SkyStream's own browser, in the check sheet.
+  /// See lib/features/tracking/sign_in/.
+  Future<SignInResult> _signIn(
+    BuildContext context,
+    String provider,
+    Future<SignInResult> Function(TrackerSignIn signIn) start,
+  ) async {
+    final tv = ref.read(deviceProfileProvider).value?.isTv ?? false;
+    try {
+      return await start(
+        TrackerSignIn(
+          run: SignInRunner(context, provider: provider, tv: tv).call,
+        ),
+      );
+    } catch (e, stack) {
+      talker.error('AccountSettingsScreen: $provider sign-in threw', e, stack);
+      return SignInResult.failed;
+    }
   }
 
   Future<bool> _confirmDisconnect(
@@ -378,56 +399,32 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                                   }
                                 }
                               } else {
-                                final malService = ref.read(malServiceProvider);
-                                // Generate PKCE verifier before opening webview
-                                final codeVerifier = malService
-                                    .generateCodeVerifier();
-
-                                final authUrl =
-                                    'https://myanimelist.net/v1/oauth2/authorize'
-                                    '?response_type=code'
-                                    '&client_id=${SyncConfig.malClientId}'
-                                    '&code_challenge=$codeVerifier'
-                                    '&code_challenge_method=plain'
-                                    '&redirect_uri=${Uri.encodeComponent('http://localhost')}';
-
+                                final result = await _signIn(
+                                  context,
+                                  'MyAnimeList',
+                                  (signIn) => signIn.myAnimeList(
+                                    ref.read(malServiceProvider),
+                                  ),
+                                );
                                 if (context.mounted) {
-                                  final redirectUrl = await showDialog<String>(
-                                    context: context,
-                                    builder: (context) => WebViewAuthDialog(
-                                      providerName: 'MyAnimeList',
-                                      initialUrl: authUrl,
-                                      redirectUrlPrefix: 'http://localhost',
-                                    ),
-                                  );
-
-                                  if (redirectUrl != null && context.mounted) {
-                                    final success = await malService
-                                        .exchangeCodeForToken(
-                                          redirectUrl,
-                                          codeVerifier,
+                                  if (result == SignInResult.signedIn) {
+                                    ref
+                                        .read(notificationServiceProvider)
+                                        .showSuccess(
+                                          'Successfully connected to MyAnimeList!',
+                                          title: 'MyAnimeList',
+                                          icon: Icons.sync_rounded,
                                         );
-                                    if (success && context.mounted) {
-                                      ref
-                                          .read(notificationServiceProvider)
-                                          .showSuccess(
-                                            'Successfully connected to MyAnimeList!',
-                                            title: 'MyAnimeList',
-                                            icon: Icons.sync_rounded,
-                                          );
-                                    } else if (context.mounted) {
-                                      ref
-                                          .read(notificationServiceProvider)
-                                          .showError(
-                                            'Failed to connect to MyAnimeList',
-                                            title: 'MyAnimeList',
-                                            icon: Icons.sync_problem_rounded,
-                                          );
-                                    }
+                                  } else if (result == SignInResult.failed) {
+                                    ref
+                                        .read(notificationServiceProvider)
+                                        .showError(
+                                          'Failed to connect to MyAnimeList',
+                                          title: 'MyAnimeList',
+                                          icon: Icons.sync_problem_rounded,
+                                        );
                                   }
-                                  if (context.mounted) {
-                                    _malFocusNode.requestFocus();
-                                  }
+                                  _malFocusNode.requestFocus();
                                 }
                               }
                               ref.invalidate(trackingAuthProvider);
@@ -462,50 +459,32 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                                   }
                                 }
                               } else {
-                                final anilistService = ref.read(
-                                  aniListServiceProvider,
+                                final result = await _signIn(
+                                  context,
+                                  'AniList',
+                                  (signIn) => signIn.aniList(
+                                    ref.read(aniListServiceProvider),
+                                  ),
                                 );
-
-                                const authUrl =
-                                    'https://anilist.co/api/v2/oauth/authorize'
-                                    '?client_id=${SyncConfig.anilistClientId}'
-                                    '&response_type=token';
-
                                 if (context.mounted) {
-                                  final redirectUrl = await showDialog<String>(
-                                    context: context,
-                                    builder: (context) =>
-                                        const WebViewAuthDialog(
-                                          providerName: 'AniList',
-                                          initialUrl: authUrl,
-                                          redirectUrlPrefix: 'http://localhost',
-                                        ),
-                                  );
-
-                                  if (redirectUrl != null && context.mounted) {
-                                    final success = await anilistService
-                                        .saveTokenFromRedirect(redirectUrl);
-                                    if (success && context.mounted) {
-                                      ref
-                                          .read(notificationServiceProvider)
-                                          .showSuccess(
-                                            'Successfully connected to AniList!',
-                                            title: 'AniList',
-                                            icon: Icons.sync_rounded,
-                                          );
-                                    } else if (context.mounted) {
-                                      ref
-                                          .read(notificationServiceProvider)
-                                          .showError(
-                                            'Failed to connect to AniList',
-                                            title: 'AniList',
-                                            icon: Icons.sync_problem_rounded,
-                                          );
-                                    }
+                                  if (result == SignInResult.signedIn) {
+                                    ref
+                                        .read(notificationServiceProvider)
+                                        .showSuccess(
+                                          'Successfully connected to AniList!',
+                                          title: 'AniList',
+                                          icon: Icons.sync_rounded,
+                                        );
+                                  } else if (result == SignInResult.failed) {
+                                    ref
+                                        .read(notificationServiceProvider)
+                                        .showError(
+                                          'Failed to connect to AniList',
+                                          title: 'AniList',
+                                          icon: Icons.sync_problem_rounded,
+                                        );
                                   }
-                                  if (context.mounted) {
-                                    _anilistFocusNode.requestFocus();
-                                  }
+                                  _anilistFocusNode.requestFocus();
                                 }
                               }
                               ref.invalidate(trackingAuthProvider);

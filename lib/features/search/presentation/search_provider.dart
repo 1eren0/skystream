@@ -5,10 +5,17 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:dio/dio.dart';
 
+import '../../../../core/addons/data/addon_client.dart';
+import '../../../../core/addons/data/addon_repository.dart';
+import '../../../../core/cloudstream/cloudstream_provider.dart';
 import '../../../../core/extensions/extension_manager.dart';
 import '../../../../core/extensions/base_provider.dart';
 import '../../../../core/domain/entity/multimedia_item.dart';
+import '../../../../core/network/clearance/clearance.dart';
+import '../../../../core/network/clearance/site_checks.dart';
+import '../../../../core/nuvio/data/nuvio_repository.dart';
 import '../../explore/data/explore_tmdb_provider.dart';
+import 'search_sources.dart';
 
 part 'search_provider.g.dart';
 
@@ -20,19 +27,49 @@ class ProviderSearchResult {
   final List<MultimediaItem> results;
   final String? error;
 
+  /// The system the section comes from, which its tag names.
+  final SearchSourceKind kind;
+
+  /// Opens the section's results in their own system's pages; null for an
+  /// extension's, which open on the details page.
+  final SearchSource? source;
+
   ProviderSearchResult({
     required this.providerId,
     required this.providerName,
     required this.results,
     this.error,
-  });
+    SearchSourceKind? kind,
+    this.source,
+  }) : kind =
+           kind ??
+           source?.kind ??
+           (CloudStreamProvider.isCloudStreamId(providerId)
+               ? SearchSourceKind.cloudstream
+               : SearchSourceKind.skystream);
 }
 
 class SearchAggregateState {
   final List<ProviderSearchResult> results;
   final bool isLoading;
 
-  const SearchAggregateState({this.results = const [], this.isLoading = false});
+  /// When the search began: the bot checks it met are the ones since.
+  final DateTime? startedAt;
+
+  /// Extensions searching again because their site's check cleared.
+  final Set<String> rerunning;
+
+  /// The searchers this search ran besides the extensions: Stremio add-ons'
+  /// and Nuvio's. Their checks show with the extensions'.
+  final List<SkyStreamProvider> others;
+
+  const SearchAggregateState({
+    this.results = const [],
+    this.isLoading = false,
+    this.startedAt,
+    this.rerunning = const {},
+    this.others = const [],
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -44,55 +81,106 @@ class _FilterParams {
   const _FilterParams(this.items, this.queryParts);
 }
 
-List<MultimediaItem> _filterItems(_FilterParams params) {
-  return params.items.where((item) {
-    final titleLower = item.title.toLowerCase();
-    final titleParts = titleLower
-        .split(' ')
-        .where((s) => s.isNotEmpty)
-        .toList();
-    for (final qPart in params.queryParts) {
-      bool foundPrefix = false;
-      for (final tPart in titleParts) {
-        if (tPart.startsWith(qPart)) {
-          foundPrefix = true;
-          break;
-        }
-      }
-      if (!foundPrefix) return false;
-    }
-    return true;
-  }).toList();
+List<MultimediaItem> _filterItems(_FilterParams params) => params.items
+    .where((item) => titleMatches(item.title, params.queryParts))
+    .toList();
+
+final _wordBreak = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+/// The lowercase words of [text], split at anything that is not a letter or
+/// a digit, so a year in brackets ("(1940)") or a hyphenated name
+/// ("Spider-Man") is made of words like any other.
+@visibleForTesting
+List<String> searchWords(String text) => text
+    .toLowerCase()
+    .split(_wordBreak)
+    .where((word) => word.isNotEmpty)
+    .toList();
+
+/// Whether every one of [queryWords] begins a word of [title].
+@visibleForTesting
+bool titleMatches(String title, List<String> queryWords) {
+  final titleWords = searchWords(title);
+  return queryWords.every(
+    (query) => titleWords.any((word) => word.startsWith(query)),
+  );
 }
 
+/// Searches [manager]'s extensions for [query], with [others] (Stremio
+/// add-ons' and Nuvio's searchers) under the content filter.
 Stream<SearchAggregateState> searchAllProviders(
   Ref ref,
   String query,
   ExtensionManager manager, {
   required SearchFilter filter,
   required bool Function() isCancelled,
+  List<SkyStreamProvider> others = const [],
 }) async* {
   final allProviders = manager.getAllProviders();
-  final providers = allProviders.where((p) {
-    final isLiveOnly =
-        p.supportedTypes.isNotEmpty &&
-        p.supportedTypes.every((t) => t == ProviderType.livestream);
-    return filter == SearchFilter.live ? isLiveOnly : !isLiveOnly;
-  }).toList();
+  final searchers = filter == SearchFilter.content
+      ? others
+      : const <SkyStreamProvider>[];
+  final providers = [
+    ...allProviders.where((p) {
+      final isLiveOnly =
+          p.supportedTypes.isNotEmpty &&
+          p.supportedTypes.every((t) => t == ProviderType.livestream);
+      return filter == SearchFilter.live ? isLiveOnly : !isLiveOnly;
+    }),
+    ...searchers,
+  ];
   debugPrint(
     '[SEARCH DBG] searchAllProviders called: query="$query", providers=${providers.length}, cancelled=${isCancelled()}',
   );
 
+  final clearance = Clearance.instance;
+  final startedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
+
   if (query.isEmpty || providers.isEmpty) {
-    yield const SearchAggregateState(results: [], isLoading: false);
+    yield SearchAggregateState(
+      results: const [],
+      isLoading: false,
+      startedAt: startedAt,
+      others: searchers,
+    );
     return;
   }
 
-  yield const SearchAggregateState(results: [], isLoading: true);
+  yield SearchAggregateState(
+    results: const [],
+    isLoading: true,
+    startedAt: startedAt,
+    others: searchers,
+  );
 
   final results = <ProviderSearchResult>[];
-  final queryLower = query.toLowerCase();
-  final queryParts = queryLower.split(' ').where((s) => s.isNotEmpty).toList();
+  final queryParts = searchWords(query);
+
+  /// The first pass's extensions still to answer: the search is loading until
+  /// they have.
+  final initial = {for (final p in providers) p.packageName};
+
+  /// Extensions that came back empty or failed: a check that clears later may
+  /// be why.
+  final empty = <String>{};
+
+  /// Extensions searching again after their site's check cleared.
+  final rerunning = <String>{};
+
+  /// The check sources of this search's extensions; `cs3` too when it has
+  /// CloudStream ones, for a check the engine couldn't put a name to.
+  final sources = {
+    for (final p in providers) ?p.checkSource,
+    if (providers.any((p) => p.checkSource?.startsWith('cs3:') ?? false)) 'cs3',
+  };
+
+  /// Whether a check this search met may still clear, and send its
+  /// extensions searching again.
+  bool carriesOn() =>
+      clearance.isReady &&
+      clearance.checks
+          .since(startedAt, sources: sources)
+          .any((c) => c.pending || c.wantsPerson);
 
   final controller = StreamController<SearchAggregateState>();
 
@@ -116,6 +204,12 @@ Stream<SearchAggregateState> searchAllProviders(
   final maxSlots = getSemaphoreSize();
   int activeJobs = 0;
 
+  /// Jobs holding a slot: an extension's. Add-ons' and Nuvio's searchers do
+  /// no extension engine work, only a request or two, so they start at once
+  /// and take no slot an extension waits for.
+  int activeSlots = 0;
+  bool takesSlot(SkyStreamProvider p) => p is! SearchSource;
+
   // Livestream-only providers (large M3U playlists) are deprioritized to the
   // back of the queue. They still run and IPTV channel searches work; we just
   // let movie/series providers finish their burst first to reduce peak jank.
@@ -134,6 +228,7 @@ Stream<SearchAggregateState> searchAllProviders(
   final List<CancelToken> activeTokens = [];
   final List<SkyStreamProvider> activeProviders = [];
   bool isCompleted = false;
+  StreamSubscription<void>? cleared;
 
   Timer? throttleTimer;
   bool pendingEmit = false;
@@ -144,7 +239,9 @@ Stream<SearchAggregateState> searchAllProviders(
     if (controller.isClosed || isCancelled()) {
       return;
     }
-    final stillLoading = queue.isNotEmpty || activeJobs > 0;
+    // Only the first pass loads: an extension searching again shows in its
+    // site's row, not as the whole search loading.
+    final stillLoading = initial.isNotEmpty;
     // Skip the rebuild if no new results have arrived since the last emit
     // (e.g. a batch of providers all returned empty). Always emit on the
     // final event so isLoading flips to false.
@@ -161,6 +258,9 @@ Stream<SearchAggregateState> searchAllProviders(
       SearchAggregateState(
         results: List.from(results),
         isLoading: stillLoading,
+        startedAt: startedAt,
+        rerunning: Set.of(rerunning),
+        others: searchers,
       ),
     );
     pendingEmit = false;
@@ -202,10 +302,15 @@ Stream<SearchAggregateState> searchAllProviders(
       return;
     }
 
-    // Fill up to max slots
-    while (activeJobs < maxSlots && queue.isNotEmpty) {
-      final provider = queue.removeAt(0);
+    // Fill up to max slots; searchers start whatever the slots.
+    while (queue.isNotEmpty) {
+      final next = queue.indexWhere(
+        (p) => !takesSlot(p) || activeSlots < maxSlots,
+      );
+      if (next < 0) break;
+      final provider = queue.removeAt(next);
       activeJobs++;
+      if (takesSlot(provider)) activeSlots++;
       final token = CancelToken();
       activeTokens.add(token);
       activeProviders.add(provider);
@@ -231,24 +336,35 @@ Stream<SearchAggregateState> searchAllProviders(
             return;
           }
 
-          final providerItems = rawResults
-              .map(
-                (item) => MultimediaItem(
-                  title: item.title,
-                  url: item.url,
-                  posterUrl: item.posterUrl,
-                  bannerUrl: item.bannerUrl,
-                  description: item.description,
-                  contentType: item.contentType,
-                  episodes: item.episodes,
-                  provider: provider.packageName,
-                ),
-              )
-              .toList();
+          final source = provider is SearchSource
+              ? provider as SearchSource
+              : null;
+          // A searcher's results keep their own fields (ids, kind, source):
+          // they open in their own system's pages.
+          final providerItems = source != null
+              ? rawResults
+              : rawResults
+                    .map(
+                      (item) => MultimediaItem(
+                        title: item.title,
+                        url: item.url,
+                        posterUrl: item.posterUrl,
+                        bannerUrl: item.bannerUrl,
+                        description: item.description,
+                        contentType: item.contentType,
+                        episodes: item.episodes,
+                        provider: provider.packageName,
+                      ),
+                    )
+                    .toList();
 
           // For small result sets, skip the compute() isolate overhead
           // (spawn + serialize + deserialize costs more than the filter work).
-          final filtered = providerItems.length < 30
+          // A searcher's results are matched and ranked by its own system
+          // (TMDB, the add-on): accents, years and people included.
+          final filtered = source != null
+              ? providerItems
+              : providerItems.length < 30
               ? _filterItems(_FilterParams(providerItems, queryParts))
               : await compute(
                   _filterItems,
@@ -269,16 +385,22 @@ Stream<SearchAggregateState> searchAllProviders(
           // grow the list, force larger List.from() copies in doEmit, and
           // cause needless ListView rebuilds for no visual change.
           if (filtered.isNotEmpty) {
+            // A search again replaces what the extension found before.
+            results.removeWhere((r) => r.providerId == provider.packageName);
+            empty.remove(provider.packageName);
             results.add(
               ProviderSearchResult(
                 providerId: provider.packageName,
                 providerName: provider.name,
                 results: filtered,
+                source: source,
               ),
             );
             debugPrint(
               '[SEARCH DBG] ADDED ${provider.packageName} — total results sets=${results.length}',
             );
+          } else {
+            empty.add(provider.packageName);
           }
         } catch (e) {
           debugPrint('[SEARCH DBG] ERROR ${provider.packageName}: $e');
@@ -291,16 +413,20 @@ Stream<SearchAggregateState> searchAllProviders(
           if (e is DioException && e.type == DioExceptionType.cancel) return;
           // Don't add error entries with empty results — they add state size
           // with no user-visible benefit.
+          empty.add(provider.packageName);
         } finally {
           activeJobs--;
+          if (takesSlot(provider)) activeSlots--;
           activeTokens.remove(token);
           activeProviders.remove(provider);
+          final wasRerun = rerunning.remove(provider.packageName);
+          initial.remove(provider.packageName);
 
-          final isLast = activeJobs == 0 && queue.isEmpty;
+          final isLast = initial.isEmpty && activeJobs == 0 && queue.isEmpty;
           debugPrint(
             '[SEARCH DBG] FINALLY ${provider.packageName} — activeJobs=$activeJobs, queueLeft=${queue.length}, isLast=$isLast, cancelled=${isCancelled()}, controllerClosed=${controller.isClosed}',
           );
-          scheduleEmit(force: isLast);
+          scheduleEmit(force: isLast || wasRerun);
 
           if (isLast && !isCompleted) {
             isCompleted = true;
@@ -308,13 +434,16 @@ Stream<SearchAggregateState> searchAllProviders(
               '[SEARCH DBG] ALL DONE — total result sets=${results.length}',
             );
             manager.runGC();
-            if (!controller.isClosed) {
-              unawaited(
-                Future.microtask(() {
-                  if (!controller.isClosed) controller.close();
-                }),
-              );
-            }
+          }
+          // Kept open while a check this search met may still clear and send
+          // its extensions searching again.
+          if (isLast && !carriesOn() && !controller.isClosed) {
+            unawaited(cleared?.cancel());
+            unawaited(
+              Future.microtask(() {
+                if (!controller.isClosed) controller.close();
+              }),
+            );
           } else if (!isCancelled()) {
             processNext();
           }
@@ -322,6 +451,54 @@ Stream<SearchAggregateState> searchAllProviders(
       });
     }
   }
+
+  // A check this search met that clears sends the extensions that met it, and
+  // came back empty, searching again: their results take their place.
+  final handled = <String>{};
+  if (clearance.isReady) {
+    cleared = clearance.checks.changes.listen((_) {
+      if (isCancelled()) {
+        unawaited(cleared?.cancel());
+        return;
+      }
+      for (final check in clearance.checks.since(startedAt, sources: sources)) {
+        if (check.state != CheckState.cleared) continue;
+        if (!handled.add('${check.site} ${check.since}')) continue;
+        for (final p in providers) {
+          final id = p.packageName;
+          if (!check.metBy(p.checkSource) ||
+              !empty.contains(id) ||
+              rerunning.contains(id) ||
+              activeProviders.contains(p) ||
+              queue.contains(p)) {
+            continue;
+          }
+          rerunning.add(id);
+          queue.add(p);
+        }
+      }
+      if (rerunning.isNotEmpty) {
+        scheduleEmit(force: true);
+        processNext();
+      } else if (initial.isEmpty &&
+          activeJobs == 0 &&
+          queue.isEmpty &&
+          !carriesOn() &&
+          !controller.isClosed) {
+        // Every extension has answered, and no check it met can still clear.
+        unawaited(cleared?.cancel());
+        unawaited(controller.close());
+      }
+    });
+  }
+  controller.onCancel = () {
+    unawaited(cleared?.cancel());
+    // A newer search took its place: its requests stop now, not when one of
+    // them next finishes.
+    for (final token in activeTokens) {
+      if (!token.isCancelled) token.cancel('Search replaced');
+    }
+  };
 
   processNext();
 
@@ -364,6 +541,17 @@ Stream<SearchAggregateState> searchResults(Ref ref) {
     manager,
     filter: filter,
     isCancelled: () => cancelled,
+    others: filter == SearchFilter.content
+        ? searchSources(
+            addons: ref.read(addonRepositoryProvider).enabled,
+            client: ref.read(addonClientProvider),
+            nuvioActive: ref
+                .read(nuvioRepositoryProvider)
+                .activeScrapers
+                .isNotEmpty,
+            tmdb: ref.read(tmdbServiceProvider),
+          )
+        : const [],
   );
 }
 

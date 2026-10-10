@@ -44,27 +44,35 @@ class RepositoryService {
 
     // Shortcode: try the SkyStream namespace first, then the bare code.
     if (RegExp(r'^[a-zA-Z0-9!_-]+$').hasMatch(fixedUrl)) {
-      Object? lastError;
-      for (final candidate in [
+      return resolveShortcode([
         'https://cutt.ly/sky-$fixedUrl',
         'https://cutt.ly/$fixedUrl',
-      ]) {
-        try {
-          final resolved = await resolveShortLink(candidate);
-          if (resolved != null) return resolved;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      if (lastError is DioException) {
-        throw Exception(
-          'Could not reach the shortcode service: ${lastError.message}',
-        );
-      }
-      throw Exception("That shortcode doesn't exist");
+      ]);
     }
 
     throw Exception('Invalid URL format');
+  }
+
+  /// Looks a shortcode up at each of [shortLinks] in turn, and returns where
+  /// the first that exists points. Throws when none does, or when the
+  /// shortener could not be reached. CloudStream's codes go through here too,
+  /// at their own shorteners.
+  Future<String> resolveShortcode(List<String> shortLinks) async {
+    Object? lastError;
+    for (final candidate in shortLinks) {
+      try {
+        final resolved = await resolveShortLink(candidate);
+        if (resolved != null) return resolved;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError is DioException) {
+      throw Exception(
+        'Could not reach the shortcode service: ${lastError.message}',
+      );
+    }
+    throw Exception("That shortcode doesn't exist");
   }
 
   /// Follows one short link. Handles a redirect header, and the increasingly
@@ -92,6 +100,18 @@ class RepositoryService {
       return null;
     }
     if (status == 404 || status == 410) return null;
+    if (status >= 400) {
+      // Turned away - cutt.ly answers 429 after a burst of lookups - which is
+      // not the same as "no such code".
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+        message: status == 429
+            ? 'too many lookups, try again in a minute'
+            : 'it answered $status',
+      );
+    }
 
     final body = response.data is String ? response.data as String : '';
     if (body.isEmpty) return null;
@@ -130,6 +150,8 @@ class RepositoryService {
     final trimmed = location.replaceAll(RegExp(r'/$'), '').trim();
     return trimmed.startsWith('https://cutt.ly/404') ||
         trimmed == 'https://cutt.ly' ||
+        trimmed.startsWith('https://py.md/404') ||
+        trimmed == 'https://py.md' ||
         trimmed.isEmpty;
   }
 

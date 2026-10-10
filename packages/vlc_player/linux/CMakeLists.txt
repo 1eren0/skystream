@@ -9,8 +9,8 @@ project(${PROJECT_NAME} LANGUAGES CXX)
 
 find_package(PkgConfig REQUIRED)
 # Capped, unlike every other platform's libVLC: Windows downloads a pinned
-# 3.0.23 runtime and Apple gets 3.0.23 through VLCKit, but Linux takes whatever
-# the distro ships. Uncapped, that happily configures against libvlc 4.x, whose
+# 3.0.24 runtime, Apple gets 3.0.24 through VLCKit and Android through
+# libvlc-all 3.7.7, but Linux takes whatever the distro ships. Uncapped, that happily configures against libvlc 4.x, whose
 # C API the vendored libvlcpp headers in ../third_party do not match - and the
 # failure surfaces as a wall of template errors, not a version complaint.
 #

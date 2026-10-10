@@ -64,6 +64,8 @@ class FakePlugin implements SkyStreamProvider {
   @override
   bool get isDebug => false;
   @override
+  String? get checkSource => null;
+  @override
   void cancelInit() {}
   @override
   Future<List<MultimediaItem>> search(
@@ -75,6 +77,14 @@ class FakePlugin implements SkyStreamProvider {
   @override
   Future<MultimediaItem> getDetails(String url) async =>
       throw UnimplementedError();
+}
+
+/// A provider whose links went to its own full-screen screen (a game).
+class _ScreenPlugin extends FakePlugin {
+  _ScreenPlugin() : super(const []);
+
+  @override
+  Future<List<StreamResult>> loadStreams(String url) async => throw const ExtensionScreenEnded();
 }
 
 void main() {
@@ -155,6 +165,27 @@ void main() {
         ),
       );
     });
+
+    test(
+      "a Play an extension's full-screen window took fails as extensionScreen, for the player to leave quietly",
+      () async {
+        expect(
+          () => resolvePlayback(
+            read: readerOf([(activeProviderProvider, _ScreenPlugin()), ...defaults]),
+            item: itemWith(),
+            videoUrl: 'https://example.com/episode/1',
+            probeCandidates: 0,
+          ),
+          throwsA(
+            isA<StreamResolutionException>().having(
+              (e) => e.failure,
+              'failure',
+              StreamResolutionFailure.extensionScreen,
+            ),
+          ),
+        );
+      },
+    );
   });
 
   // Both source sheets put the tapped row first and hand the whole list over.

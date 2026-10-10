@@ -99,9 +99,10 @@ class AddonRepository extends _$AddonRepository {
       throw const AddonException('Enter a valid add-on URL.');
     }
 
+    // A person is installing it: a check that wants a click opens the sheet.
     final manifest = await ref
         .read(addonClientProvider)
-        .fetchManifest(url, forceRefresh: true);
+        .fetchManifest(url, forceRefresh: true, personWaiting: true);
 
     final addon = ManagedAddon(
       manifestUrl: url,

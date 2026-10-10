@@ -3,6 +3,7 @@
 // ignore_for_file: riverpod_lint/scoped_providers_should_specify_dependencies
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/shared/focus/app_focus.dart';
@@ -111,12 +112,111 @@ NuvioState _twoScrapers() {
   );
 }
 
+/// Four scrapers, only the third with settings: its gear stands left of the
+/// play buttons every row has.
+NuvioState _oneWithSettings() {
+  NuvioScraperInfo scraper(String id, {bool settings = false}) =>
+      NuvioScraperInfo(
+        id: id,
+        name: 'Scraper ${id.toUpperCase()}',
+        version: '1.0.0',
+        filename: '$id.js',
+        hasSettings: settings,
+      );
+  return NuvioState(
+    isLoading: false,
+    repos: [
+      NuvioRepo(
+        manifestUrl: 'https://example.com/manifest.json',
+        addedAt: DateTime.utc(2026, 1, 1),
+        manifest: NuvioManifest(
+          name: 'Test Repo',
+          version: '2.0.0',
+          scrapers: [
+            scraper('a'),
+            scraper('b'),
+            scraper('c', settings: true),
+            scraper('d'),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+/// The scraper whose row holds the focus, or null.
+String? _focusedRow(WidgetTester tester) {
+  final focused = FocusManager.instance.primaryFocus?.context;
+  if (focused == null) return null;
+  for (final name in ['Scraper A', 'Scraper B', 'Scraper C', 'Scraper D']) {
+    final row = find.ancestor(
+      of: find.text(name),
+      matching: find.byType(ListTile),
+    );
+    if (find
+        .descendant(of: row, matching: find.byWidget(focused.widget))
+        .evaluate()
+        .isNotEmpty) {
+      return name;
+    }
+  }
+  return null;
+}
+
 Widget _app(NuvioState state) => ProviderScope(
   overrides: [nuvioRepositoryProvider.overrideWithValue(state)],
   child: const MaterialApp(home: Scaffold(body: NuvioPluginsView())),
 );
 
 void main() {
+  group('on TV', () {
+    setUp(() {
+      final view = TestWidgetsFlutterBinding.ensureInitialized()
+          .platformDispatcher
+          .views
+          .first;
+      view.physicalSize = const Size(1920, 2400);
+      view.devicePixelRatio = 1.0;
+      addTearDown(view.reset);
+    });
+
+    testWidgets('DOWN walks the scrapers one row at a time, settings or not', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(_app(_oneWithSettings()));
+      await tester.pumpAndSettle();
+
+      await _focusOn(tester, find.text('Disable all'));
+      final rows = <String?>[];
+      for (var i = 0; i < 4; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        rows.add(_focusedRow(tester));
+      }
+      expect(rows, ['Scraper A', 'Scraper B', 'Scraper C', 'Scraper D']);
+
+      // And back up the same way, from the gear of the row that has one.
+      await _focusOn(
+        tester,
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Scraper C'),
+            matching: find.byType(ListTile),
+          ),
+          matching: find.byIcon(Icons.settings_outlined),
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(_focusedRow(tester), 'Scraper D');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(_focusedRow(tester), 'Scraper B');
+    });
+  });
+
   group('scraper row focus affordance', () {
     // The affordance is input-aware: it is drawn for a remote or a keyboard and
     // not for a finger, so a test that means to see it has to say which input

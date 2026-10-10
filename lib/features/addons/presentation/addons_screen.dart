@@ -17,6 +17,7 @@ import 'widgets/addon_manage_view.dart';
 import '../../../core/domain/entity/multimedia_item.dart';
 import '../../../core/utils/layout_constants.dart';
 import '../../../core/utils/responsive_breakpoints.dart';
+import '../../../shared/focus/text_field_keys.dart';
 import '../../../shared/widgets/shimmer_placeholder.dart';
 import '../../explore/presentation/view_all_screen.dart';
 import '../../explore/presentation/widgets/explore_carousel.dart';
@@ -741,9 +742,17 @@ class _DiscoverTab extends ConsumerStatefulWidget {
 class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
   final TextEditingController _searchController = TextEditingController();
 
+  /// Up and down leave the field while the keyboard is put away, and Select
+  /// brings it back - see [remoteTextFieldKeys].
+  final FocusNode _searchNode = FocusNode(
+    debugLabel: 'community add-ons search',
+    onKeyEvent: remoteTextFieldKeys,
+  );
+
   @override
   void dispose() {
     _searchController.dispose();
+    _searchNode.dispose();
     super.dispose();
   }
 
@@ -819,6 +828,7 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
                 child: TextField(
                   controller: _searchController,
+                  focusNode: _searchNode,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     isDense: true,

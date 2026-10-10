@@ -9,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../shared/widgets/custom_widgets.dart';
 import '../../../../core/services/external_player_service.dart';
+import '../../../../core/cloudstream/cloudstream_engine.dart';
 import '../../../../core/config/tmdb_config.dart';
 import '../../../../core/network/dio_client_provider.dart';
 import '../../../../core/network/doh_service.dart';
@@ -1393,6 +1394,9 @@ void showFactoryResetDialog(BuildContext context, WidgetRef ref) {
         TextButton(
           onPressed: () async {
             Navigator.pop<void>(dialogContext);
+            // The CloudStream engine holds plugin files open, and Windows
+            // will not delete open files: it stops first.
+            await ref.read(cloudStreamEngineHostProvider).dispose();
             // Deep Clean (Extensions, Prefs, Hive)
             await ref.read(settingsRepositoryProvider).deleteAllData();
 

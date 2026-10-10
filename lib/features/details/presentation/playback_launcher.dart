@@ -170,15 +170,15 @@ class PlaybackLauncher {
 
     bool isCanceled = false;
     bool dialogDismissed = false;
-    unawaited(
-      LoadingDialog.show(
-        context,
-        message: AppLocalizations.of(context)!.resolving,
-        onCancel: () {
-          isCanceled = true;
-          dialogDismissed = true;
-        },
-      ),
+    // Its route, not a bare pop, takes it away: an extension's own full-screen
+    // screen can still be over it as the links call answers (Phase 7c).
+    final dialog = LoadingDialog.open(
+      context,
+      message: AppLocalizations.of(context)!.resolving,
+      onCancel: () {
+        isCanceled = true;
+        dialogDismissed = true;
+      },
     );
 
     try {
@@ -201,7 +201,7 @@ class PlaybackLauncher {
       if (isCanceled || !context.mounted) return;
 
       if (!dialogDismissed) {
-        Navigator.of(context).pop(); // Dismiss loading dialog
+        LoadingDialog.close(dialog);
         dialogDismissed = true;
       }
 
@@ -238,10 +238,17 @@ class PlaybackLauncher {
         }
         _showSourcePicker(context, streams, item, episodeDataUrl, playerId);
       }
+    } on ExtensionScreenEnded {
+      // The extension's own full-screen screen (a game) took the Play and
+      // left nothing to play: no player, and no fallback to the built-in one,
+      // which would ask for the links again and open it twice (Phase 7c's §4).
+      if (context.mounted && !isCanceled && !dialogDismissed) {
+        LoadingDialog.close(dialog);
+      }
     } catch (e) {
       if (!context.mounted) return;
       if (!isCanceled && !dialogDismissed) {
-        Navigator.of(context).pop(); // Dismiss if still there
+        LoadingDialog.close(dialog);
         dialogDismissed = true;
       }
       _ref

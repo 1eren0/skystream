@@ -212,8 +212,18 @@ void main() {
         final ProviderContainer container = boot();
         await container.read(playerSettingsProvider.future);
         // `build` no longer waits on the secure store, so the two passwords
-        // arrive one channel round-trip after the rest of the settings.
-        await pumpEventQueue();
+        // arrive after the rest of the settings: once both are migrated, each
+        // a write to the box on disk, which a busy machine can take longer
+        // over than any fixed number of event-loop turns. Waited for.
+        final deadline = DateTime.now().add(const Duration(seconds: 5));
+        while (container
+                .read(playerSettingsProvider)
+                .requireValue
+                .subdlPassword
+                .isEmpty &&
+            DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
         final PlayerSettings settings = container
             .read(playerSettingsProvider)
             .requireValue;

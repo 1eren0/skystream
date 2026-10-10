@@ -598,9 +598,7 @@ void main() {
   /// three they own the same way.
   group('a locked screen', () {
     /// Locks through the padlock, the way a viewer does - the same helper
-    /// screen_back_test.dart uses, for the same reason: the gesture absorber's
-    /// double-tap recogniser holds the arena open, so the press lands ~300 ms
-    /// after the finger leaves.
+    /// screen_back_test.dart uses.
     Future<void> lock(WidgetTester tester) async {
       final l10n = await english();
       expect(

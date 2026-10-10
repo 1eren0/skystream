@@ -1,6 +1,6 @@
 {
   "name": "VLCKit",
-  "version": "3.7.3",
+  "version": "3.7.4",
   "summary": "VLCKit is an Objective-C wrapper for libvlc's external interface on macOS.",
   "homepage": "https://code.videolan.org/videolan/VLCKit",
   "license": {
@@ -62,8 +62,8 @@
     "Benjamin Adolphi": "b.adolphi@gmail.com"
   },
   "source": {
-    "http": "https://github.com/akashdh11/skystream/releases/download/vlckit-3.7.3/VLCKit-3.7.3.tar.xz",
-    "sha256": "67dbd5149b703fdfb8f96017164c8754e8e4402b89083e54b635bb1ebcfca486"
+    "http": "https://download.videolan.org/pub/cocoapods/prod/VLCKit-3.0-20260922-1444.tar.xz",
+    "sha256": "d57a80455900e031ec87b08bdc684ba58989f9cec317b04739b2ee6b1d7a1868"
   },
   "osx": {
     "vendored_frameworks": "VLCKit.xcframework"
@@ -75,5 +75,5 @@
     "CLANG_CXX_LANGUAGE_STANDARD": "c++14",
     "CLANG_CXX_LIBRARY": "libc++"
   },
-  "description": "VLCKit is an Objective-C wrapper for libvlc's external interface on macOS.\n\nVENDORED COPY -- do not edit by hand except to bump the version.\n\nIdentical to the upstream VLCKit 3.7.3 podspec except for `source`, which points at a SkyStream release asset instead of download.videolan.org. VideoLAN publishes these frameworks nowhere else: no mirror carries /pub/cocoapods/, there are no GitHub release assets, and the SPM manifest points at the same host. So when that host went down on 2026-09-20 it took the macOS and iOS builds with it, and a podspec `source` accepts exactly one URL -- there is no mirror list to fall back to the way windows/CMakeLists.txt has one.\n\nThe payload is the upstream framework: it was unpacked from the CocoaPods cache, which CocoaPods had itself filled only after verifying VideoLAN's published archive against\n  019afdae4e2e2d0f3ac325fac8f7ba0af25dca70b9d157df7d60db88e0be8e5d\n  (https://download.videolan.org/pub/cocoapods/prod/VLCKit-3.7.3-319ed2c0-79128878.tar.xz)\nThe repacked tarball is byte-identical on extraction, verified with diff -rq, so the sha256 below is this archive's rather than VideoLAN's. To re-anchor to the upstream digest, download the URL above once that host is reachable, upload it under the same release tag, and restore both fields from the upstream spec."
+  "description": "VLCKit is an Objective-C wrapper for libvlc's external interface on macOS. VENDORED COPY -- do not edit by hand except to bump the version. The upstream VLCKit 3.7.3 podspec with `version` and `source` moved to VideoLAN's macOS build of VLC 3.0.24 (VLCKit-3.0-20260922-1444, the twin of MobileVLCKit 3.7.4), which VideoLAN had uploaded but not yet published as a CocoaPods version on 2026-10-02. Its sha256 was computed from that archive, whose framework reports libvlc 3.0.24. It downloads from download.videolan.org, by choice (2026-10-02). If that host goes down again, as it did on 2026-09-20, restore a SkyStream-hosted copy as 3.7.3 had: upload the archive as a release asset under a `vlckit-3.7.4` tag and point `source.http` there. Once VideoLAN publishes VLCKit 3.7.4, compare its digest with this one."
 }

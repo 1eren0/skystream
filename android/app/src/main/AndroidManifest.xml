@@ -27,7 +27,7 @@
 
     <application
         android:label="SkyStream"
-        android:name="${applicationName}"
+        android:name="dev.akash.cs3engine.android.ExtensionHostApplication"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:networkSecurityConfig="@xml/network_security_config"

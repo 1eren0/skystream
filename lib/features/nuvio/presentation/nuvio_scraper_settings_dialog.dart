@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/focus/text_field_keys.dart';
+
 import '../../../core/nuvio/models/nuvio_models.dart';
 
 /// Renders the settings form a Nuvio scraper describes in `onSettings()`.
@@ -29,6 +31,10 @@ class _NuvioScraperSettingsDialogState
   late Map<String, dynamic> _values;
   final Map<String, TextEditingController> _controllers = {};
 
+  /// A text setting's node. Up and down leave the field while the keyboard is
+  /// put away, so Save stays in reach - see [remoteTextFieldKeys].
+  final Map<String, FocusNode> _nodes = {};
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +47,10 @@ class _NuvioScraperSettingsDialogState
         _controllers[field.key] = TextEditingController(
           text: _values[field.key]?.toString() ?? '',
         );
+        _nodes[field.key] = FocusNode(
+          debugLabel: 'setting ${field.key}',
+          onKeyEvent: remoteTextFieldKeys,
+        );
       }
     }
   }
@@ -49,6 +59,9 @@ class _NuvioScraperSettingsDialogState
   void dispose() {
     for (final controller in _controllers.values) {
       controller.dispose();
+    }
+    for (final node in _nodes.values) {
+      node.dispose();
     }
     super.dispose();
   }
@@ -201,6 +214,7 @@ class _NuvioScraperSettingsDialogState
             const SizedBox(height: 4),
             TextField(
               controller: _controllers[field.key],
+              focusNode: _nodes[field.key],
               obscureText: field.isPassword,
               keyboardType: field.type == 'number'
                   ? TextInputType.number

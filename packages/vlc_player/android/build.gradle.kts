@@ -6,11 +6,10 @@ version = "1.0-SNAPSHOT"
 // Upstream pinned AGP 9.0.1 / Kotlin 2.3.20 on its own classpath. A Flutter
 // plugin is built as a subproject of the host app, so the host's plugin
 // management already supplies both — and a second, different version on the
-// plugin's classpath conflicts with it. SkyStream is on AGP 8.13.0 / Kotlin
-// 2.2.20 and cannot currently move to 9.0.1: AGP 9 rejects
-// `getDefaultProguardFile('proguard-android.txt')`, which
-// flutter_inappwebview_android 1.1.3 still uses, and that package has had no
-// stable release since 2024-10-02.
+// plugin's classpath conflicts with it. SkyStream is on AGP 9.1 since
+// 2026-10-02, once flutter_inappwebview_android (whose
+// `getDefaultProguardFile('proguard-android.txt')` AGP 9 rejects) left the app,
+// with Flutter's builtInKotlin/newDsl opt-outs in gradle.properties.
 //
 // Removing the block lets the plugin inherit whatever the host uses, which is
 // what every other vendored package here does.
@@ -49,7 +48,7 @@ android {
         // Was 29 upstream, with no comment and nothing requiring it.
         //
         // Nothing in this plugin needs API 29. libVLC itself declares
-        // minSdkVersion 17 (verified in the libvlc-all:3.7.0 AAR manifest), and
+        // minSdkVersion 17 (verified in the libvlc-all:3.7.0 and 3.7.7 AAR manifests), and
         // the only API in this plugin's Kotlin newer than API 17 is
         // android.view.PixelCopy — API 24 — used solely by takeSnapshot. There
         // is not a single @RequiresApi or Build.VERSION guard in the source.
@@ -101,12 +100,13 @@ kotlin {
 }
 
 dependencies {
-    // Held at 3.7.0 deliberately: it is the last libvlc-all whose bundled core
-    // is stable VLC 3.0.23. Every release above it (3.7.1 - 3.7.6, checked by
-    // reading the core version out of each AAR's arm64 libvlc.so) ships
-    // 3.0.24-beta1, so bumping would trade a stable core for a beta one and
-    // gain only VLC-Android wrapper fixes.
-    implementation("org.videolan.android:libvlc-all:3.7.0")
+    // 3.7.7 (2026-10-01) is the first libvlc-all on the VLC 3.0.24 release:
+    // its arm64 libvlc.so reports `3.0.24-35-gc7e5d68ee5`, 35 commits of the
+    // 3.0 maintenance branch past the 3.0.24 tag (its version string already
+    // says 3.0.25, the branch's next number). 3.7.1 - 3.7.6 carried
+    // 3.0.24-beta1, and 3.7.0 was 3.0.23. No libvlc-all carries the bare
+    // 3.0.24 tag. minSdkVersion in its manifest is still 17.
+    implementation("org.videolan.android:libvlc-all:3.7.7")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.23.0")
 }

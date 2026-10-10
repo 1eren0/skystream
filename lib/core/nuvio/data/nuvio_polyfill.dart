@@ -115,14 +115,19 @@ const String nuvioPolyfillSource = r'''
   // QuickJS has no event loop of its own here; the host pumps __nuvio_tick()
   // so setTimeout/setInterval behave like the real thing (15 of the 61 real
   // providers use them for retries and rate limiting).
+  //
+  // Timers keep the run's own time, which the host passes to __nuvio_tick:
+  // it stops while the app clears a bot check for the run, so a scraper's own
+  // timeout doesn't run out while it waits on one.
   var timers = {};
   var timerSeq = 0;
+  var runTime = 0;
   G.setTimeout = function (fn, delay) {
     var id = ++timerSeq;
     var args = Array.prototype.slice.call(arguments, 2);
     timers[id] = {
       fn: fn,
-      due: Date.now() + (Number(delay) || 0),
+      due: runTime + (Number(delay) || 0),
       interval: null,
       args: args
     };
@@ -132,7 +137,7 @@ const String nuvioPolyfillSource = r'''
     var id = ++timerSeq;
     var every = Math.max(1, Number(delay) || 0);
     var args = Array.prototype.slice.call(arguments, 2);
-    timers[id] = { fn: fn, due: Date.now() + every, interval: every, args: args };
+    timers[id] = { fn: fn, due: runTime + every, interval: every, args: args };
     return id;
   };
   G.clearTimeout = function (id) { delete timers[id]; };
@@ -140,13 +145,13 @@ const String nuvioPolyfillSource = r'''
   G.setImmediate = function (fn) { return G.setTimeout(fn, 0); };
   G.clearImmediate = G.clearTimeout;
   G.queueMicrotask = function (fn) { Promise.resolve().then(fn); };
-  G.__nuvio_tick = function () {
-    var now = Date.now();
+  G.__nuvio_tick = function (now) {
+    if (typeof now === 'number') runTime = now;
     var ids = Object.keys(timers);
     for (var i = 0; i < ids.length; i++) {
       var t = timers[ids[i]];
-      if (!t || t.due > now) continue;
-      if (t.interval) { t.due = now + t.interval; } else { delete timers[ids[i]]; }
+      if (!t || t.due > runTime) continue;
+      if (t.interval) { t.due = runTime + t.interval; } else { delete timers[ids[i]]; }
       try { t.fn.apply(null, t.args); } catch (e) { console.error('timer', e && e.message); }
     }
     return Object.keys(timers).length;
@@ -957,6 +962,24 @@ const String nuvioPolyfillSource = r'''
     });
   }
   G.fetch = doFetch;
+
+  // Cloudflare.solve(url): the headers that pass the site's bot check, the
+  // app's browser clearing it if need be. Scrapers such as animekai call it
+  // when a request comes back 403 or 503, then retry with what it gives.
+  // fetch's `cfKiller` option is accepted and ignored: every request is
+  // checked anyway.
+  G.Cloudflare = {
+    solve: function (url) {
+      var id = 'c' + (++G.__nuvio_seq);
+      return new Promise(function (resolve, reject) {
+        G.__nuvio_pending[id] = {
+          resolve: resolve,
+          reject: function (e) { reject(new Error(String(e))); }
+        };
+        sendMessage('nuvio_cf_solve', JSON.stringify({ id: id, url: String(url) }));
+      });
+    }
+  };
 
   // -------------------------------------------------------- XMLHttpRequest
   function NuvioXHR() {

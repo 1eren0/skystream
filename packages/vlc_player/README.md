@@ -559,6 +559,30 @@ containers and streams do not always expose every field.
 When no media is loaded or VLC cannot provide statistics, `isAvailable` is
 `false` and the numeric values are zero.
 
+### Device volume and brightness (Android and iOS)
+
+For a player's own volume and brightness swipes. Elsewhere the calls fail
+with a `MissingPluginException`: a desktop's mixer and monitor stay its own.
+
+- `VlcSystemVolume.read()`, `write(double level)` and `changes`: the device's
+  media volume, 0..1. Android sets the media stream one step at a time, with
+  no system pop-up. A raise that the hearing-safety limit holds back is asked
+  again with the system's UI, which shows its confirmation. iOS sets it through
+  the system's own volume control and touches no audio session.
+- `VlcSystemVolume.setPlayerShown(bool shown)`: while the player is on screen,
+  iOS shows no volume pop-up for the hardware buttons, and on Android the
+  buttons move the media volume even while paused.
+- `VlcSystemVolume.isFixed()`: Android's `isVolumeFixed`. Use the player's own
+  gain (`setVolume`) instead where it is true.
+- `VlcScreenBrightness.read()`, `set(double level)` and `reset()`: the app's
+  screen brightness, applied at once. On Android it is the app window's (never
+  below 0.01); on iOS the system's level is kept and given back on `reset()`
+  and while the app is in the background.
+
+A swipe calls these many times a second. Keep one call in flight and send
+only the newest value after it, and expect `changes` to report the app's own
+writes back a moment later.
+
 ### Errors
 
 Native command failures are exposed as `VlcPlayerException`, which wraps a

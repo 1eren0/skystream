@@ -1,18 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io;
 import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' show RootIsolateToken;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
-import 'package:cookie_jar/cookie_jar.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart' as wv;
+
 import '../../storage/extension_repository.dart';
-import '../../network/cloudflare_bypass.dart';
+import '../../network/clearance/captcha_solver.dart';
+import '../../network/clearance/clearance.dart';
+import '../../network/clearance/challenge_triage.dart';
+import '../../network/clearance/clearance_broker.dart';
+import '../../network/clearance/clearance_interceptor.dart';
 import '../../logger/app_logger.dart';
 import '../../network/dio_client_provider.dart';
 import '../../network/http_defaults.dart';
@@ -191,9 +193,6 @@ class JsEngineService {
   final Dio _dio;
   final ExtensionRepository _storage;
 
-  late final PersistCookieJar _cookieJar;
-  bool _cookieJarReady = false;
-
   // Pending load/invoke operations keyed by the sequential ID sent to worker.
   final _pendingLoads = <int, Completer<void>>{};
   final _pendingInvokes = <int, Completer<dynamic>>{};
@@ -204,6 +203,11 @@ class JsEngineService {
   // Dart writes the function name, so this is authoritative. Used to know
   // how many invocations a namespace has outstanding. Audit B5 / PR-08b.
   final _invokeNamespaces = <int, String>{};
+  // Invoke ID → the plugin function it runs ("search", "load"...), and per
+  // namespace the functions in flight: who waits on the plugin's HTTP decides
+  // whether a bot check may start a solve, and whether a person is asked.
+  final _invokeFunctions = <int, String>{};
+  final _functionsInFlight = <String, List<String>>{};
 
   // ── Bridge attribution (audit W12) ────────────────────────────────────────
   // A bridge call is attributed by an opaque capability token that Dart mints
@@ -233,7 +237,6 @@ class JsEngineService {
   JsEngineService(this._storage, this._dio) {
     _rx = ReceivePort();
     _rx.listen(_handleWorkerMsg);
-    initCookieJar();
     final token = RootIsolateToken.instance!;
     Isolate.spawn(jsEngineWorkerEntry, [_rx.sendPort, token]).then((iso) {
       _isolate = iso;
@@ -257,43 +260,6 @@ class JsEngineService {
   /// Delivers a worker→main message exactly as the ReceivePort would.
   @visibleForTesting
   void handleWorkerMessage(dynamic msg) => _handleWorkerMsg(msg);
-
-  /// Opens the Cloudflare-clearance cookie jar.
-  ///
-  /// Application Support, never Documents. The jar holds `cf_clearance` and
-  /// whatever session cookies the scraped sites set, and on iOS the app
-  /// declares `UIFileSharingEnabled` and
-  /// `LSSupportsOpeningDocumentsInPlace`, so anything in Documents is listed
-  /// in Files.app and copied verbatim into an unencrypted Finder backup that
-  /// any paired computer can read. That turns a scraping cache into a record
-  /// of which sites the user visits plus a usable session handoff.
-  ///
-  /// Moving the jar orphans existing clearances: the cost is one Cloudflare
-  /// challenge, once, per site.
-  ///
-  /// Public only so a test can drive it - the production caller is the
-  /// constructor, and the test constructor deliberately does not open a jar.
-  @visibleForTesting
-  Future<void> initCookieJar() async {
-    try {
-      final dir = await getApplicationSupportDirectory();
-      _cookieJar = PersistCookieJar(
-        storage: FileStorage('${dir.path}/.cf_cookies/'),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[CookieJar] Persist init failed, using RAM: $e');
-      }
-      _cookieJar = PersistCookieJar();
-    }
-    _cookieJarReady = true;
-    final hasCfInterceptor = _dio.interceptors.any(
-      (i) => i is CfOnlyCookieInterceptor,
-    );
-    if (!hasCfInterceptor) {
-      _dio.interceptors.add(CfOnlyCookieInterceptor(_cookieJar));
-    }
-  }
 
   // ── Worker message handler ────────────────────────────────────────────────
 
@@ -404,11 +370,7 @@ class JsEngineService {
       case 'http_request':
         final scope = caller?.rawNamespace;
         final reqToken = _acquireHttpToken(scope);
-        _handleHttp(
-              argsJson,
-              cancelToken: reqToken,
-              callerNamespace: caller?.storageNamespace,
-            )
+        _handleHttp(argsJson, cancelToken: reqToken, rawNamespace: scope)
             .then((result) {
               _releaseHttpToken(scope, reqToken);
               if (jsId != null) _reply(bid, jsId, result);
@@ -429,7 +391,7 @@ class JsEngineService {
                 (r) => _handleHttp(
                   jsonEncode(r),
                   cancelToken: reqToken,
-                  callerNamespace: caller?.storageNamespace,
+                  rawNamespace: scope,
                 ),
               ),
             )
@@ -526,8 +488,39 @@ class JsEngineService {
         _storage.setExtensionData('${caller.packageName}:$key', value).ignore();
 
       case 'solve_captcha':
-        if (jsId != null) _reply(bid, jsId, 'mock_captcha_token');
+        // Asked while its plugin opens a title or its streams, a captcha
+        // nothing passes by itself is shown to the person waiting.
+        final extra = _clearanceExtra(caller?.rawNamespace);
+        _solveCaptcha(parsed, extra).then(
+          (token) {
+            if (jsId != null) _reply(bid, jsId, token);
+          },
+          onError: (Object e) {
+            if (jsId == null) return;
+            final reason = e is CaptchaException ? e.reason : '$e';
+            _reply(bid, jsId, reason, isError: true);
+          },
+        );
     }
+  }
+
+  /// A plugin's `solveCaptcha(siteKey, url)`: the token, or why none came.
+  Future<String> _solveCaptcha(
+    Map<String, dynamic> parsed,
+    Map<String, dynamic> extra,
+  ) async {
+    final captchas = Clearance.instance.captchas;
+    if (captchas == null) {
+      throw const CaptchaException("Captchas can't be solved yet");
+    }
+    final siteKey = parsed['siteKey'];
+    final url = parsed['url'];
+    return captchas.solve(
+      siteKey: siteKey is String ? siteKey : '',
+      url: url is String ? url : '',
+      personWaiting: extra[ClearanceExtra.personWaiting] == true,
+      source: extra[ClearanceExtra.source] as String?,
+    );
   }
 
   /// Resolves the calling plugin from the bridge payload's capability token.
@@ -557,12 +550,53 @@ class JsEngineService {
 
   // ── HTTP bridge ───────────────────────────────────────────────────────────
 
+  /// How a bot check met by [namespace]'s HTTP is handled. Any request may
+  /// start a solve (the owner, 2026-10-03); opening a title or its streams
+  /// has the person waiting, who gets the check sheet.
+  Map<String, dynamic> _clearanceExtra(String? namespace) {
+    final functions = namespace == null
+        ? const <String>[]
+        : _functionsInFlight[namespace] ?? const <String>[];
+    return {
+      ClearanceExtra.personWaiting: functions.any(
+        (f) => f == 'load' || f == 'loadStreams',
+      ),
+      if (namespace != null) ClearanceExtra.source: 'js:$namespace',
+    };
+  }
+
+  /// Whether [response] is a check page answered 200 whose site is now
+  /// cleared ([ClearanceBroker.solve]): its check filed under the plugin, and
+  /// the person asked when one is waiting.
+  Future<bool> _clearedPageCheck(
+    String url,
+    CappedHttpResponse response,
+    Map<String, dynamic> extra,
+  ) async {
+    if (triagePage(
+          response.statusCode,
+          response.headers.value,
+          response.body,
+        ) !=
+        Triage.challenge) {
+      return false;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    final grant = await ClearanceBroker(Clearance.instance).solve(
+      uri,
+      source: extra[ClearanceExtra.source] as String?,
+      personWaiting: extra[ClearanceExtra.personWaiting] == true,
+    );
+    return grant != null;
+  }
+
   Future<Map<String, dynamic>> _handleHttp(
     String argsJson, {
     CancelToken? cancelToken,
-    // Calling plugin's namespace, threaded through so the CF bypass can
-    // scope its WebView cache per plugin. Audit H6 / PR-08d.
-    String? callerNamespace,
+    // Calling plugin's raw namespace: what it is doing decides how a bot
+    // check on this request is handled (see [_clearanceExtra]).
+    String? rawNamespace,
   }) async {
     final requestId =
         'req_${DateTime.now().microsecondsSinceEpoch.toString().substring(10)}';
@@ -600,21 +634,32 @@ class JsEngineService {
 
       talker.debug('[JS HTTP] $method $url ($requestId)');
 
-      final response = await fetchCappedPlainBody(
-        _dio,
-        url,
-        data: body,
-        cancelToken: cancelToken,
-        options: Options(
-          method: method,
-          headers: headers,
-          contentType: contentType,
-          validateStatus: (_) => true,
-          followRedirects: true,
-          sendTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 15),
-        ),
-      );
+      final extra = _clearanceExtra(rawNamespace);
+      Future<CappedHttpResponse> send({bool retried = false}) =>
+          fetchCappedPlainBody(
+            _dio,
+            url,
+            data: body,
+            cancelToken: cancelToken,
+            options: Options(
+              method: method,
+              headers: headers,
+              contentType: contentType,
+              validateStatus: (_) => true,
+              followRedirects: true,
+              sendTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 15),
+              extra: {...extra, if (retried) ClearanceExtra.retried: true},
+            ),
+          );
+
+      var response = await send();
+      // A check that answers 200 (Anubis, HostAdmin) is in the body, which
+      // the shared client never reads while it streams: found here, solved,
+      // and the request sent once more with its clearance.
+      if (await _clearedPageCheck(url, response, extra)) {
+        response = await send(retried: true);
+      }
 
       final responseHeaders = response.headers.map.map<String, dynamic>(
         (k, v) =>
@@ -623,41 +668,6 @@ class JsEngineService {
       final responseBody = response.body;
 
       talker.debug('[JS HTTP] Back $url ($requestId) → ${response.statusCode}');
-
-      if (CloudflareBypass.instance.isCloudflareChallenge(
-        response.statusCode,
-        responseHeaders,
-        responseBody,
-      )) {
-        talker.debug('[JS HTTP] Cloudflare challenge detected ($requestId)');
-        if (cancelToken != null && cancelToken.isCancelled) {
-          return {
-            'code': 0,
-            'statusCode': 0,
-            'status': 0,
-            'body': '',
-            'error': 'cancelled',
-          };
-        }
-        final cfResult = await CloudflareBypass.instance.solveAndFetch(
-          url,
-          callerId: callerNamespace,
-          onSolved: (host) => _injectCfCookies(host),
-        );
-        if (cfResult != null) {
-          talker.debug('[JS HTTP] Cloudflare solved ($requestId)');
-          return {
-            'code': cfResult.statusCode,
-            'statusCode': cfResult.statusCode,
-            'status': cfResult.statusCode,
-            'body': cfResult.body,
-            'headers': <String, String>{},
-            'finalUrl': cfResult.finalUrl,
-          };
-        } else {
-          talker.error('[JS HTTP] Cloudflare solve failed ($requestId)');
-        }
-      }
 
       return {
         'code': response.statusCode,
@@ -677,54 +687,6 @@ class JsEngineService {
         'body': '',
         'error': e.toString(),
       };
-    }
-  }
-
-  Future<void> _injectCfCookies(String host) async {
-    try {
-      // The solver's environment, not the default one. On Windows the two are
-      // different user-data folders, so reading through the default would come
-      // back empty and this would return at the guard below — cookie injection
-      // dying silently while the solve looked like it worked. Null everywhere
-      // else, which resolves the shared default and is correct there.
-      final mgr = wv.CookieManager.instance(
-        webViewEnvironment: await CloudflareBypass.instance.cookieEnvironment(),
-      );
-      final webCookies = await mgr.getCookies(url: wv.WebUri('https://$host/'));
-      if (webCookies.isEmpty) return;
-      final uri = Uri.parse('https://$host/');
-      final ioCookies = webCookies
-          .where(
-            (c) =>
-                c.name == 'cf_clearance' ||
-                c.name == '__cf_bm' ||
-                c.name.toString().startsWith('__cf'),
-          )
-          .map((c) {
-            final cookie = io.Cookie(
-              c.name.toString(),
-              (c.value as String?) ?? '',
-            );
-            cookie.domain = c.domain ?? host;
-            cookie.path = c.path ?? '/';
-            cookie.httpOnly = c.isHttpOnly ?? false;
-            cookie.secure = c.isSecure ?? false;
-            if (c.expiresDate != null) {
-              cookie.expires = DateTime.fromMillisecondsSinceEpoch(
-                c.expiresDate!.toInt(),
-              );
-            }
-            return cookie;
-          })
-          .toList();
-      if (_cookieJarReady) await _cookieJar.saveFromResponse(uri, ioCookies);
-      if (kDebugMode) {
-        debugPrint(
-          '[CF Cookie] Injected ${ioCookies.length} cookies for $host',
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[CF Cookie] Injection error for $host: $e');
     }
   }
 
@@ -836,7 +798,13 @@ class JsEngineService {
       token.cancel(cancelReason);
     }
     final namespace = _invokeNamespaces.remove(id);
+    final function = _invokeFunctions.remove(id);
     if (namespace == null) return;
+    final inFlight = _functionsInFlight[namespace];
+    if (function != null && inFlight != null) {
+      inFlight.remove(function);
+      if (inFlight.isEmpty) _functionsInFlight.remove(namespace);
+    }
     final remaining = (_outstandingInvokes[namespace] ?? 1) - 1;
     if (remaining > 0) {
       _outstandingInvokes[namespace] = remaining;
@@ -870,6 +838,9 @@ class JsEngineService {
     final namespace = dotIdx > 0 ? functionName.substring(0, dotIdx) : null;
     if (namespace != null) {
       _invokeNamespaces[id] = namespace;
+      final function = functionName.substring(dotIdx + 1);
+      _invokeFunctions[id] = function;
+      (_functionsInFlight[namespace] ??= []).add(function);
       _outstandingInvokes[namespace] =
           (_outstandingInvokes[namespace] ?? 0) + 1;
       // The caller abandoning the search (search-as-you-type, backing out of
@@ -964,11 +935,6 @@ class JsEngineService {
     _revokeBridgeToken(namespace);
   }
 
-  Future<List<io.Cookie>> getCookiesForUri(Uri uri) async {
-    if (!_cookieJarReady) return [];
-    return await _cookieJar.loadForRequest(uri);
-  }
-
   /// `com_foo_bar__sub1` → `com_foo_bar`. Sub-providers of one plugin share
   /// one storage key space.
   String? _getCleanNamespace(String? ns) {
@@ -982,6 +948,8 @@ class JsEngineService {
     }
     _cancelTokens.clear();
     _invokeNamespaces.clear();
+    _invokeFunctions.clear();
+    _functionsInFlight.clear();
     _outstandingInvokes.clear();
     for (final scope in _httpScopes.keys.toList()) {
       _cancelHttpForScope(scope, 'engine disposed');
@@ -1000,98 +968,6 @@ class JsEngineService {
 
   void runGC() {
     _workerPort.send({_mGc: 1});
-  }
-}
-
-class CfOnlyCookieInterceptor extends Interceptor {
-  final CookieJar jar;
-  CfOnlyCookieInterceptor(this.jar);
-
-  @override
-  Future<void> onRequest(
-    RequestOptions options,
-    RequestInterceptorHandler handler,
-  ) async {
-    final uri = Uri.parse(options.uri.toString());
-    List<io.Cookie> cookies = [];
-    try {
-      cookies = await jar.loadForRequest(uri);
-    } catch (_) {}
-
-    final cfCookies = cookies
-        .where(
-          (c) =>
-              c.name == 'cf_clearance' ||
-              c.name == '__cf_bm' ||
-              c.name.startsWith('__cf'),
-        )
-        .toList();
-
-    String? manualCookie;
-    options.headers.forEach((key, value) {
-      if (key.toLowerCase() == 'cookie') {
-        manualCookie = value?.toString();
-      }
-    });
-
-    if (cfCookies.isNotEmpty) {
-      final cfCookieStr = cfCookies
-          .map((c) => '${c.name}=${c.value}')
-          .join('; ');
-      if (manualCookie != null && manualCookie!.isNotEmpty) {
-        final Map<String, String> merged = {};
-        for (final pair in cfCookieStr.split(';')) {
-          final parts = pair.split('=');
-          if (parts.length >= 2) {
-            merged[parts[0].trim()] = parts.sublist(1).join('=').trim();
-          }
-        }
-        for (final pair in manualCookie!.split(';')) {
-          final parts = pair.split('=');
-          if (parts.length >= 2) {
-            merged[parts[0].trim()] = parts.sublist(1).join('=').trim();
-          }
-        }
-        final finalCookieStr = merged.entries
-            .map((e) => '${e.key}=${e.value}')
-            .join('; ');
-        options.headers['Cookie'] = finalCookieStr;
-      } else {
-        options.headers['Cookie'] = cfCookieStr;
-      }
-    } else if (manualCookie != null) {
-      options.headers['Cookie'] = manualCookie;
-    }
-
-    handler.next(options);
-  }
-
-  @override
-  Future<void> onResponse(
-    Response<dynamic> response,
-    ResponseInterceptorHandler handler,
-  ) async {
-    final rawCookies = response.headers['set-cookie'];
-    if (rawCookies != null && rawCookies.isNotEmpty) {
-      final uri = Uri.parse(response.realUri.toString());
-      final List<io.Cookie> ioCookies = [];
-      for (final header in rawCookies) {
-        try {
-          final cookie = io.Cookie.fromSetCookieValue(header);
-          if (cookie.name == 'cf_clearance' ||
-              cookie.name == '__cf_bm' ||
-              cookie.name.startsWith('__cf')) {
-            ioCookies.add(cookie);
-          }
-        } catch (_) {}
-      }
-      if (ioCookies.isNotEmpty) {
-        try {
-          await jar.saveFromResponse(uri, ioCookies);
-        } catch (_) {}
-      }
-    }
-    handler.next(response);
   }
 }
 

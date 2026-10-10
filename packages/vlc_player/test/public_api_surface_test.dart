@@ -13,6 +13,8 @@ void main() {
     expect(library, contains("export 'src/vlc_player_value.dart';"));
     expect(library, contains("export 'src/vlc_media_info.dart';"));
     expect(library, contains("export 'src/vlc_player_error.dart';"));
+    expect(library, contains("export 'src/vlc_system_volume.dart';"));
+    expect(library, contains("export 'src/vlc_screen_brightness.dart';"));
     expect(
       library,
       isNot(contains("export 'src/vlc_player_controller_internals.dart';")),

@@ -7,6 +7,8 @@ public class VlcPlayerPlugin: NSObject, FlutterPlugin {
   private let textures: FlutterTextureRegistry
   private let methodChannel: FlutterMethodChannel
   private var players: [Int64: VlcPlayerPlatformView] = [:]
+  private let systemVolume = VlcSystemVolume()
+  private var systemVolumeChannel: FlutterEventChannel?
 
   /// Texture players get their ids from here, counting down from -1.
   ///
@@ -25,6 +27,9 @@ public class VlcPlayerPlugin: NSObject, FlutterPlugin {
 
     registrar.addMethodCallDelegate(instance, channel: instance.methodChannel)
     registrar.register(factory, withId: "plugins.lingjhf.com/vlc_player/view")
+    let systemVolumeChannel = FlutterEventChannel(name: "vlc_player/system_volume", binaryMessenger: messenger)
+    systemVolumeChannel.setStreamHandler(instance.systemVolume)
+    instance.systemVolumeChannel = systemVolumeChannel
   }
 
   init(binaryMessenger: FlutterBinaryMessenger, textures: FlutterTextureRegistry) {
@@ -39,6 +44,10 @@ public class VlcPlayerPlugin: NSObject, FlutterPlugin {
     // one, so it is the only method that arrives without it.
     if call.method == "create" {
       createTexturePlayer(arguments: call.arguments as? [String: Any] ?? [:], result: result)
+      return
+    }
+    // The device's, not a player's: they name none.
+    if handleDevice(call, result: result) {
       return
     }
 
@@ -61,6 +70,46 @@ public class VlcPlayerPlugin: NSObject, FlutterPlugin {
     DispatchQueue.main.async {
       self.handle(call.method, arguments: arguments, player: player, result: result)
     }
+  }
+
+  /// The device's volume and brightness. True when [call] was one of theirs.
+  private func handleDevice(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Bool {
+    let arguments = call.arguments as? [String: Any] ?? [:]
+    let level = (arguments["level"] as? NSNumber)?.doubleValue
+    switch call.method {
+    case "getSystemVolume":
+      VlcSystemVolume.read { level in
+        result(level)
+      }
+    case "setSystemVolume":
+      guard let level = level else {
+        result(FlutterError(code: "invalid_args", message: "A level is required.", details: nil))
+        return true
+      }
+      VlcSystemVolume.setLevel(level)
+      // The system slider takes any level.
+      result(min(max(level, 0), 1))
+    case "setPlayerShown":
+      VlcSystemVolume.setPlayerShown(arguments["shown"] as? Bool ?? false)
+      result(nil)
+    case "isSystemVolumeFixed":
+      result(false)
+    case "getScreenBrightness":
+      result(VlcScreenBrightness.shared.level())
+    case "setScreenBrightness":
+      guard let level = level else {
+        result(FlutterError(code: "invalid_args", message: "A level is required.", details: nil))
+        return true
+      }
+      VlcScreenBrightness.shared.set(level)
+      result(nil)
+    case "resetScreenBrightness":
+      VlcScreenBrightness.shared.reset()
+      result(nil)
+    default:
+      return false
+    }
+    return true
   }
 
   private func handle(
@@ -377,10 +426,30 @@ final class VlcPlayerPlatformView: NSObject, VLCMediaPlayerDelegate {
       // VlcTextureRenderer.mm). macOS does that on the GPU; MobileVLCKit has
       // no CoreVideo scaler, so on iOS it is swscale on the CPU, and its
       // default bicubic costs several times what a two-row stretch shows.
-      // Present in MobileVLCKit 3.7.3's option table.
+      // Present in MobileVLCKit 3.7.3's and 3.7.4's option tables.
       instanceOptions.append("--swscale-mode=0")
     }
     mediaPlayer = VLCMediaPlayer(options: instanceOptions)
+    // libVLC's own log, which VLCKit drops unless a logger is set: the host's verbose switch (`--verbose=2`) reaches
+    // the console only through one. A device's console isn't always within reach, so the same log also goes to
+    // vlc-verbose.log in the app's caches, to copy off it.
+    if instanceOptions.contains("--verbose=2") {
+      let console = VLCConsoleLogger()
+      console.level = .debug
+      console.formatter.contextFlags = .levelContextModule
+      var loggers: [VLCLogging] = [console]
+      if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+        let path = caches.appendingPathComponent("vlc-verbose.log").path
+        FileManager.default.createFile(atPath: path, contents: nil)
+        if let handle = FileHandle(forWritingAtPath: path) {
+          let file = VLCFileLogger(fileHandle: handle)
+          file.level = .debug
+          file.formatter.contextFlags = .levelContextModule
+          loggers.append(file)
+        }
+      }
+      mediaPlayer.libraryInstance.loggers = loggers
+    }
     eventChannel = FlutterEventChannel(name: "vlc_player/events/\(viewId)", binaryMessenger: messenger)
 
     switch target {

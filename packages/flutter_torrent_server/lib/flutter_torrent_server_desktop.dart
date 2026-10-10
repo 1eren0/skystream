@@ -99,12 +99,11 @@ class FlutterTorrentServerDesktop extends FlutterTorrentServerPlatform {
       _authToken = token;
       // The token goes through the environment, never argv: argv is readable
       // by every process on the machine via `ps`.
-      _serverProcess = await Process.start(binaryPath, [
-        '-p',
-        '$_port',
-        '-d',
-        appDir.path,
-      ], environment: {'TORRSERVER_AUTH_TOKEN': token});
+      _serverProcess = await startServerProcess(
+        binaryPath,
+        ['-p', '$_port', '-d', appDir.path],
+        environment: {'TORRSERVER_AUTH_TOKEN': token},
+      );
 
       _serverProcess!.stdout.transform(utf8.decoder).listen((data) {
         debugPrint("TorrServer: $data");
@@ -136,6 +135,26 @@ class FlutterTorrentServerDesktop extends FlutterTorrentServerPlatform {
       rethrow;
     }
   }
+
+  /// Starts the server's process. On Linux it runs detached, not as the app's
+  /// child: while Dart waits on a child it started, it collects any child of
+  /// the app that ends, and libVLC waits forever for a helper it runs before
+  /// each connection (libproxy's `proxy`) once something else collected it,
+  /// which froze the player (2026-10-03). Its output and [Process.kill] work
+  /// the same either way.
+  @visibleForTesting
+  static Future<Process> startServerProcess(
+    String binary,
+    List<String> arguments, {
+    Map<String, String>? environment,
+  }) => Process.start(
+    binary,
+    arguments,
+    environment: environment,
+    mode: Platform.isLinux
+        ? ProcessStartMode.detachedWithStdio
+        : ProcessStartMode.normal,
+  );
 
   Future<bool> _checkConnection() async {
     try {

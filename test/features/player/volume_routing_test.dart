@@ -37,6 +37,23 @@ void main() {
       expect(VolumeRouting.of(PlayerFormFactor.tv).touchesSystem, isFalse);
     });
 
+    test('a handset whose volume is fixed keeps a gain of its own', () {
+      // Android's isVolumeFixed: Chromebooks, some TV boxes. Writing to a
+      // stream that won't move would leave the bottom of the swipe dead.
+      expect(
+        VolumeRouting.of(PlayerFormFactor.phone, systemFixed: true),
+        VolumeRouting.engineOnly,
+      );
+      expect(
+        VolumeRouting.of(PlayerFormFactor.tablet, systemFixed: true),
+        VolumeRouting.engineOnly,
+      );
+      expect(
+        VolumeRouting.of(PlayerFormFactor.tv, systemFixed: true),
+        VolumeRouting.boostOnly,
+      );
+    });
+
     test('an unresolved profile touches nothing', () {
       // The profile lands a frame or two into a session. Writing to the
       // system mixer before knowing what kind of machine this is is the one

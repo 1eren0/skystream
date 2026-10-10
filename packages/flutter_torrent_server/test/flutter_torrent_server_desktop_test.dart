@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_torrent_server/flutter_torrent_server_desktop.dart';
@@ -95,4 +96,26 @@ void main() {
     await desktop.stop();
     expect(desktop.authToken, isNull);
   });
+
+  // Dart collects any child of the app while it waits on one of its own, and
+  // libVLC waits forever for a helper it starts before each connection
+  // (libproxy's `proxy`) when something else collected it: the Linux player
+  // froze (2026-10-03). The server must not be the app's child, and its output
+  // and kill() must still work.
+  test('on Linux, the server is not the app\'s child', () async {
+    final server = await FlutterTorrentServerDesktop.startServerProcess(
+      '/bin/sh',
+      ['-c', r'echo $$; exec sleep 30'],
+    );
+    addTearDown(server.kill);
+    final serverId = int.parse(
+      (await server.stdout.transform(utf8.decoder).first).trim(),
+    );
+    final parent =
+        (Process.runSync('ps', ['-o', 'ppid=', '-p', '$serverId']).stdout
+                as String)
+            .trim();
+    expect(int.parse(parent), isNot(pid));
+    expect(server.kill(), isTrue);
+  }, skip: !Platform.isLinux);
 }

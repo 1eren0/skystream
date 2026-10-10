@@ -366,6 +366,14 @@ final class VlcPlayerPlatformView: NSObject, VLCMediaPlayerDelegate {
   ) {
     renderTarget = target
     mediaPlayer = VLCMediaPlayer(options: options)
+    // libVLC's own log, which VLCKit drops unless a logger is set: the host's verbose switch (`--verbose=2`) reaches
+    // the console only through one.
+    if options.contains("--verbose=2") {
+      let logger = VLCConsoleLogger()
+      logger.level = .debug
+      logger.formatter.contextFlags = .levelContextModule
+      mediaPlayer.libraryInstance.loggers = [logger]
+    }
     eventChannel = FlutterEventChannel(name: "vlc_player/events/\(viewId)", binaryMessenger: messenger)
 
     switch target {

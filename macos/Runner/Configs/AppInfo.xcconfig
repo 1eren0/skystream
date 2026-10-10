@@ -11,4 +11,4 @@ PRODUCT_NAME = SkyStream
 PRODUCT_BUNDLE_IDENTIFIER = dev.akash.skystream
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 dev.akash. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025–2026 SkyStream contributors. Licensed under GPL-3.0.

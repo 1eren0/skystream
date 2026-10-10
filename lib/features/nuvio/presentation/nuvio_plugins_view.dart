@@ -15,6 +15,7 @@ import '../../../shared/widgets/loading_indicator.dart';
 import '../../../shared/widgets/text_input_dialog.dart';
 import 'nuvio_scraper_settings_dialog.dart';
 import '../../../shared/focus/app_focus.dart';
+import '../../../shared/focus/row_traversal.dart';
 
 /// Manage Nuvio-format plugin repositories.
 class NuvioPluginsView extends ConsumerStatefulWidget {
@@ -89,7 +90,8 @@ class _NuvioPluginsViewState extends ConsumerState<NuvioPluginsView> {
     final cs = theme.colorScheme;
 
     return FocusTraversalGroup(
-      policy: ReadingOrderTraversalPolicy(),
+      // Scraper rows end in different controls; UP and DOWN go row by row.
+      policy: RowTraversalPolicy(),
       child: ListView(
         padding: EdgeInsets.only(
           top: LayoutConstants.spacingMd,

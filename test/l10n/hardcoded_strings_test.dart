@@ -176,6 +176,5 @@ const Map<String, int> _budget = <String, int>{
   'lib/features/settings/presentation/account_settings_screen.dart': 2,
   'lib/features/settings/presentation/widgets/settings_dialogs.dart': 29,
   'lib/features/settings/presentation/widgets/tracking_auth_dialog.dart': 2,
-  'lib/features/settings/presentation/widgets/webview_auth_dialog.dart': 5,
   'lib/features/sources/presentation/plugin_sources_sheet.dart': 13,
 };

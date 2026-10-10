@@ -68,6 +68,12 @@
   "developerOptions": "Developer Options",
   "about": "About",
   "version": "Version",
+  "openSourceLicences": "Open-source licences",
+  "openSourceLicencesSubtitle": "SkyStream is free software under the GNU GPL v3",
+  "appLegalese": "Copyright © 2025–2026 SkyStream contributors.\nSkyStream is free software: you can redistribute it and modify it under the terms of the GNU General Public License, version 3. It comes with ABSOLUTELY NO WARRANTY. Its source code is at github.com/akashdh11/skystream.",
+  "@appLegalese": {
+    "description": "The GPL notice on the licence page: copyright, the licence, no warranty, where the source is."
+  },
   "enabled": "Enabled",
   "disabled": "Disabled",
   "discord": "Discord",
@@ -1281,6 +1287,342 @@
         "example": "torrentio"
       }
     }
-  }
+  },
+  "cloudStream": "CloudStream",
+  "@cloudStream": {
+    "description": "Name of CloudStream, the app whose extensions SkyStream runs; a proper noun, never translated. Shown on the CloudStream screen and on badges marking its providers."
+  },
+  "searchTagSkyStream": "SkyStream",
+  "@searchTagSkyStream": {
+    "description": "Search: tag on a section of SkyStream extensions' results; the app's name, never translated."
+  },
+  "searchTagStremio": "Stremio",
+  "@searchTagStremio": {
+    "description": "Search: tag on a section of a Stremio add-on's results; a proper noun, never translated."
+  },
+  "searchTagNuvio": "Nuvio",
+  "@searchTagNuvio": {
+    "description": "Search: tag on Nuvio's section, whose results open Nuvio's sources; a proper noun, never translated."
+  },
+  "searchNuvioSeriesFailed": "Couldn't load this series' episodes",
+  "@searchNuvioSeriesFailed": {
+    "description": "Search: a Nuvio series result couldn't load its seasons from TMDB, so its episode picker can't open."
+  },
+  "cloudStreamExtensions": "CloudStream Extensions",
+  "@cloudStreamExtensions": {
+    "description": "Title of the screen, and of its Settings tile, for managing CloudStream extensions."
+  },
+  "cloudStreamExtensionsSubtitle": "Install and manage CloudStream (.cs3) extensions",
+  "@cloudStreamExtensionsSubtitle": {
+    "description": "Subtitle of the Settings tile that opens the CloudStream screen. \".cs3\" is a file extension; keep it."
+  },
+  "cloudStreamOn": "Providers from installed extensions appear on Home, in search and in the provider list.",
+  "@cloudStreamOn": {
+    "description": "Explains the CloudStream screen's switch while it is on."
+  },
+  "cloudStreamOff": "Off: no CloudStream extension is loaded, and their providers are hidden everywhere. Nothing is uninstalled.",
+  "@cloudStreamOff": {
+    "description": "Explains the CloudStream screen's switch while it is off."
+  },
+  "cloudStreamCheckUpdates": "Check Updates",
+  "@cloudStreamCheckUpdates": {
+    "description": "Button that checks every CloudStream repository for new extension versions."
+  },
+  "cloudStreamCheckUpdatesCount": "Check Updates ({count})",
+  "@cloudStreamCheckUpdatesCount": {
+    "description": "The same button when updates are known; count is how many installed extensions have one.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cloudStreamChecking": "Checking…",
+  "@cloudStreamChecking": {
+    "description": "The check-updates button while the check runs."
+  },
+  "cloudStreamAddRepositoryTitle": "Add CloudStream Repository",
+  "@cloudStreamAddRepositoryTitle": {
+    "description": "Title of the dialog that adds a CloudStream repository."
+  },
+  "cloudStreamAddRepositoryMessage": "Paste a repository URL (repo.json), a plugin list URL (plugins.json) or a cloudstreamrepo:// link, or enter a shortcode such as megarepo.",
+  "@cloudStreamAddRepositoryMessage": {
+    "description": "Body of the add-repository dialog. repo.json, plugins.json, cloudstreamrepo:// and megarepo are literal names; keep them."
+  },
+  "cloudStreamAdd": "Add",
+  "@cloudStreamAdd": {
+    "description": "Confirms the add-repository dialog."
+  },
+  "cloudStreamRepositoryAdded": "{count, plural, =1{Added {name} · 1 extension} other{Added {name} · {count} extensions}}",
+  "@cloudStreamRepositoryAdded": {
+    "description": "Message after a CloudStream repository was added: its name (a proper noun) and how many extensions it offers.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamCouldNotAdd": "Could not add repository: {error}",
+  "@cloudStreamCouldNotAdd": {
+    "description": "Adding a CloudStream repository failed; error is the reason, in English.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamUpToDate": "Everything is up to date",
+  "@cloudStreamUpToDate": {
+    "description": "After checking for updates: no installed CloudStream extension has a newer version."
+  },
+  "cloudStreamUpdatesAvailable": "{count, plural, =1{1 update available} other{{count} updates available}}",
+  "@cloudStreamUpdatesAvailable": {
+    "description": "After checking for updates: how many installed CloudStream extensions have a newer version.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cloudStreamCouldNotCheck": "Could not check {names}",
+  "@cloudStreamCouldNotCheck": {
+    "description": "After checking for updates: the repositories that could not be reached, by name (proper nouns), separated by commas.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamCouldNotCheckRepository": "Could not check {name}: {error}",
+  "@cloudStreamCouldNotCheckRepository": {
+    "description": "Refreshing one CloudStream repository failed: its name (a proper noun) and the reason, in English.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamRemove": "Remove",
+  "@cloudStreamRemove": {
+    "description": "Confirms removing a CloudStream repository."
+  },
+  "cloudStreamCouldNotRemove": "Could not remove {name}: {error}",
+  "@cloudStreamCouldNotRemove": {
+    "description": "Removing a CloudStream repository failed: its name (a proper noun) and the reason, in English.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamNoRepositories": "No repositories yet",
+  "@cloudStreamNoRepositories": {
+    "description": "The CloudStream screen's repositories tab before any repository was added."
+  },
+  "cloudStreamRepositorySummary": "{count, plural, =1{1 extension} other{{count} extensions}} · {installed} installed",
+  "@cloudStreamRepositorySummary": {
+    "description": "Under a CloudStream repository's name: how many extensions it offers, and how many of them are installed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "installed": {
+        "type": "int"
+      }
+    }
+  },
+  "cloudStreamLastCheckFailed": "last check failed",
+  "@cloudStreamLastCheckFailed": {
+    "description": "Added to a CloudStream repository's summary when it could not be reached the last time it was checked."
+  },
+  "cloudStreamRefreshRepository": "Refresh Repository",
+  "@cloudStreamRefreshRepository": {
+    "description": "Tooltip of the button that fetches a CloudStream repository again."
+  },
+  "cloudStreamProviders": "Providers: {names}",
+  "@cloudStreamProviders": {
+    "description": "Under an installed CloudStream extension: the providers (sites) it adds, by name (proper nouns), separated by commas.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamCouldNotLoad": "Could not load: {error}",
+  "@cloudStreamCouldNotLoad": {
+    "description": "Under an installed CloudStream extension that the engine could not load; error is the reason, in English.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamUpdate": "Update",
+  "@cloudStreamUpdate": {
+    "description": "Tooltip of the button that installs a newer version of a CloudStream extension."
+  },
+  "cloudStreamUninstall": "Uninstall",
+  "@cloudStreamUninstall": {
+    "description": "Tooltip of the button that removes an installed CloudStream extension."
+  },
+  "cloudStreamInstalled": "Installed {name}",
+  "@cloudStreamInstalled": {
+    "description": "A CloudStream extension, by name (a proper noun), was installed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamUpdated": "Updated {name}",
+  "@cloudStreamUpdated": {
+    "description": "A CloudStream extension, by name (a proper noun), was updated.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamUninstalled": "Removed {name}",
+  "@cloudStreamUninstalled": {
+    "description": "A CloudStream extension, by name (a proper noun), was uninstalled.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamInstalledNotLoading": "{name} is installed, but it does not load: {error}",
+  "@cloudStreamInstalledNotLoading": {
+    "description": "A CloudStream extension downloaded but the engine could not load it: its name (a proper noun) and the reason, in English.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamFailed": "Failed: {error}",
+  "@cloudStreamFailed": {
+    "description": "An action on a CloudStream extension failed; error is the reason, in English.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudStreamStatusDown": "down",
+  "@cloudStreamStatusDown": {
+    "description": "Tag on a CloudStream extension its repository marks as not working."
+  },
+  "cloudStreamStatusSlow": "slow",
+  "@cloudStreamStatusSlow": {
+    "description": "Tag on a CloudStream extension its repository marks as slow."
+  },
+  "cloudStreamStatusBeta": "beta",
+  "@cloudStreamStatusBeta": {
+    "description": "Tag on a CloudStream extension its repository marks as a beta."
+  },
+  "clearanceVerify": "Verify",
+  "checksCheckingAll": "{count, plural, =1{Checking 1 site automatically…} other{Checking {count} sites automatically…}}",
+  "@checksCheckingAll": {"description": "Above search results, while every bot check the search met is still being tried in a hidden page.", "placeholders": {"count": {"type": "int"}}},
+  "checksNeedYou": "{count, plural, =1{1 site needs you} other{{count} sites need you}}",
+  "@checksNeedYou": {"description": "Part of the summary above search results: sites whose bot check wants a person.", "placeholders": {"count": {"type": "int"}}},
+  "checksCleared": "{count} cleared",
+  "@checksCleared": {"description": "Part of the summary above search results: sites whose bot check cleared.", "placeholders": {"count": {"type": "int"}}},
+  "checksChecking": "{count} checking",
+  "@checksChecking": {"description": "Part of the summary above search results: sites still being checked automatically.", "placeholders": {"count": {"type": "int"}}},
+  "checksFailed": "{count, plural, =1{1 couldn't be checked} other{{count} couldn't be checked}}",
+  "@checksFailed": {"description": "Part of the summary above search results: sites that were unreachable, blocked, or sent the browser elsewhere.", "placeholders": {"count": {"type": "int"}}},
+  "checksOpening": "Opening {site}'s check…",
+  "@checksOpening": {"description": "Above search results, while Verify gets a site's check.", "placeholders": {"site": {"type": "String", "example": "5movierulz.works"}}},
+  "checksVerifyAll": "Verify all",
+  "@checksVerifyAll": {"description": "Shows each site that needs a person, one after another."},
+  "checksShow": "Show the sites",
+  "@checksShow": {"description": "Tooltip: opens the list of sites being checked."},
+  "checksHide": "Hide the sites",
+  "@checksHide": {"description": "Tooltip: closes the list of sites being checked."},
+  "checkStateChecking": "Checking automatically… {seconds} s",
+  "@checkStateChecking": {"description": "A site's row: an automatic try is running.", "placeholders": {"seconds": {"type": "int"}}},
+  "checkStateNeedsYou": "Needs a quick check from you",
+  "@checkStateNeedsYou": {"description": "A site's row: the automatic try wants a person."},
+  "checkStateOpening": "Opening the check… {seconds} s",
+  "@checkStateOpening": {"description": "A site's row: Verify is getting its check.", "placeholders": {"seconds": {"type": "int"}}},
+  "checkStateCleared": "Cleared",
+  "@checkStateCleared": {"description": "A site's row: its check cleared."},
+  "checkStateSearchingAgain": "Cleared · searching again…",
+  "@checkStateSearchingAgain": {"description": "A site's row: its check cleared, and its extensions are searching again."},
+  "checkStateUnreachable": "Couldn't reach the site",
+  "@checkStateUnreachable": {"description": "A site's row: its page didn't load."},
+  "checkStateBlocked": "Blocked by the site; try without a VPN",
+  "@checkStateBlocked": {"description": "A site's row: a block page, which no check clears."},
+  "checkStateSentElsewhere": "Sends the browser to {host}; the extension may need updating",
+  "@checkStateSentElsewhere": {"description": "A site's row: after its check, the site sent the browser to another site.", "placeholders": {"host": {"type": "String", "example": "zinkmovies.org"}}},
+  "checkStateStillNotCleared": "Still not cleared",
+  "@checkStateStillNotCleared": {"description": "A site's row: the person pressed Done, but the check is still there."},
+  "checkStateOutdated": "Update Android System WebView to clear this site's check",
+  "@checkStateOutdated": {"description": "A site's row: Android System WebView is too old for its check; nothing is tried until it's updated."},
+  "checkStateTooOld": "This device's browser is too old for this site's check",
+  "@checkStateTooOld": {"description": "A site's row: Android System WebView is too old for its check, and this Android version can't update it."},
+  "checkStateIneffective": "The check passed, but this site still refuses SkyStream. Trying again in a few minutes.",
+  "@checkStateIneffective": {"description": "A site's row: its check passed, but the site still refuses requests; SkyStream waits before trying again."},
+  "checkStateKeepsAsking": "This site keeps asking. Try later, or without a VPN.",
+  "@checkStateKeepsAsking": {"description": "A site's row: its check came back after every clearance, even after a fresh start."},
+  "checkUpdateWebView": "Update",
+  "@checkUpdateWebView": {"description": "Button on an outdated-WebView row: opens Android System WebView in the Play Store."},
+  "checkAskAgain": "Ask again",
+  "@checkAskAgain": {"description": "A site's row: undo \"Don't open this automatically\"."},
+  "checkQuietNote": "Won't open by itself",
+  "@checkQuietNote": {"description": "A site's row: its check won't open the sheet by itself, at the person's request."},
+  "checkMovedFrom": "moved from {site}",
+  "@checkMovedFrom": {"description": "After a site's name: the site it moved from.", "placeholders": {"site": {"type": "String", "example": "5movierulz.pictures"}}},
+  "checkCloudStreamExtension": "A CloudStream extension",
+  "@checkCloudStreamExtension": {"description": "In a site's row, when the engine couldn't say which CloudStream extension met its check."},
+  "checkLineChecking": "Checking {site} automatically… {seconds} s",
+  "@checkLineChecking": {"description": "Under a spinner: the one site the screen waits on is being checked automatically.", "placeholders": {"site": {"type": "String"}, "seconds": {"type": "int"}}},
+  "checkLineNeedsYou": "{site} needs a quick check",
+  "@checkLineNeedsYou": {"description": "Home, or under a spinner: the one site the screen waits on needs a person.", "placeholders": {"site": {"type": "String"}}},
+  "extensionSheetCantShow": "This part can't be shown in SkyStream yet.",
+  "@extensionSheetCantShow": {"description": "In an extension's settings sheet, in place of a part SkyStream can't draw yet (a web page)."},
+  "extensionSheetClose": "Close",
+  "@extensionSheetClose": {"description": "Closes the top window of an extension's settings sheet."},
+  "extensionSheetForceClose": "Force close",
+  "@extensionSheetForceClose": {"description": "In an extension's settings sheet's menu: closes every window, even one the extension won't let close."},
+  "extensionSheetMore": "More",
+  "@extensionSheetMore": {"description": "Tooltip of an extension's settings sheet's menu button."},
+  "extensionSheetError": "The extension didn't take that: {error}",
+  "@extensionSheetError": {"description": "In an extension's settings sheet, when the extension's code failed on the person's action.", "placeholders": {"error": {"type": "String"}}},
+  "extensionCopied": "Copied",
+  "@extensionCopied": {"description": "A toast titled with an extension's name: the extension put text on the clipboard."},
+  "extensionOpenLink": "Open link",
+  "@extensionOpenLink": {"description": "Action of a toast showing a link an extension opened while its screen wasn't open: opens the link in the browser."},
+  "cloudStreamSettings": "Settings",
+  "@cloudStreamSettings": {"description": "Tooltip of the button that opens an installed CloudStream extension's own settings screen."},
+  "cloudStreamSettingsApplying": "Applying settings…",
+  "@cloudStreamSettingsApplying": {"description": "On an installed CloudStream extension's row while it reloads with its new settings."},
+  "cloudStreamSettingsApplied": "{name}'s settings applied",
+  "@cloudStreamSettingsApplied": {"description": "Snackbar once an extension reloaded with its new settings.", "placeholders": {"name": {"type": "String"}}},
+  "cloudStreamSettingsFailed": "Couldn't open {name}'s settings: {error}",
+  "@cloudStreamSettingsFailed": {"description": "Snackbar when an extension's settings screen didn't open.", "placeholders": {"name": {"type": "String"}, "error": {"type": "String"}}},
+  "cloudStreamSettingsApplyFailed": "{name}'s settings are saved, but it didn't reload: {error}",
+  "@cloudStreamSettingsApplyFailed": {"description": "Snackbar when an extension didn't reload after its settings changed.", "placeholders": {"name": {"type": "String"}, "error": {"type": "String"}}},
+  "cloudStreamSupport": "Support",
+  "@cloudStreamSupport": {"description": "Button on an installed extension: opens the messages it showed while the app was busy (support, donate, notices)."},
+  "cloudStreamSupportFailed": "Couldn't open {name}'s messages: {error}",
+  "@cloudStreamSupportFailed": {"description": "Snackbar when an extension's kept messages didn't open.", "placeholders": {"name": {"type": "String"}, "error": {"type": "String"}}},
+  "cloudStreamSettingsStopped": "{name}'s settings stopped: {error}",
+  "@cloudStreamSettingsStopped": {"description": "Snackbar when an extension's code crashed while its settings screen was open.", "placeholders": {"name": {"type": "String"}, "error": {"type": "String"}}},
+  "swipeAgainToBoost": "Swipe up again to go past 100%",
+  "@swipeAgainToBoost": {"description": "Player toast when a volume swipe that started under 100% stops at 100%: going past it into the boost takes a second swipe."}
 }
-

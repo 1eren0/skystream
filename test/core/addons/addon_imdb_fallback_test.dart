@@ -126,6 +126,7 @@ class _FakeClient extends AddonClient {
     required String id,
     bool forceRefresh = false,
     CancelToken? cancelToken,
+    bool personWaiting = false,
   }) =>
       onStreams(addon, type, id);
 

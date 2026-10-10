@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+
+import '../../network/clearance/clearance.dart';
+
 import 'package:dio/dio.dart';
 
 import '../../domain/entity/multimedia_item.dart';
@@ -94,6 +98,10 @@ class JsBasedProvider extends SkyStreamProvider {
 
   final String? _namespace;
   String? get namespace => _namespace;
+
+  /// Its requests carry its namespace (`JsEngineService._clearanceExtra`).
+  @override
+  String? get checkSource => _namespace == null ? null : 'js:$_namespace';
   final String? _forcedName;
   final String? _providerId;
   // Scopes JS getPreference/setPreference — sub-providers share parent's namespace
@@ -825,7 +833,7 @@ class JsBasedProvider extends SkyStreamProvider {
           isV1 ? "MAGIC_PROXY_v1".length : "MAGIC_PROXY:".length,
         );
         final realUrl = utf8.decode(base64Decode(b64Url));
-        final sticky = await _withJarCookies(
+        final sticky = _withClearance(
           headers == null ? null : Map<String, String>.of(headers),
         );
         return LocalProxyService.instance.getProxyUrl(realUrl, headers: sticky);
@@ -844,7 +852,7 @@ class JsBasedProvider extends SkyStreamProvider {
         ) as Map<String, dynamic>;
 
         final String realUrl = config['url'] as String;
-        final sticky = await _withJarCookies(
+        final sticky = _withClearance(
           config['headers'] != null
               ? Map<String, String>.from(config['headers'] as Map)
               : (headers == null ? null : Map<String, String>.of(headers)),
@@ -872,51 +880,14 @@ class JsBasedProvider extends SkyStreamProvider {
     return url;
   }
 
-  /// [sticky] with the cookies the JS engine's jar holds for [mainUrl] merged
-  /// into its Cookie header - the jar's value winning for a cookie both have.
-  Future<Map<String, String>?> _withJarCookies(
-    Map<String, String>? sticky,
-  ) async {
-    if (mainUrl.isEmpty) return sticky;
-    try {
-      final baseUri = Uri.parse(mainUrl);
-      final jarCookies = await _jsEngine.getCookiesForUri(baseUri);
-      if (jarCookies.isEmpty) return sticky;
-      final cookieHeader = jarCookies
-          .map((c) => '${c.name}=${c.value}')
-          .join('; ');
-      final merged = sticky ?? <String, String>{};
-      String? existingKey;
-      merged.forEach((k, v) {
-        if (k.toLowerCase() == 'cookie') existingKey = k;
-      });
-      final existingCookie = existingKey != null ? merged[existingKey] : null;
-      if (existingCookie != null && existingCookie.isNotEmpty) {
-        final Map<String, String> cookies = {};
-        for (final pair in existingCookie.split(';')) {
-          final parts = pair.split('=');
-          if (parts.length >= 2) {
-            cookies[parts[0].trim()] = parts.sublist(1).join('=').trim();
-          }
-        }
-        for (final c in jarCookies) {
-          cookies[c.name] = c.value;
-        }
-        merged[existingKey!] = cookies.entries
-            .map((e) => '${e.key}=${e.value}')
-            .join('; ');
-      } else {
-        merged['Cookie'] = cookieHeader;
-      }
-      return merged;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          "Failed to copy cookies from JS engine jar to proxy headers: $e",
-        );
-      }
-      return sticky;
-    }
+  /// [sticky] with [mainUrl]'s bot-check clearance added: its cookies merged
+  /// into the Cookie header (the clearance's winning for a cookie both have),
+  /// and the agent they hold under unless the plugin set one.
+  Map<String, String>? _withClearance(Map<String, String>? sticky) {
+    final base = Uri.tryParse(mainUrl);
+    if (mainUrl.isEmpty || base == null) return sticky;
+    if (Clearance.instance.forUri(base) == null) return sticky;
+    return Clearance.instance.withClearance(base, sticky ?? {});
   }
 
   /// A stream's subtitles, each address resolved like the stream's own - a

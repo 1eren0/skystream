@@ -162,6 +162,8 @@ Upstream converted every entry of a source's header map into a media option:
 string tables of every binary this app ships — `libvlc-all:3.7.0` (the pinned Android AAR),
 `MobileVLCKit 3.7.3`, `VLCKit 3.7.3`, and the VLC 3.0.23 desktop core. All four contain
 `http-user-agent`, `http-referrer` and `http-forward-cookies`. None contains `http-header`.
+Rechecked on 2026-10-02 for the move to VLC 3.0.24 (`libvlc-all:3.7.7`, VLCKit
+3.0-20260922-1444, the 3.0.24 Windows core): the same holds.
 libvlccore parses the unknown option, logs `unknown option %s`, and drops it — and the log is
 suppressed by the default `--quiet`.
 

@@ -193,11 +193,16 @@ class SourceSectionAction extends StatelessWidget {
     required this.icon,
     required this.onTap,
     required this.maxWidth,
+    this.autofocus = false,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+
+  /// Takes the focus when the page opens, for a page where this is the one way
+  /// to its streams: a remote then starts on it.
+  final bool autofocus;
 
   /// Widest the control may be drawn, or null to fill its parent.
   final double? maxWidth;
@@ -208,6 +213,7 @@ class SourceSectionAction extends StatelessWidget {
     const radius = LayoutConstants.radiusLg;
 
     final button = DpadFocusable(
+      autofocus: autofocus,
       onSelect: onTap,
       child: const SizedBox.shrink(),
       builder: (context, state, _) {

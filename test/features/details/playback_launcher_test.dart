@@ -1,17 +1,23 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart' show Override;
 import 'package:skystream/core/domain/entity/multimedia_item.dart';
+import 'package:skystream/core/extensions/base_provider.dart';
+import 'package:skystream/core/extensions/extension_manager.dart';
 import 'package:skystream/core/router/app_router.dart';
+import 'package:skystream/core/services/download_service.dart';
 import 'package:skystream/core/services/notification_service.dart';
 import 'package:skystream/features/details/presentation/playback_launcher.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
+import 'package:skystream/shared/widgets/loading_dialog.dart';
 
 /// Where an already-resolved link goes.
 ///
@@ -200,6 +206,70 @@ void main() {
       });
     }
   });
+
+  group("a Play an extension's own full-screen screen took", () {
+    testWidgets('ends quietly with a chosen player too: no fallback to the built-in one, which would open it again', (
+      tester,
+    ) async {
+      // Phase 7c's §4: the game played in its own screen during the links call.
+      final _Harness harness = await _pump(
+        tester,
+        preferredPlayer: 'mx_player',
+        overrides: [
+          activeProviderProvider.overrideWithValue(_ScreenProvider()),
+          downloadServiceProvider.overrideWith((Ref ref) => _NoDownloads(ref)),
+        ],
+      );
+      unawaited(
+        harness.launcher.play(
+          harness.context,
+          'cs3data:cG9rZW1vbg==',
+          baseItem: MultimediaItem(title: 'Pokemon', url: '', posterUrl: ''),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('player'), findsNothing);
+      expect(find.text('home'), findsOneWidget);
+      expect(harness.notifications.toasts, isEmpty);
+    });
+
+    for (final outcome in ['ends quietly', 'answers links', 'fails']) {
+      testWidgets('with a chosen player, a call that $outcome under the screen still up takes away its dialog only', (
+        tester,
+      ) async {
+        // The screen is the extension's to close: a bare pop took it instead of the dialog under it.
+        final game = MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('game')));
+        late final _Harness harness;
+        void shown() => unawaited(Navigator.of(harness.context, rootNavigator: true).push(game));
+        harness = await _pump(
+          tester,
+          preferredPlayer: 'mx_player',
+          overrides: [
+            activeProviderProvider.overrideWithValue(switch (outcome) {
+              'answers links' => _ScreenProvider(
+                shown: shown,
+                links: const [StreamResult(url: 'https://cdn.test/a.mkv', source: 'alpha')],
+              ),
+              'fails' => _ScreenProvider(shown: shown, error: Exception('boom')),
+              _ => _ScreenProvider(shown: shown),
+            }),
+            downloadServiceProvider.overrideWith((Ref ref) => _NoDownloads(ref)),
+          ],
+        );
+        unawaited(
+          harness.launcher.play(
+            harness.context,
+            'cs3data:cG9rZW1vbg==',
+            baseItem: MultimediaItem(title: 'Pokemon', url: '', posterUrl: ''),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('game', skipOffstage: false), findsOneWidget);
+        expect(find.byType(LoadingDialog, skipOffstage: false), findsNothing);
+        await _drainToasts(tester);
+      });
+    }
+  });
 }
 
 /// Runs out the toast auto-dismiss timers, which live on the service rather
@@ -225,7 +295,11 @@ class _Harness {
 
 /// A two-route app: a home to launch from and a stand-in for the player, so
 /// `PlayerRoute(...).push()` resolves without building the real screen.
-Future<_Harness> _pump(WidgetTester tester, {String? preferredPlayer}) async {
+Future<_Harness> _pump(
+  WidgetTester tester, {
+  String? preferredPlayer,
+  List<Override> overrides = const <Override>[],
+}) async {
   final NotificationService notifications = NotificationService();
   addTearDown(notifications.dispose);
 
@@ -235,6 +309,7 @@ Future<_Harness> _pump(WidgetTester tester, {String? preferredPlayer}) async {
       playerSettingsProvider.overrideWithBuild(
         (_, _) => PlayerSettings(preferredPlayer: preferredPlayer),
       ),
+      ...overrides,
     ],
   );
   addTearDown(container.dispose);
@@ -273,4 +348,57 @@ Future<_Harness> _pump(WidgetTester tester, {String? preferredPlayer}) async {
   );
   await tester.pumpAndSettle();
   return harness;
+}
+
+/// A provider whose links went to its own full-screen screen (a game). [shown] puts that screen up, still there as the
+/// call answers (the engine ends a screen 300 ms after its last window goes); the call then answers [links], throws
+/// [error], or ends quietly.
+class _ScreenProvider implements SkyStreamProvider {
+  _ScreenProvider({this.shown, this.links, this.error});
+
+  final void Function()? shown;
+  final List<StreamResult>? links;
+  final Object? error;
+
+  @override
+  Future<List<StreamResult>> loadStreams(String url) async {
+    shown?.call();
+    if (links case final links?) return links;
+    throw error ?? const ExtensionScreenEnded();
+  }
+
+  @override
+  String get packageName => 'cs3:ayu/Pokemon/Pokemon';
+  @override
+  String get name => 'Pokemon';
+  @override
+  String get mainUrl => 'https://ayu.test';
+  @override
+  String get version => '1';
+  @override
+  List<String> get languages => const ['en'];
+  @override
+  Set<ProviderType> get supportedTypes => const {ProviderType.other};
+  @override
+  bool get hasSearch => false;
+  @override
+  bool get isDebug => false;
+  @override
+  String? get checkSource => null;
+  @override
+  void cancelInit() {}
+  @override
+  Future<List<MultimediaItem>> search(String query, {CancelToken? cancelToken}) async => const [];
+  @override
+  Future<Map<String, List<MultimediaItem>>> getHome() async => const {};
+  @override
+  Future<MultimediaItem> getDetails(String url) async => throw UnimplementedError();
+}
+
+/// Nothing is downloaded.
+class _NoDownloads extends DownloadService {
+  _NoDownloads(super.ref);
+
+  @override
+  Future<File?> getDownloadedFile(MultimediaItem item, {Episode? episode}) async => null;
 }

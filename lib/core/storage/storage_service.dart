@@ -782,7 +782,9 @@ class StorageService {
       List<String>? savedNuvioRepos;
       bool? savedNuvioEnabled;
       bool? savedNuvioAutoUpdate;
-      final savedNuvioSettings = <String, Object>{};
+      // Nuvio scraper settings, and CloudStream's switch and removed
+      // repositories (its repositories are a file, kept already), by key prefix.
+      final savedByPrefix = <String, Object>{};
       List<String>? savedStremioAddons;
 
       if (keepRepos) {
@@ -802,9 +804,10 @@ class StorageService {
         savedStremioAddons = prefs.getStringList('stremio_addons_v2');
 
         for (final key in prefs.getKeys()) {
-          if (key.startsWith('nuvio_scraper_settings_')) {
+          if (key.startsWith('nuvio_scraper_settings_') ||
+              key.startsWith('cloudstream_')) {
             final val = prefs.get(key);
-            if (val != null) savedNuvioSettings[key] = val;
+            if (val != null) savedByPrefix[key] = val;
           }
         }
       }
@@ -842,7 +845,7 @@ class StorageService {
         if (savedStremioAddons != null) {
           await prefs.setStringList('stremio_addons_v2', savedStremioAddons);
         }
-        for (final entry in savedNuvioSettings.entries) {
+        for (final entry in savedByPrefix.entries) {
           final v = entry.value;
           if (v is String) {
             await prefs.setString(entry.key, v);
@@ -932,16 +935,17 @@ class StorageService {
     try {
       final supportDir = await getApplicationSupportDirectory();
 
-      // 1. Delete SkyStream Extensions Folder
-      final extDir = Directory('${supportDir.path}/extensions');
-      if (await extDir.exists()) {
-        await extDir.delete(recursive: true);
-      }
-
-      // 2. Delete Nuvio Plugins Folder
-      final nuvioDir = Directory('${supportDir.path}/nuvio_plugins');
-      if (await nuvioDir.exists()) {
-        await nuvioDir.delete(recursive: true);
+      // 1. Delete the extensions folder (SkyStream plugins, CloudStream's
+      //    extensions) and 2. Nuvio's plugins folder. A file still open
+      //    (Windows will not delete one) must not keep the steps below from
+      //    running, so each folder fails on its own.
+      for (final name in const ['extensions', 'nuvio_plugins']) {
+        try {
+          final dir = Directory('${supportDir.path}/$name');
+          if (await dir.exists()) await dir.delete(recursive: true);
+        } catch (e) {
+          if (kDebugMode) debugPrint("Error deleting '$name': $e");
+        }
       }
 
       // 3. Clear Preferences & Hive Boxes (including extensions)

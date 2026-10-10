@@ -45,13 +45,20 @@ enum VolumeRouting {
   /// writes to nothing: the profile lands a frame or two into a session, and
   /// reaching for the system mixer before knowing what kind of machine this is
   /// is the one mistake here with a consequence outside the app.
-  static VolumeRouting of(PlayerFormFactor form) => switch (form) {
-    PlayerFormFactor.tv => VolumeRouting.boostOnly,
-    PlayerFormFactor.desktop ||
-    PlayerFormFactor.unknown => VolumeRouting.engineOnly,
-    PlayerFormFactor.phone || PlayerFormFactor.tablet =>
-      VolumeRouting.systemThenBoost,
-  };
+  ///
+  /// [systemFixed] is a handset whose volume apps can't change (Android's
+  /// `isVolumeFixed`: Chromebooks, some TV boxes). It keeps a gain of its own,
+  /// as a desktop does, rather than write to a stream that won't move.
+  static VolumeRouting of(PlayerFormFactor form, {bool systemFixed = false}) =>
+      switch (form) {
+        PlayerFormFactor.tv => VolumeRouting.boostOnly,
+        PlayerFormFactor.desktop ||
+        PlayerFormFactor.unknown => VolumeRouting.engineOnly,
+        PlayerFormFactor.phone || PlayerFormFactor.tablet =>
+          systemFixed
+              ? VolumeRouting.engineOnly
+              : VolumeRouting.systemThenBoost,
+      };
 
   /// The lowest level the in-app control offers.
   ///

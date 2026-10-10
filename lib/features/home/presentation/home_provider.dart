@@ -6,6 +6,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../../core/extensions/extension_manager.dart';
 import '../../../../core/storage/storage_service.dart';
 import '../../../../core/extensions/base_provider.dart';
+import '../../../../core/network/clearance/clearance.dart';
+import '../../../../core/network/clearance/site_checks.dart';
 
 import './home_state.dart';
 
@@ -19,6 +21,12 @@ class HomeData extends _$HomeData {
   /// lands on top of the grid the user is already looking at.
   int _fetchToken = 0;
 
+  /// When the current fetch began: the checks Home's plugin met since are
+  /// Home's to show.
+  DateTime? fetchStartedAt;
+
+  StreamSubscription<void>? _checks;
+
   @override
   HomeState build() {
     _fetchToken++;
@@ -26,14 +34,18 @@ class HomeData extends _$HomeData {
     if (activeProvider == null) {
       return const HomeNoProvider();
     }
+    _watchChecks(activeProvider);
 
-    // Start initial fetch
+    // Start initial fetch. The screen reads the start as it builds the wait,
+    // before the fetch runs.
+    fetchStartedAt = _now();
     Future.microtask(() => fetch());
     return const HomeLoading();
   }
 
   Future<void> fetch() async {
     final token = ++_fetchToken;
+    fetchStartedAt = _now();
     state = const HomeLoading();
 
     final activeProvider = ref.read(activeProviderProvider);
@@ -48,6 +60,14 @@ class HomeData extends _$HomeData {
     try {
       final items = await activeProvider.getHome();
       if (!_isCurrent(token)) return;
+      // Nothing but empty rows while the site's check isn't cleared: the
+      // plugin turned the failure into nothing. Home shows the check instead,
+      // and fetches again once it clears.
+      final check = _unclearedCheck(activeProvider);
+      if (check != null && items.values.every((rows) => rows.isEmpty)) {
+        state = HomeError('${check.site} needs a check');
+        return;
+      }
       state = HomeSuccess(items);
     } catch (e) {
       if (!_isCurrent(token)) return;
@@ -55,6 +75,39 @@ class HomeData extends _$HomeData {
       // a raw exception string, which is all the probe used to buy us.
       state = _looksOffline(e) ? const HomeOffline() : HomeError(e.toString());
     }
+  }
+
+  DateTime _now() {
+    final clearance = Clearance.instance;
+    return clearance.isReady ? clearance.checks.now : DateTime.now();
+  }
+
+  /// The check [provider] met during this fetch, while it isn't cleared.
+  SiteCheck? _unclearedCheck(SkyStreamProvider provider) {
+    final clearance = Clearance.instance;
+    final started = fetchStartedAt;
+    if (!clearance.isReady || started == null) return null;
+    final check = clearance.checks.latestFor(
+      provider.checkSource,
+      since: started,
+    );
+    return check == null || check.state == CheckState.cleared ? null : check;
+  }
+
+  /// Fetches again when the site Home's plugin waits on clears after the
+  /// fetch gave up on it: Verify, or a kept page that cleared later.
+  void _watchChecks(SkyStreamProvider provider) {
+    unawaited(_checks?.cancel());
+    final clearance = Clearance.instance;
+    final source = provider.checkSource;
+    if (!clearance.isReady || source == null) return;
+    _checks = clearance.checks.changes.listen((_) {
+      final started = fetchStartedAt;
+      if (started == null || state is! HomeError) return;
+      final check = clearance.checks.latestFor(source, since: started);
+      if (check?.state == CheckState.cleared) unawaited(fetch());
+    });
+    ref.onDispose(() => unawaited(_checks?.cancel()));
   }
 
   /// False once this fetch has been superseded, or once the provider has been

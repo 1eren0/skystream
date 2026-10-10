@@ -26,6 +26,8 @@ import "widgets/details_desktop_hero.dart";
 import "widgets/premium_details_widgets.dart";
 import "../../../shared/widgets/expandable_text.dart";
 import "../../../shared/widgets/loading_indicator.dart";
+import "../../../shared/widgets/check_line.dart";
+import "../../../core/extensions/extension_manager.dart";
 
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
@@ -41,6 +43,20 @@ class DetailsScreen extends ConsumerStatefulWidget {
 
 class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   bool _didTriggerAutoPlay = false;
+
+  /// What a bot check met while this title loads is filed under: its
+  /// plugin's, else the active one's.
+  String? _checkSource() {
+    final wanted = widget.item.provider;
+    final match = wanted == null
+        ? null
+        : ref
+              .read(extensionManagerProvider.notifier)
+              .getAllProviders()
+              .where((p) => p.packageName == wanted || p.name == wanted)
+              .firstOrNull;
+    return (match ?? ref.read(activeProviderProvider))?.checkSource;
+  }
 
   Future<void> _copyAnimeTitle(BuildContext context, String title) async {
     await Clipboard.setData(ClipboardData(text: title));
@@ -518,7 +534,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       children: [
         // Loading / Error / Season chips
         if (detailsState is AsyncLoading)
-          const Center(child: AppLoadingIndicator())
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Center(child: AppLoadingIndicator()),
+              CheckLine(source: _checkSource()),
+            ],
+          )
         else if (detailsState is AsyncError)
           Text(
             "Error: ${detailsState.error}",
@@ -672,7 +694,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
               ),
               const SizedBox(height: 32),
               if (detailsState is AsyncLoading)
-                const Center(child: AppLoadingIndicator())
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Center(child: AppLoadingIndicator()),
+                    CheckLine(source: _checkSource()),
+                  ],
+                )
               else if (detailsState is AsyncError)
                 Container(
                   padding: const EdgeInsets.all(16),

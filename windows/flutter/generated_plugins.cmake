@@ -3,14 +3,12 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  challenge_browser
   connectivity_plus
   dynamic_color
-  flutter_inappwebview_windows
   flutter_js_ng
   flutter_secure_storage_windows
-  flutter_volume_controller
   permission_handler_windows
-  screen_brightness_windows
   screen_retriever_windows
   share_plus
   url_launcher_windows

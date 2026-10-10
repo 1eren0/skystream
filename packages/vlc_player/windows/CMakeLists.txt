@@ -83,7 +83,7 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "vlc_player currently supports Windows x64 builds only.")
 endif()
 
-set(VLC_PLAYER_VLC_VERSION "3.0.23")
+set(VLC_PLAYER_VLC_VERSION "3.0.24")
 set(VLC_PLAYER_VLC_ARCHIVE "vlc-${VLC_PLAYER_VLC_VERSION}-win64.7z")
 # Mirrors, tried in order. The canonical host is first; the others are here
 # because it went down on 2026-09-20 and took every Windows build with it,
@@ -93,14 +93,14 @@ set(VLC_PLAYER_VLC_ARCHIVE "vlc-${VLC_PLAYER_VLC_VERSION}-win64.7z")
 #
 # Falling back is only safe because EXPECTED_HASH is enforced on every attempt
 # below: a mirror serving anything but the exact archive fails the hash and the
-# loop moves on. Both alternates were verified to serve bytes matching the
-# pinned SHA256 on 2026-09-20.
+# loop moves on. For 3.0.24 the pinned SHA256 is VideoLAN's published one, and
+# both alternates served bytes matching it on 2026-10-02.
 set(VLC_PLAYER_VLC_URLS
   "https://download.videolan.org/pub/videolan/vlc/${VLC_PLAYER_VLC_VERSION}/win64/${VLC_PLAYER_VLC_ARCHIVE}"
   "https://get.videolan.org/vlc/${VLC_PLAYER_VLC_VERSION}/win64/${VLC_PLAYER_VLC_ARCHIVE}"
   "https://mirror.init7.net/videolan/vlc/${VLC_PLAYER_VLC_VERSION}/win64/${VLC_PLAYER_VLC_ARCHIVE}")
 set(VLC_PLAYER_VLC_SHA256
-  "eb4fd8a28291da73608c733786a09610fea865fbe94113bcb60b91c1ebb8404a")
+  "1ed59c09152e78aff84663fa76efab26057716576db74332858810e5ef54ae1f")
 set(VLC_PLAYER_VLC_DOWNLOAD_DIR "${CMAKE_CURRENT_BINARY_DIR}/vlc")
 set(VLC_PLAYER_VLC_ARCHIVE_PATH
   "${VLC_PLAYER_VLC_DOWNLOAD_DIR}/${VLC_PLAYER_VLC_ARCHIVE}")

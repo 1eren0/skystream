@@ -154,7 +154,11 @@ class _FakeHealthClient extends AddonClient {
   int fetches = 0;
 
   @override
-  Future<AddonManifest> fetchManifest(String url, {bool forceRefresh = false}) {
+  Future<AddonManifest> fetchManifest(
+    String url, {
+    bool forceRefresh = false,
+    bool personWaiting = false,
+  }) {
     fetches++;
     final key = Uri.parse(url).host.split('.').first;
     final handler = handlers[key];
