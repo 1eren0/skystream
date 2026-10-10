@@ -28,8 +28,11 @@ void main() {
         logicalProcessors: 8, desktop: true, providerCount: 70,
       ), 16);
       expect(searchConcurrencyLimit(
+        logicalProcessors: 16, desktop: true, providerCount: 70,
+      ), 32);
+      expect(searchConcurrencyLimit(
         logicalProcessors: 32, desktop: true, providerCount: 70,
-      ), 16);
+      ), 32);
     });
 
     test('mobile budget preserves four to eight concurrent providers', () {
