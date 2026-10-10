@@ -153,7 +153,8 @@ class _ClearanceHttpClient implements HttpClient {
     bool Function(X509Certificate cert, String host, int port)? callback,
   ) => _inner.badCertificateCallback = callback;
   @override
-  set keyLog(Function(String line)? callback) => _inner.keyLog = callback;
+  set keyLog(dynamic Function(String line)? callback) =>
+      _inner.keyLog = callback;
   @override
   void close({bool force = false}) => _inner.close(force: force);
 }
