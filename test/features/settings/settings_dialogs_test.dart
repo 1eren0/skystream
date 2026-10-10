@@ -543,6 +543,12 @@ void main() {
   });
 
   group('preferred audio language dialog', () {
+    late AppLocalizations l10n;
+
+    setUpAll(() async {
+      l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    });
+
     testWidgets('TV remote focuses the stored language on open', (tester) async {
       await _pumpOpener(
         tester,
