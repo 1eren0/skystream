@@ -174,6 +174,26 @@ void main() {
       .firstWhere((SettingsTile tile) => tile.title == l10n.subtitleDefault)
       .subtitle!;
 
+  testWidgets('preferred audio language appears on TV with the stored choice', (
+    tester,
+  ) async {
+    await pumpPlayerSettings(
+      tester,
+      platform: TargetPlatform.android,
+      profile: const DeviceProfile(isTv: true),
+      size: const Size(1920, 1080),
+      settings: const PlayerSettings(preferredAudioLanguage: 'tr'),
+    );
+
+    final rows = tester.widgetList<SettingsTile>(
+      find.byType(SettingsTile, skipOffstage: false),
+    );
+    final audio = rows.firstWhere(
+      (row) => row.title == '${l10n.audio} · ${l10n.language}',
+    );
+    expect(audio.subtitle, 'Turkish');
+  });
+
   testWidgets('the subtitle default row reads Auto on a fresh install', (
     WidgetTester tester,
   ) async {

@@ -47,6 +47,23 @@ class _RecordingPlayerSettings extends PlayerSettingsNotifier {
   }
 }
 
+/// Captures the preference selected by a remote without opening Hive.
+class _RecordingAudioLanguage extends PlayerSettingsNotifier {
+  _RecordingAudioLanguage(this.initial, this.chosen);
+
+  final String initial;
+  final List<String> chosen;
+
+  @override
+  Future<PlayerSettings> build() async =>
+      PlayerSettings(preferredAudioLanguage: initial);
+
+  @override
+  Future<void> setPreferredAudioLanguage(String language) async {
+    chosen.add(language);
+  }
+}
+
 /// Keeps the DoH picker off SharedPreferences.
 class _StubDoh extends DohSettingsNotifier {
   _StubDoh(this._value);
@@ -522,6 +539,61 @@ void main() {
 
       expect(chosen, <SubtitleDefault>[SubtitleDefault.off]);
       expect(find.text(l10n.subtitleDefaultAutoDetail), findsNothing);
+    });
+  });
+
+  group('preferred audio language dialog', () {
+    late AppLocalizations l10n;
+
+    setUpAll(() async {
+      l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    });
+
+    testWidgets('TV remote focuses the stored language on open', (tester) async {
+      await _pumpOpener(
+        tester,
+        profile: const DeviceProfile(isTv: true),
+        settings: () => _RecordingAudioLanguage('tr', <String>[]),
+        open: (context, ref) =>
+            showPreferredAudioLanguageDialog(context, ref, 'tr'),
+      );
+
+      expect(find.text('${l10n.audio} · ${l10n.language}'), findsOneWidget);
+      expect(_focusedRowTitle(), 'Turkish');
+      expect(find.text('English'), findsOneWidget);
+    });
+
+    testWidgets('picking a language writes its ISO code and closes', (tester) async {
+      final picked = <String>[];
+      await _pumpOpener(
+        tester,
+        settings: () => _RecordingAudioLanguage('', picked),
+        open: (context, ref) =>
+            showPreferredAudioLanguageDialog(context, ref, ''),
+      );
+
+      await tester.ensureVisible(find.text('Turkish'));
+      await tester.tap(find.text('Turkish'));
+      await tester.pumpAndSettle();
+
+      expect(picked, <String>['tr']);
+      expect(find.text('${l10n.audio} · ${l10n.language}'), findsNothing);
+    });
+
+    testWidgets('Automatic clears a stored preference', (tester) async {
+      final picked = <String>[];
+      await _pumpOpener(
+        tester,
+        settings: () => _RecordingAudioLanguage('tr', picked),
+        open: (context, ref) =>
+            showPreferredAudioLanguageDialog(context, ref, 'tr'),
+      );
+
+      // Auto is a scrollable option above Turkish.
+      await tester.ensureVisible(find.text('Auto'));
+      await tester.tap(find.text('Auto'));
+      await tester.pumpAndSettle();
+      expect(picked, <String>['']);
     });
   });
 

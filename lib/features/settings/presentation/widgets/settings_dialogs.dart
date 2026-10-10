@@ -18,6 +18,7 @@ import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/utils/app_utils.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../player/domain/network_buffer.dart';
+import '../../../player/domain/track_language.dart';
 import '../player_settings_provider.dart';
 import '../../../../core/utils/stream_quality_sorter.dart';
 import '../general_settings_provider.dart';
@@ -52,6 +53,12 @@ String subtitleDefaultLabel(SubtitleDefault value, AppLocalizations l10n) =>
       SubtitleDefault.auto => l10n.subtitleDefaultAuto,
       SubtitleDefault.off => l10n.off,
     };
+
+/// Empty means let VLC keep the soundtrack selected by the source.
+String preferredAudioLanguageLabel(String language, AppLocalizations l10n) =>
+    language.isEmpty
+        ? l10n.subtitleDefaultAuto
+        : languageNameForCode(language) ?? language;
 
 /// Returns a localized label for a resize mode string.
 String getResizeModeLabel(String mode, AppLocalizations l10n) {
@@ -882,6 +889,75 @@ void showSubtitleDefaultDialog(
                 ),
               );
             }).toList(),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Language selection for newly opened audio tracks.
+///
+/// Choices use ISO 639-1 codes on disk, while the playback matcher accepts
+/// both 2- and 3-letter track tags plus readable names. The list is bounded
+/// and scrolls the current choice into view for TV remotes.
+void showPreferredAudioLanguageDialog(
+  BuildContext context,
+  WidgetRef ref,
+  String current,
+) {
+  final l10n = AppLocalizations.of(context)!;
+  const languages = <String>[
+    'ar', 'bn', 'de', 'en', 'es', 'fa', 'fil', 'fr', 'hi', 'id',
+    'it', 'ja', 'ko', 'ml', 'mr', 'nl', 'pa', 'pl', 'pt', 'ru',
+    'ta', 'te', 'th', 'tr', 'uk', 'ur', 'vi', 'zh',
+  ];
+  final options = <String>['', ...languages];
+
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      surfaceTintColor: Colors.transparent,
+      title: Text('${l10n.audio} · ${l10n.language}'),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 420,
+          maxHeight: MediaQuery.sizeOf(ctx).height * 0.65,
+        ),
+        child: RadioGroup<String>(
+          groupValue: current,
+          onChanged: (val) {
+            if (val == null) return;
+            unawaited(
+              ref.read(playerSettingsProvider.notifier)
+                  .setPreferredAudioLanguage(val),
+            );
+            Navigator.pop<void>(ctx);
+          },
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final language in options)
+                  _currentOption(
+                    isCurrent: language == current,
+                    child: ListTile(
+                      autofocus: language == current,
+                      title: Text(
+                        preferredAudioLanguageLabel(language, l10n),
+                      ),
+                      leading: Radio<String>(value: language),
+                      onTap: () {
+                        unawaited(
+                          ref.read(playerSettingsProvider.notifier)
+                              .setPreferredAudioLanguage(language),
+                        );
+                        Navigator.pop<void>(ctx);
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

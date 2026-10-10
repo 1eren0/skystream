@@ -461,6 +461,41 @@ void main() {
       return container;
     }
 
+    test('audio preference is automatic on a fresh install', () async {
+      final settings = await boot().read(playerSettingsProvider.future);
+      expect(settings.preferredAudioLanguage, isEmpty);
+    });
+
+    test('audio language is persisted across app launches and can be reset', () async {
+      final first = boot();
+      await first.read(playerSettingsProvider.future);
+      await first.read(playerSettingsProvider.notifier).setPreferredAudioLanguage('tr');
+
+      expect(first.read(playerSettingsProvider).requireValue.preferredAudioLanguage, 'tr');
+      expect(storage.getPlayerSetting<String>('player_audio_language'), 'tr');
+
+      final second = boot();
+      expect((await second.read(playerSettingsProvider.future)).preferredAudioLanguage, 'tr');
+
+      await second.read(playerSettingsProvider.notifier).setPreferredAudioLanguage('');
+      final third = boot();
+      expect((await third.read(playerSettingsProvider.future)).preferredAudioLanguage, isEmpty);
+    });
+
+    test('invalid audio preference leaves the player on automatic', () async {
+      await storage.setPlayerSetting('player_audio_language', 'not-a-language');
+      expect(
+        (await boot().read(playerSettingsProvider.future)).preferredAudioLanguage,
+        isEmpty,
+      );
+    });
+
+    test('audio language survives unrelated settings copies', () {
+      const chosen = PlayerSettings(preferredAudioLanguage: 'tr');
+      expect(chosen.copyWith(subtitleSize: 30).preferredAudioLanguage, 'tr');
+      expect(chosen.copyWith(preferredAudioLanguage: '').preferredAudioLanguage, isEmpty);
+    });
+
     test('is Auto out of the box', () {
       expect(const PlayerSettings().subtitleDefault, SubtitleDefault.auto);
     });

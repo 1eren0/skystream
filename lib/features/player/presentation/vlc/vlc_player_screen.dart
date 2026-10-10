@@ -509,6 +509,13 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   RememberedTrack? _rememberedAudio;
   RememberedTrack? _rememberedSubtitle;
 
+  /// Unspent preferred language for the current media, until the audio
+  /// track list reports a match. Retried on ESAdded/track revision changes,
+  /// not on every position tick. A manual visit to the panel cancels it.
+  String? _preferredAudioToPick;
+  int? _preferredAudioCheckedRevision;
+  bool _pickingPreferredAudio = false;
+
   /// The subtitle [_restoreTracks] came to put back and did not find: the new
   /// media had not listed it yet - a reopened MKV lists its audio first. It
   /// is looked for again on each change to the list ([_maybeRestoreSubtitle])
@@ -1126,6 +1133,13 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // new media has published its tracks. A reopen restores the position; it
     // has no business also changing the language.
     _restorePending = _rememberedAudio != null || _rememberedSubtitle != null;
+    final audioLanguage =
+        _read(playerSettingsProvider).asData?.value.preferredAudioLanguage ?? '';
+    _preferredAudioToPick = _rememberedAudio == null && audioLanguage.isNotEmpty
+        ? audioLanguage
+        : null;
+    _preferredAudioCheckedRevision = null;
+    _pickingPreferredAudio = false;
     // Every way back into playback goes through here - Start Over, a failover,
     // a hand-picked source - and none of them may leave the ended card up over
     // media that is opening.
@@ -1438,7 +1452,11 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       return;
     }
 
-    if (audioId != _seenAudioTrackId) {
+    if (_preferredAudioToPick != null) {
+      // Do not remember libVLC's temporary default before the desired track
+      // is listed; otherwise the next reopen would permanently prefer it.
+      _maybePickPreferredAudio(value);
+    } else if (audioId != _seenAudioTrackId) {
       _seenAudioTrackId = audioId;
       if (audioId != null) unawaited(_snapshotAudio(audioId));
     }
@@ -1448,6 +1466,49 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       // surely as a language does.
       _rememberedSubtitle = null;
       if (subtitleId != null) unawaited(_snapshotSubtitle(subtitleId));
+    }
+  }
+
+  void _maybePickPreferredAudio(VlcPlayerValue value) {
+    final preferred = _preferredAudioToPick;
+    if (preferred == null ||
+        value.activeAudioTrackId == null ||
+        _pickingPreferredAudio ||
+        _preferredAudioCheckedRevision == value.trackRevision) {
+      return;
+    }
+    _preferredAudioCheckedRevision = value.trackRevision;
+    _pickingPreferredAudio = true;
+    unawaited(_pickPreferredAudio(preferred, _generation));
+  }
+
+  Future<void> _pickPreferredAudio(String preferred, int generation) async {
+    try {
+      final tracks = await _controller.getAudioTracks();
+      if (_disposed ||
+          generation != _generation ||
+          _preferredAudioToPick != preferred) {
+        return;
+      }
+      final match = findPreferredAudioTrack(tracks, preferred);
+      if (match == null) return; // A later track revision can still match.
+      if (_controller.value.activeAudioTrackId != match.id) {
+        await _controller.setAudioTrack(match.id);
+      }
+      if (_disposed ||
+          generation != _generation ||
+          _preferredAudioToPick != preferred) {
+        return;
+      }
+      _preferredAudioToPick = null;
+      _rememberedAudio = RememberedTrack.of(match);
+      _seenAudioTrackId = match.id;
+    } on Object {
+      // An unavailable/refusing engine keeps its own audio selection.
+    } finally {
+      if (!_disposed && generation == _generation) {
+        _pickingPreferredAudio = false;
+      }
     }
   }
 
@@ -2604,6 +2665,9 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // a rule still live while the panel is up would undo the pick in the same
     // frame the viewer made it. See [_applySubtitleDefault].
     _subtitlesOffPending = false;
+    // If a viewer opens the panel before the desired audio track appears,
+    // their subsequent manual choice must not be undone by a late ESAdded.
+    _preferredAudioToPick = null;
     // The same goes for Auto's pick: whatever the viewer does from here is
     // theirs.
     _viewerChoseSubtitle = true;
