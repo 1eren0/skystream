@@ -1848,17 +1848,17 @@ class AppLocalizationsKn extends AppLocalizations {
   }
 
   @override
-  String get cloudflareVerificationTitle => 'Site verification';
+  String get cloudflareVerificationTitle => 'ಸೈಟ್ ಪರಿಶೀಲನೆ';
 
   @override
   String get cloudflareVerificationPrompt =>
-      'Complete the site verification in this window.';
+      'ಈ ವಿಂಡೋದಲ್ಲಿ ಸೈಟ್ ಪರಿಶೀಲನೆಯನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.';
 
   @override
   String get cloudflareVerificationUnreadable =>
-      'Could not read the verification page. Cancel and try again.';
+      'ಪರಿಶೀಲನೆ ಪುಟವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ರದ್ದುಮಾಡಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
 
   @override
   String get cloudflareVerificationNotOpened =>
-      'Could not open the verification page. Cancel and try again.';
+      'ಪರಿಶೀಲನೆ ಪುಟವನ್ನು ತೆರೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ರದ್ದುಮಾಡಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
 }
