@@ -118,6 +118,130 @@ void main() {
     },
   );
 
+  test('host-only clearance never reaches a sibling or subdomain', () async {
+    CloudflareBypass.interactiveSolver = (url, _, _) async => CfResult(
+      body: '<html>ok</html>',
+      statusCode: 200,
+      finalUrl: url,
+      userAgent: 'ScopedAgent/1',
+      cookies: const [
+        {'name': 'cf_clearance', 'value': 'only-this-host'},
+      ],
+    );
+    await CloudflareBypass.instance.solveAndFetch(
+      'https://scoped.test/',
+      callerId: 'plugin-a',
+    );
+    expect(
+      CloudflareBypass.instance.cookieHeaderFor(
+        'scoped.test', callerId: 'plugin-a',
+      ),
+      'cf_clearance=only-this-host',
+    );
+    expect(
+      CloudflareBypass.instance.cookieHeaderFor(
+        'img.scoped.test', callerId: 'plugin-a',
+      ),
+      isNull,
+    );
+    expect(
+      CloudflareBypass.instance.userAgentFor(
+        'scoped.test', callerId: 'plugin-b',
+      ),
+      isNull,
+    );
+    expect(
+      CloudflareBypass.instance.cookieHeaderFor(
+        'scoped.test', callerId: 'plugin-b',
+      ),
+      isNull,
+    );
+  });
+
+  test('a domain clearance also supplies its verified UA to subdomains', () async {
+    CloudflareBypass.interactiveSolver = (url, _, _) async => CfResult(
+      body: '<html>ok</html>',
+      statusCode: 200,
+      finalUrl: url,
+      userAgent: 'SharedSiteAgent/2',
+      cookies: const [
+        {
+          'name': 'cf_clearance',
+          'value': 'domain-cookie',
+          'domain': '.shared-site.test',
+          'secure': true,
+        },
+      ],
+    );
+    await CloudflareBypass.instance.solveAndFetch(
+      'https://shared-site.test/', callerId: 'plugin-a',
+    );
+    expect(
+      CloudflareBypass.instance.userAgentFor(
+        'images.shared-site.test', callerId: 'plugin-a',
+      ),
+      'SharedSiteAgent/2',
+    );
+    expect(
+      CloudflareBypass.instance.cookieHeaderFor(
+        'images.shared-site.test', callerId: 'plugin-a',
+      ),
+      'cf_clearance=domain-cookie',
+    );
+    expect(
+      CloudflareBypass.instance.cookieHeaderFor(
+        'unrelated.test', callerId: 'plugin-a',
+      ),
+      isNull,
+    );
+  });
+
+  test('an HTTP error or a challenge page cannot count as verified', () {
+    const clearance = <Map<String, dynamic>>[
+      {'name': 'cf_clearance', 'value': 'token'},
+    ];
+    expect(
+      isVerifiedCloudflarePage(
+        host: 'site.test', expectedHost: 'site.test',
+        httpStatus: 403, challenge: false, hasBody: true,
+        cookies: clearance,
+      ),
+      isFalse,
+    );
+    expect(
+      isVerifiedCloudflarePage(
+        host: 'site.test', expectedHost: 'site.test',
+        httpStatus: 200, challenge: true, hasBody: true,
+        cookies: clearance,
+      ),
+      isFalse,
+    );
+    expect(
+      isVerifiedCloudflarePage(
+        host: 'other.test', expectedHost: 'site.test',
+        httpStatus: 200, challenge: false, hasBody: true,
+        cookies: clearance,
+      ),
+      isFalse,
+    );
+    expect(
+      isVerifiedCloudflarePage(
+        host: 'site.test', expectedHost: 'site.test',
+        httpStatus: 200, challenge: false, hasBody: true,
+        cookies: const [],
+      ),
+      isFalse,
+    );
+    expect(
+      isVerifiedCloudflarePage(
+        host: 'site.test', expectedHost: 'site.test',
+        httpStatus: 200, challenge: false, hasBody: true,
+        cookies: clearance,
+      ),
+      isTrue,
+    );
+  });
+
   test(
     'cancelling verification releases the queue for a later request',
     () async {
@@ -186,6 +310,9 @@ void main() {
     } finally {
       await server.close(force: true);
     }
-    expect(seen, ['cf_clearance=img', 'VerifiedAgent/1.0']);
+    expect(seen.first, isNull, reason: 'secure clearance must not leak over plaintext HTTP');
+    expect(seen.last, isNot('VerifiedAgent/1.0'));
+    expect(shouldAttachCloudflareClearance(Uri.parse('https://localhost/poster.webp')), isTrue);
+    expect(shouldAttachCloudflareClearance(Uri.parse('http://localhost/poster.webp')), isFalse);
   });
 }
