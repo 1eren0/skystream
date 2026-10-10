@@ -77,6 +77,37 @@ class _Web extends RepositoryService {
     _plugins[url] = plugins;
   }
 
+  void inlineRepo(String url, String name, List<ExtensionPlugin> plugins) {
+    _published[url] = ExtensionRepository(
+      name: name,
+      url: url,
+      pluginLists: const <String>[],
+      plugins: plugins,
+      explicitId: 'repo.inline',
+    );
+    // Mirror RepositoryService.getRepoPlugins, which includes embedded
+    // plugins. Without this, our fake returns an empty listing despite
+    // publishing a manifest with plugins.
+    _plugins[url] = plugins;
+  }
+
+  void mixedCollection(
+    String url,
+    String name,
+    List<String> listed,
+    List<ExtensionPlugin> plugins,
+  ) {
+    _published[url] = ExtensionRepository(
+      name: name,
+      url: url,
+      pluginLists: const <String>[],
+      includedRepos: listed,
+      plugins: plugins,
+      explicitId: 'repo.mixed',
+    );
+    _plugins[url] = plugins;
+  }
+
   void collection(String url, String name, List<String> listed) {
     _published[url] = ExtensionRepository(
       name: name,
@@ -207,6 +238,54 @@ void main() {
       // Said once.
       final (_, next) = await launch(web);
       expect(next.isEmpty, isTrue);
+    });
+
+    test('installs a direct repository with only embedded plugins', () async {
+      final web = _Web()
+        ..inlineRepo(_a, 'Inline Repo', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container.read(extensionsControllerProvider.notifier).addRepository(_a);
+
+      expect(await savedRepositories(), <String>[_a]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a]);
+      expect(state.availablePlugins[_a]?.single.name, 'Alpha');
+    });
+
+    test('Universe collection adds repositories containing embedded plugins', () async {
+      final web = _Web()
+        ..collection(_universe, 'Universe', <String>[_a])
+        ..inlineRepo(_a, 'Inline Repo', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container
+          .read(extensionsControllerProvider.notifier)
+          .addRepository(_universe);
+
+      expect(await savedRepositories(), <String>[_a]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a]);
+      expect(state.availablePlugins[_a]?.single.name, 'Alpha');
+      expect(state, isNot(isA<ExtensionsError>()));
+    });
+
+    test('a collection with embedded plugins retains its own repository', () async {
+      final web = _Web()
+        ..mixedCollection(
+          _universe,
+          'Universe',
+          <String>[_a],
+          <ExtensionPlugin>[_plugin('Beta')],
+        )
+        ..repo(_a, 'Repo A', <ExtensionPlugin>[_plugin('Alpha')]);
+      final container = app(web);
+      await container
+          .read(extensionsControllerProvider.notifier)
+          .addRepository(_universe);
+
+      expect(await savedRepositories(), <String>[_a, _universe]);
+      final state = container.read(extensionsControllerProvider);
+      expect(state.repositories.map((r) => r.url), <String>[_a, _universe]);
+      expect(state.availablePlugins[_universe]?.single.name, 'Beta');
     });
 
     test('does not bring back a repository the user removed', () async {

@@ -88,8 +88,13 @@ class RepositoryService {
     final status = response.statusCode ?? 0;
     if (status >= 300 && status < 400) {
       final location = response.headers.value('location');
-      if (location != null && !isDeadEnd(location)) return location;
-      return null;
+      if (location == null) return null;
+      // Shorteners may send a relative Location header. Dio expects an
+      // absolute URL when we subsequently request the repository manifest.
+      final target = Uri.parse(shortUrl).resolve(location.trim());
+      if (target.scheme != 'https' && target.scheme != 'http') return null;
+      final resolved = target.toString();
+      return isDeadEnd(resolved) ? null : resolved;
     }
     if (status == 404 || status == 410) return null;
 
@@ -165,10 +170,14 @@ class RepositoryService {
           final hasId =
               data.containsKey('id') || data.containsKey('packageName');
           // Extract lists safely to check content
-          final plugins = (data['pluginLists'] as List?) ?? <dynamic>[];
+          final pluginLists = (data['pluginLists'] as List?) ?? <dynamic>[];
+          final inlinePlugins = (data['plugins'] as List?) ?? <dynamic>[];
           final repos = (data['repos'] as List?) ?? <dynamic>[];
 
-          final hasPlugins = plugins.isNotEmpty;
+          // ExtensionRepository.fromJson/getRepoPlugins already support
+          // embedded plugins. Rejecting a manifest without pluginLists made
+          // valid inline-only repositories impossible to add.
+          final hasPlugins = pluginLists.isNotEmpty || inlinePlugins.isNotEmpty;
           final hasRepos = repos.isNotEmpty;
 
           if (!hasName || !hasId || (!hasPlugins && !hasRepos)) {
@@ -177,7 +186,7 @@ class RepositoryService {
             );
           }
 
-          if (hasPlugins && hasRepos) {
+          if (pluginLists.isNotEmpty && hasRepos) {
             throw Exception(
               "Repository cannot contain both 'pluginLists' and 'repos'. Please separate them.",
             );
