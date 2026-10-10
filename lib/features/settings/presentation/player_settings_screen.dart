@@ -184,7 +184,7 @@ class PlayerSettingsScreen extends ConsumerWidget {
                   ),
                   SettingsTile(
                     icon: Icons.audiotrack_rounded,
-                    title: 'Preferred audio language',
+                    title: '${l10n.audio} · ${l10n.language}',
                     subtitle: preferredAudioLanguageLabel(
                       playerSettings.preferredAudioLanguage,
                       l10n,
