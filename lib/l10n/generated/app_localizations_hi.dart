@@ -1835,4 +1835,19 @@ class AppLocalizationsHi extends AppLocalizations {
   String addonManageNoMatch(String query) {
     return 'No installed add-on matches \"$query\".';
   }
+
+  @override
+  String get cloudflareVerificationTitle => 'साइट सत्यापन';
+
+  @override
+  String get cloudflareVerificationPrompt =>
+      'इस विंडो में साइट का सत्यापन पूरा करें।';
+
+  @override
+  String get cloudflareVerificationUnreadable =>
+      'सत्यापन पृष्ठ पढ़ा नहीं जा सका। रद्द करें और फिर प्रयास करें।';
+
+  @override
+  String get cloudflareVerificationNotOpened =>
+      'सत्यापन पृष्ठ खोला नहीं जा सका। रद्द करें और फिर प्रयास करें।';
 }

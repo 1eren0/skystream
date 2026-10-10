@@ -38,6 +38,8 @@ import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import 'core/providers/locale_provider.dart';
 import 'core/network/cloudflare_bypass.dart';
+import 'core/widgets/cloudflare_verification_dialog.dart';
+import 'core/network/cloudflare_http_overrides.dart';
 import 'core/config/tmdb_config.dart';
 import 'core/providers/bootstrap_provider.dart' show quietDesktopBrightness;
 import 'core/providers/device_info_provider.dart';
@@ -56,6 +58,10 @@ void main() async {
   // FlutterError.onError, PlatformDispatcher.onError and ErrorWidget.builder -
   // see lib/core/widgets/app_error_boundary.dart.
   installGlobalErrorHandlers();
+
+  // Windows has the visible Cloudflare verification; its clearance must also
+  // reach the image cache, or a verified site's artwork stays blank.
+  if (Platform.isWindows) HttpOverrides.global = CloudflareHttpOverrides();
 
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -439,6 +445,22 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final themeMode = ref.watch(appThemeModeProvider);
     final appRouter = ref.watch(appRouterProvider);
+    if (Platform.isWindows) {
+      CloudflareBypass.interactiveSolver = (url, environment, referer) async {
+        final navContext = appRouter.routerDelegate.navigatorKey.currentContext;
+        if (navContext == null || !navContext.mounted) {
+          throw StateError(
+            'No screen is ready to show the site verification.',
+          );
+        }
+        return showCloudflareVerification(
+          referer: referer,
+          context: navContext,
+          url: url,
+          environment: environment,
+        );
+      };
+    }
     final locale = ref.watch(localeProvider);
     final profileAsync = ref.watch(deviceProfileProvider);
 

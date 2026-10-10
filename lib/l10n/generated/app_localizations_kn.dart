@@ -1846,4 +1846,19 @@ class AppLocalizationsKn extends AppLocalizations {
   String addonManageNoMatch(String query) {
     return 'No installed add-on matches \"$query\".';
   }
+
+  @override
+  String get cloudflareVerificationTitle => 'ಸೈಟ್ ಪರಿಶೀಲನೆ';
+
+  @override
+  String get cloudflareVerificationPrompt =>
+      'ಈ ವಿಂಡೋದಲ್ಲಿ ಸೈಟ್ ಪರಿಶೀಲನೆಯನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.';
+
+  @override
+  String get cloudflareVerificationUnreadable =>
+      'ಪರಿಶೀಲನೆ ಪುಟವನ್ನು ಓದಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ರದ್ದುಮಾಡಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
+
+  @override
+  String get cloudflareVerificationNotOpened =>
+      'ಪರಿಶೀಲನೆ ಪುಟವನ್ನು ತೆರೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ರದ್ದುಮಾಡಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
 }

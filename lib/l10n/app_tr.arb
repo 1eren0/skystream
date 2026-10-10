@@ -625,5 +625,9 @@
   "sourcesEmptyNoScrapers": "Etkin scraper yok. 'Nuvio Plugins' içinden ekleyin.",
   "sourcesEmptyAllFailed": "Tüm scraper'lar başarısız oldu. Bağlantınızı kontrol edin veya scraper'ları güncelleyin.",
   "sourcesEmptySomeFailed": "Bağlantı bulunamadı. {total} scraper'dan {failed} tanesi başarısız oldu.",
-  "sourcesEmptyNothingFound": "Scraper'larınızın hiçbirinde bu başlık yok."
+  "sourcesEmptyNothingFound": "Scraper'larınızın hiçbirinde bu başlık yok.",
+  "cloudflareVerificationTitle": "Site doğrulaması",
+  "cloudflareVerificationPrompt": "Site doğrulamasını bu pencerede tamamla.",
+  "cloudflareVerificationUnreadable": "Doğrulama sayfası okunamadı. İptal edip tekrar dene.",
+  "cloudflareVerificationNotOpened": "Doğrulama sayfası açılamadı. İptal edip tekrar dene."
 }

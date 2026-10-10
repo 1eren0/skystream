@@ -1281,6 +1281,21 @@
         "example": "torrentio"
       }
     }
+  },
+  "cloudflareVerificationTitle": "Site verification",
+  "@cloudflareVerificationTitle": {
+    "description": "Title of the window where the user completes a Cloudflare check"
+  },
+  "cloudflareVerificationPrompt": "Complete the site verification in this window.",
+  "@cloudflareVerificationPrompt": {
+    "description": "Instruction under the site verification title"
+  },
+  "cloudflareVerificationUnreadable": "Could not read the verification page. Cancel and try again.",
+  "@cloudflareVerificationUnreadable": {
+    "description": "Shown when the verification page content cannot be read"
+  },
+  "cloudflareVerificationNotOpened": "Could not open the verification page. Cancel and try again.",
+  "@cloudflareVerificationNotOpened": {
+    "description": "Shown when the verification page fails to load"
   }
 }
-
