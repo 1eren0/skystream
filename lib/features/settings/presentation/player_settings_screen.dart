@@ -183,6 +183,19 @@ class PlayerSettingsScreen extends ConsumerWidget {
                     ),
                   ),
                   SettingsTile(
+                    icon: Icons.audiotrack_rounded,
+                    title: 'Preferred audio language',
+                    subtitle: preferredAudioLanguageLabel(
+                      playerSettings.preferredAudioLanguage,
+                      l10n,
+                    ),
+                    onTap: () => showPreferredAudioLanguageDialog(
+                      context,
+                      ref,
+                      playerSettings.preferredAudioLanguage,
+                    ),
+                  ),
+                  SettingsTile(
                     icon: Icons.subtitles_rounded,
                     title: l10n.subtitleDefault,
                     subtitle: subtitleDefaultLabel(
