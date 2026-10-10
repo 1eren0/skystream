@@ -38,18 +38,21 @@ import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vlc_player/vlc_player.dart';
 
 import '../../../../../l10n/generated/app_localizations.dart';
 import '../../../domain/side_car_subtitles.dart';
 import '../../../domain/subtitle_search_target.dart';
 import '../../../domain/track_language.dart';
+import '../../../../settings/presentation/player_settings_provider.dart';
 import '../player_value_selector.dart';
 import 'player_anchored_list.dart';
 import 'player_panel_labels.dart';
 import 'player_panel_page.dart';
 import 'player_panel_row.dart';
 import 'player_subtitle_search_page.dart';
+import 'player_subtitle_size_slider.dart';
 
 /// Which list a tab is showing. The two differ by more than a title: only
 /// subtitles have an Off and two ways to add a track from outside.
@@ -81,7 +84,7 @@ String delayLabel(Duration delay) {
   return '$sign${(magnitude / 1000).toStringAsFixed(1)}s';
 }
 
-class PlayerTracksTab extends StatelessWidget {
+class PlayerTracksTab extends ConsumerWidget {
   const PlayerTracksTab({
     required this.controller,
     required this.kind,
@@ -152,8 +155,13 @@ class PlayerTracksTab extends StatelessWidget {
   bool get _isAudio => kind == PlayerTrackKind.audio;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    // Only touch players offer an in-panel slider. Audio and television tabs
+    // keep their existing focus order and need not watch appearance settings.
+    final subtitleSize = _isAudio || isTv
+        ? null
+        : ref.watch(playerSettingsProvider).asData?.value.subtitleSize ?? 22.0;
     // libVLC's own `Disable` pseudo-track. Subtitles get a real Off row below
     // and audio has no use for one, so it is never a row of its own.
     final listed = tracks.where((track) => track.id >= 0).toList();
@@ -166,7 +174,8 @@ class PlayerTracksTab extends StatelessWidget {
         _isAudio ? value.activeAudioTrackId : value.activeSubtitleTrackId,
         value.trackRevision,
       ),
-      builder: (context, selected) => _list(context, l10n, listed, selected.$1),
+      builder: (context, selected) =>
+          _list(context, l10n, listed, selected.$1, subtitleSize, ref),
     );
 
     final files = sideCars;
@@ -182,6 +191,8 @@ class PlayerTracksTab extends StatelessWidget {
     AppLocalizations l10n,
     List<VlcTrackDescription> listed,
     int? active,
+    double? subtitleSize,
+    WidgetRef ref,
   ) {
     final files = _isAudio
         ? const <SideCarTrack>[]
@@ -271,7 +282,7 @@ class PlayerTracksTab extends StatelessWidget {
       if (_isAudio)
         ..._audioExtras(l10n)
       else
-        ..._subtitleExtras(context, l10n),
+        ..._subtitleExtras(context, l10n, subtitleSize, ref),
     ];
 
     // The widget objects are built eagerly; handing them to the builder keeps
@@ -403,7 +414,12 @@ class PlayerTracksTab extends StatelessWidget {
   ///
   /// Both entry points end at [_addFile], which lists the file and turns it
   /// on, so neither needs anywhere to put its result.
-  List<Widget> _subtitleExtras(BuildContext context, AppLocalizations l10n) {
+  List<Widget> _subtitleExtras(
+    BuildContext context,
+    AppLocalizations l10n,
+    double? subtitleSize,
+    WidgetRef ref,
+  ) {
     return <Widget>[
       PanelSubheader(title: l10n.subtitleOptions),
       PanelRow(
@@ -422,6 +438,13 @@ class PlayerTracksTab extends StatelessWidget {
         select: (value) => value.subtitleDelay,
         apply: controller.setSubtitleDelay,
       ),
+      if (subtitleSize != null)
+        PlayerSubtitleSizeSlider(
+          value: subtitleSize,
+          onChangeEnd: (value) => unawaited(
+            ref.read(playerSettingsProvider.notifier).setSubtitleSize(value),
+          ),
+        ),
     ];
   }
 
