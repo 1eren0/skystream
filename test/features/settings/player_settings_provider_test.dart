@@ -461,8 +461,7 @@ void main() {
       return container;
     }
 
-    test('subtitle slider saves just size and restores it on next launch', (
-      ) async {
+    test('subtitle slider saves just size and restores it on next launch', () async {
       await storage.setPlayerSetting('player_sub_color', 0xFFFFEB3B);
       await storage.setPlayerSetting('player_sub_bg', 0xFF303030);
 
