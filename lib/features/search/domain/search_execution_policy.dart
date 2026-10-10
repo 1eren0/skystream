@@ -10,7 +10,9 @@ import 'search_result_filter.dart';
 ///
 /// Android/iOS retain the existing 4..8 budget. Desktop formerly started 32
 /// providers at once regardless of the machine's CPU count. Scale with cores
-/// there, but never exceed 16; provider order and cancellation are unchanged.
+/// there, but retain 32-way throughput on 16+-core desktops (the controlled
+/// CI burst benchmark finished 32 slots faster than 16). On a low-core device
+/// it avoids 32 competing jobs. Provider order/cancellation are unchanged.
 int searchConcurrencyLimit({
   required int logicalProcessors,
   required bool desktop,
@@ -21,7 +23,7 @@ int searchConcurrencyLimit({
   }
   final processors = math.max(1, logicalProcessors);
   final slots = desktop
-      ? (processors * 2).clamp(4, 16)
+      ? (processors * 2).clamp(4, 32)
       : processors.clamp(4, 8);
   return math.min(providerCount, slots);
 }
