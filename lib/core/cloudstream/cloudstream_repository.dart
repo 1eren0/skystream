@@ -626,7 +626,7 @@ class CloudStreamRepository extends _$CloudStreamRepository {
         info: info,
         filePath: path,
         loadError: errorMessage(error),
-        loadErrorVersion: await ref.read(appVersionProvider.future),
+        loadErrorVersion: await ref.read(keptAppVersionProvider.future),
       );
     }
   }
@@ -635,7 +635,7 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// and a newer one may run them (on 2026-10-03 it gained the CloudStream app classes eight of the
   /// surveyed extensions failed for). Each is tried once per version. Returns their keys.
   Future<Set<String>> _retryFailed() async {
-    final version = await ref.read(appVersionProvider.future);
+    final version = await ref.read(keptAppVersionProvider.future);
     final retried = <String>{};
     for (final plugin in [...state.installed]) {
       if (plugin.loadError == null || plugin.loadErrorVersion == version) continue;
@@ -754,7 +754,7 @@ class CloudStreamRepository extends _$CloudStreamRepository {
             info: current.info,
             filePath: current.filePath,
             loadError: errorMessage(failure!.$1),
-            loadErrorVersion: await ref.read(appVersionProvider.future),
+            loadErrorVersion: await ref.read(keptAppVersionProvider.future),
             hasSettings: current.hasSettings,
           ),
       ]);

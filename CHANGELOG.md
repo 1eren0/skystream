@@ -1,50 +1,48 @@
-# Changelogs - v2.8.1
+# Changelogs - v2.9.0-unreleased
 
 ### ✨ *New Features & Enhancements*
 
-#### 🧩 Stremio Add-ons & Nuvio (thanks to [Skywave22](https://github.com/Skywave22))
-- **Official-style Quick Install and a working Discover tab** – Quick Install lists the two official add-ons (Cinemeta and OpenSubtitles v3). Discover gains search, pull-to-refresh and a retry state, skips broken entries, folds duplicates, and sends add-ons that need configuring to their setup page.
-- **Faster link fetching** – Every stream add-on is asked in parallel, each within its own time budget, so one slow or dead add-on no longer holds up the rest, and slow scraping add-ons such as the CNCVerse bridge get long enough to answer.
-- **Add-on health badges** – The Manage tab shows whether each installed add-on is working and how fast it answers.
-- **Search and provider chips** – Filter the Stremio sources sheet by add-on, provider, quality or label, and search your installed add-ons.
-- **Clearer stream rows** – Rows read "Add-on · Provider", with the resolution always shown.
-- **Nuvio link fixes** – Embedded stream objects, file names with spaces, `#` or `+`, and scraper ids with special characters no longer break link fetching.
+#### 🧩 CloudStream Extensions
+- **CloudStream (.cs3) extensions on every platform** – Install and run CloudStream extensions on Android, iOS, macOS, Windows and Linux. Their providers appear on Home, in search and in the provider list.
+- **Repositories** – Add a repository by its URL (repo.json or plugins.json), a cloudstreamrepo:// link or a shortcode. MegaRepo is supported, Check Updates shows what changed, and each extension can be updated or removed.
+- **Extension settings** – An extension's own settings open in SkyStream on every platform and take effect without restarting the app. Extensions' own dialogs and pages open in SkyStream too.
+- **Full-screen extension windows** – Extensions that open a full-screen page, games included, work on every platform, and Back closes them.
+- **One switch** – Turn CloudStream off entirely in Settings: no extension loads and their providers are hidden everywhere. Nothing is uninstalled.
+
+#### 🛡️ Bot Checks (Cloudflare and Others)
+- **SkyStream's own browser engine** – Bot checks are now cleared in each platform's own browser engine on every platform, Linux included, instead of the old WebView plugin.
+- **Checks cleared for you** – SkyStream ticks the checkbox itself where it can. When a site needs you, its check opens right where you are.
+- **One check per site** – A site cleared once works for SkyStream plugins, CloudStream extensions, Nuvio scrapers and Stremio add-ons alike, and stays cleared across restarts until the site asks again.
+- **See each site's check** – Search, Explore and Home show the sites that need a check, with Verify for one site or all of them. A site can be set not to open its check by itself.
+- **Clearer reasons** – A site that blocks VPNs, keeps asking, can't be reached, or needs a newer Android System WebView says so.
+- **Moved sites followed** – When a site moves to a new address, SkyStream follows it.
+- **More check vendors** – DDoS-Guard and other vendors are handled, and a captcha an extension asks for is shown to you to solve.
+
+#### 🔎 Search
+- **Universal search** – One search bar for SkyStream, CloudStream, Stremio and Nuvio: a section for each Stremio add-on and one for Nuvio, with every result tagged with where it came from.
 
 #### 🎬 Player & Playback
-- **Smoother seeking** – Quick repeated seeks (arrow keys, D-pad, gamepad shoulder buttons, double-taps) are merged: the first goes at once and the final position follows the moment you stop, instead of a full rebuffer for every press.
-- **The seek bar follows your seek at once** – The scrubber and the clock move to where you sent playback straight away, instead of waiting for the stream to get there.
-- **Clearer source status** – Sources that are not a video, or that cannot seek, are labelled in the Sources list, and resuming prefers a source that can seek.
-- **Half the memory for the network buffer** – libVLC's read-ahead buffer was being allocated twice; the buffer size you choose is now the memory it uses.
+- **Volume and brightness swipes like VLC** – Both follow your finger with no lag. The volume boost above 100% shows in orange, and a swipe from below 100% stops there first: swipe up again to go past it.
+- **Volume keys** – On Android the volume keys change the video's volume even while it is paused. On a desktop keyboard, holding a volume key keeps stepping.
+- **Orientation** – Leaving the player returns to your device's orientation, with the rotation lock respected.
 
-#### 💬 Subtitles
-- **Subtitle search in the player panel** – Online subtitle search opens as a page inside the player's side panel.
-- **Subtitle files drawn by SkyStream** – SRT, WebVTT (including HLS subtitle playlists) and SSA/ASS files are drawn over the video by the app, so Zoom and Stretch no longer push lines off screen, and files that need the source's headers now load.
-- **The right file from season packs** – When a provider sends a whole season as one archive, the episode being watched, in the language asked for, is picked instead of the first file in it.
-- **Automatic subtitle language** – Auto picks a subtitle in your preferred language from the video's own tracks, however the source names the language.
-- **Embedded subtitles with Zoom and Stretch** – Subtitles inside the video stay on screen whichever fit is chosen.
-
-#### 📺 TV & Navigation
-- **D-pad text entry** – Text fields no longer steal D-pad directions, so TV keyboards keep all four arrows for picking letters.
-- **Back exits from Home** – Back on the home screen now leaves the app instead of doing nothing.
-- **Focus rings follow the input** – Focus highlights show when you use a keyboard, remote or gamepad, and stay out of the way on touch.
-- **Clear of the bottom bar** – Lists on every screen, settings pages and bookmarks included, scroll clear of the floating bottom navigation.
-
-#### ⚙️ Settings & Extensions
-- **Extensions update on launch** – SkyStream plugins, Nuvio scrapers and Stremio add-ons are checked on every launch; followed collections add the repositories they newly list, and what changed is summed up in at most three toasts.
-- **TMDB API key check** – A pasted key is cleaned of spaces and invisible characters, pasting TMDB's v4 read token instead of the key is explained, and a network problem is no longer reported as a wrong key.
-- **External player** – The chosen default player is honoured end to end, including request headers on Android.
+#### 🔐 Accounts
+- **MyAnimeList and AniList sign-in inside SkyStream** – Signing in happens in the app, on every platform.
+- **Trakt's new sign-in** – Trakt now signs in through Trakt's new sign-in page. If you were signed in to Trakt before, you may be asked to connect once more.
 
 ---
 
 ### 🐞 *Bug Fixes & System Stability*
-- 🛠️ **Fixed: resuming could open to a black screen reading "LIVE"** – Happened when a different source was picked while the resume was still opening.
-- 🛠️ **Fixed: some HLS episodes read 27:46:39** – The seek bar, the next-episode card and the end of the episode now use the video's real length.
-- 🛠️ **Fixed: "Reconnecting…" after seeking** – A slow refill after a seek is no longer taken for a dead connection, and the recovery step re-issues your seek instead of jumping back to where you were.
-- 🛠️ **Fixed: the buffered band on the seek bar** – It no longer vanishes or jumps after a seek, and shows what is really buffered after seeking back.
-- 🛠️ **Fixed: Discover stayed empty for hours after a single network error.**
-- 🛠️ **Fixed: slow stream add-ons timed out mid-scrape.**
+- 🛠️ **Fixed: on iPad, a video's sound stopped a second in** – The video went on playing silently until an audio track was picked again.
+- 🛠️ **Fixed: leaving the player could freeze the app on iPad.**
+- 🛠️ **Fixed: brightness swipes lagged on iPhone and iPad** – The brightness changed only after the finger stopped.
+- 🛠️ **Fixed: the app could open in landscape after leaving the player.**
+- 🛠️ **Fixed: on Linux, the screen stopped going to sleep after playback** until SkyStream was closed.
+- 🛠️ **Fixed: on Linux, opening some streams, such as Internet Archive's, froze the app.**
+- 🛠️ **Fixed: on TV, the search screen's scope selector and first result ignored the D-pad.**
 
 
 ### ⚙️ Improvements
-- 🚀 The Riverpod lint rules now run as a reliable CI gate.
-- 🚀 Various performance improvements and stability fixes across the app.
+- 🚀 Updated to Flutter 3.47.7, Android Gradle Plugin 9.1.1 and VLC 3.0.24.
+- 🚀 Fewer third-party plugins: flutter_inappwebview, screen_brightness and flutter_volume_controller are gone, replaced by SkyStream's own.
+- 🚀 Thousands of new automated tests, and checks that run the app on every platform.

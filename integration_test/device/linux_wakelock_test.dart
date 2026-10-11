@@ -4,7 +4,7 @@
 /// the app's wrapper ([installLinuxWakelock]) holding one.
 ///
 /// ```
-/// flutter test integration_test/linux_wakelock_test.dart -d linux
+/// flutter test integration_test/device/linux_wakelock_test.dart -d linux
 /// ```
 ///
 /// Counts GNOME's session inhibitors (`gdbus`), and prints one `WAKELOCK {json}` line.

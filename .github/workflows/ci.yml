@@ -42,7 +42,7 @@ env:
   # Pinned rather than floating on `stable`: the analyzer, the lint set and the
   # gen-l10n output all move with the SDK, so an unpinned runner would rewrite
   # the baseline under us and fail a PR that touched nothing.
-  FLUTTER_VERSION: 3.47.6
+  FLUTTER_VERSION: 3.47.7
 
 jobs:
   analyze-and-test:
@@ -646,8 +646,17 @@ jobs:
       # integration_test/cloudstream/ is left out: those tests reach live sites
       # and install extensions, so they run on request (CS3_E2E) and skip
       # without it. So are integration_test/clearance/, which solves bot checks
-      # on live sites (CLEARANCE_E2E), and integration_test/sign_in/, which
-      # opens the system browser (SIGN_IN_E2E).
+      # on live sites (CLEARANCE_E2E), integration_test/sign_in/, which opens
+      # the system browser (SIGN_IN_E2E), integration_test/checks/ and
+      # integration_test/search/, which reach live scrapers and add-ons
+      # (CHECKS_E2E, NUVIO_LIVE, UNIVERSAL_SEARCH_E2E), and
+      # integration_test/device/, which needs a real screen, audio route or
+      # GNOME session (DEVICE_CONTROLS_E2E; the Linux wakelock test).
+      #
+      # One file per `flutter test` on the desktops: a desktop run launches the
+      # app once, and every file after the first failed to start it ("Error
+      # waiting for a debug connection"), which is how five skipping files
+      # failed this step on all three desktops.
       - name: Smoke Test ${{ matrix.name }}
         if: matrix.smoke != ''
         env:
@@ -655,12 +664,16 @@ jobs:
         run: |
           TESTS=()
           while IFS= read -r test; do TESTS+=("$test"); done \
-            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' | sort)
-          if [ "$DEVICE" = 'linux' ]; then
-            xvfb-run -a flutter test --no-pub "${TESTS[@]}" -d "$DEVICE"
-          else
-            flutter test --no-pub "${TESTS[@]}" -d "$DEVICE"
-          fi
+            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' -not -path 'integration_test/checks/*' -not -path 'integration_test/search/*' -not -path 'integration_test/device/*' | sort)
+          failed=0
+          for test in "${TESTS[@]}"; do
+            if [ "$DEVICE" = 'linux' ]; then
+              xvfb-run -a flutter test --no-pub "$test" -d "$DEVICE" || failed=1
+            else
+              flutter test --no-pub "$test" -d "$DEVICE" || failed=1
+            fi
+          done
+          exit $failed
 
   # Android and iOS cannot ride the build matrix above: neither runner has a
   # device until one is booted, and the emulator action wraps the command it
@@ -767,8 +780,8 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          # Not integration_test/cloudstream/, clearance/ or sign_in/; see the desktop smoke step.
-          script: flutter test --no-pub $(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*')
+          # Not the on-request suites (cloudstream/, clearance/, sign_in/, checks/, search/, device/); see the desktop smoke step.
+          script: flutter test --no-pub $(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' -not -path 'integration_test/checks/*' -not -path 'integration_test/search/*' -not -path 'integration_test/device/*')
 
       - name: Boot iOS Simulator
         if: matrix.name == 'iOS'
@@ -783,9 +796,9 @@ jobs:
 
       - name: Smoke Test iOS
         if: matrix.name == 'iOS'
-        # Not integration_test/cloudstream/, clearance/ or sign_in/; see the desktop smoke step.
+        # Not the on-request suites (cloudstream/, clearance/, sign_in/, checks/, search/, device/); see the desktop smoke step.
         run: |
           TESTS=()
           while IFS= read -r test; do TESTS+=("$test"); done \
-            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' | sort)
+            < <(find integration_test -name '*_test.dart' -not -path 'integration_test/cloudstream/*' -not -path 'integration_test/clearance/*' -not -path 'integration_test/sign_in/*' -not -path 'integration_test/checks/*' -not -path 'integration_test/search/*' -not -path 'integration_test/device/*' | sort)
           flutter test --no-pub "${TESTS[@]}" -d "$SIM_UDID"

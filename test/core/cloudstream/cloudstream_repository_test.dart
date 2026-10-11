@@ -235,7 +235,7 @@ void main() {
         dioClientProvider.overrideWithValue(Dio()..httpClientAdapter = network),
         extensionManagerProvider.overrideWith(_NoopExtensionManager.new),
         cloudStreamEngineHostProvider.overrideWithValue(host),
-        appVersionProvider.overrideWith((ref) async => '2.0.0 +5'),
+        keptAppVersionProvider.overrideWith((ref) async => '2.0.0 +5'),
         if (settings != null) settingsRepositoryProvider.overrideWithValue(settings),
       ],
     );

@@ -2,7 +2,7 @@
 /// vlc_player's own device calls.
 ///
 /// ```
-/// flutter test integration_test/player_device_controls_test.dart -d <device> \
+/// flutter test integration_test/device/player_device_controls_test.dart -d <device> \
 ///   --dart-define=DEVICE_CONTROLS_E2E=true
 /// ```
 ///

@@ -21,8 +21,13 @@ class HomeData extends _$HomeData {
   /// lands on top of the grid the user is already looking at.
   int _fetchToken = 0;
 
+  // ignore: riverpod_lint/avoid_public_notifier_properties
   /// When the current fetch began: the checks Home's plugin met since are
   /// Home's to show.
+  ///
+  /// Outside the state on purpose: Home's screen reads it once, as it builds
+  /// the wait, and it moves with every fetch, so as state it would rebuild
+  /// Home for a value nothing on screen shows.
   DateTime? fetchStartedAt;
 
   StreamSubscription<void>? _checks;
