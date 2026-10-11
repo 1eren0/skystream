@@ -180,15 +180,15 @@ SkyStream is not on the App Store. You must **sideload** it using a computer.
 9. Set up Wi-Fi sync to automatically refresh your apps in the background
 
 ### 💻 Windows / macOS / Linux
-1. Download the appropriate file for your OS (`skystream-windows.exe`, `skystream-macos.dmg`, `skystream-linux.deb`, etc.).
+1. Download the appropriate file for your OS (`skystream-windows.exe`, `skystream-macos.dmg`, `skystream-linux.AppImage`, `skystream-linux.deb`, etc.).
 2. Install the app.
 3. Run the application from your app launcher or terminal.
    - *macOS Note: If you see an “Unidentified Developer” warning, go to Settings → Privacy & Security and click Open Anyway to allow the app (one-time step).*
-   - *Linux Note: You may need to install the following packages:*
+   - *Linux Note: The `.deb` installs everything SkyStream needs. The AppImage and the `.tar.gz` use VLC, WebKitGTK 4.1, GTK 3 and libsecret from your system, and the AppImage tells you if one is missing. On Debian or Ubuntu:*
      ```bash
-     sudo apt-get update
-     sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libvlc-dev libasound2-dev
+     sudo apt install libvlc5 vlc-plugin-base libwebkit2gtk-4.1-0 libgtk-3-0 libsecret-1-0
      ```
+     *Make the AppImage executable before running it: `chmod +x skystream-linux-*.AppImage`.*
 
 ## 🛠️ Build from Source
 

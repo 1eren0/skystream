@@ -551,11 +551,12 @@ jobs:
           JSON_EOF
 
       - name: Build Linux Packages
+        id: packages
         run: |
           export PATH="$PATH:$HOME/.pub-cache/bin"
           dart pub global activate fastforge 0.6.12
 
-          # Build .deb (AppImage is currently disabled due to tool-level file collision bugs)
+          # Build .deb
           fastforge package --platform linux --targets deb --flutter-build-args=dart-define-from-file=dart-defines.json
 
           # Rename .deb file to match tar.gz convention
@@ -563,14 +564,34 @@ jobs:
 
           # Generate the standard .tar.gz bundle as well
           flutter build linux --release --dart-define-from-file=dart-defines.json
-          cd build/linux/${{ matrix.arch }}/release/bundle
-          tar -czvf "../../../../../skystream-linux-${{ matrix.arch }}-preview.tar.gz" .
+          (cd build/linux/${{ matrix.arch }}/release/bundle && tar -czvf "../../../../../skystream-linux-${{ matrix.arch }}-preview.tar.gz" .)
+
+      # The AppImage is packed from the tarball's bundle. A failure here fails
+      # the job, but the step below still uploads the .deb and the tarball.
+      - name: Build Linux AppImage
+        run: |
+          APPIMAGE="skystream-linux-${{ matrix.arch }}-preview.AppImage"
+          ./scripts/build_appimage.sh "${{ matrix.arch }}" "build/linux/${{ matrix.arch }}/release/bundle" "$APPIMAGE"
+
+          # Smoke run: the app itself must be up 20 seconds in, so AppRun found
+          # every library and the binary started from inside the image. Unpacked
+          # to run, as the runner may have no FUSE.
+          sudo apt-get install -y --no-install-recommends xvfb
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 60 xvfb-run -a "./$APPIMAGE" > appimage-smoke.log 2>&1 &
+          sleep 20
+          if ! pgrep -x skystream > /dev/null; then
+            cat appimage-smoke.log
+            exit 1
+          fi
+          pkill -x skystream || true
 
       - name: Upload Linux Build
+        if: ${{ !cancelled() && steps.packages.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.arch }}
           path: |
             skystream-linux-${{ matrix.arch }}-preview.tar.gz
             skystream-linux-${{ matrix.arch }}-preview.deb
+            skystream-linux-${{ matrix.arch }}-preview.AppImage
           retention-days: 7

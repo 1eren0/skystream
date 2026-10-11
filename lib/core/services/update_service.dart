@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:collection/collection.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:version/version.dart';
 
@@ -220,47 +221,83 @@ class UpdateService {
           );
     } else if (Platform.isLinux) {
       final version = Platform.version.toLowerCase();
-      final isArm = version.contains('arm') || version.contains('aarch64');
-      final archTag = isArm ? 'arm64' : 'x64';
-
-      final linuxAssets = assets
-          .where((a) => a.name.toLowerCase().contains('linux'))
-          .toList();
-      var archAssets = linuxAssets
-          .where((a) => a.name.toLowerCase().contains(archTag))
-          .toList();
-
-      // Fallback for x86_64 alias
-      if (archAssets.isEmpty && !isArm) {
-        archAssets = linuxAssets
-            .where((a) => a.name.toLowerCase().contains('x86_64'))
-            .toList();
-      }
-
-      if (archAssets.isNotEmpty) {
-        return archAssets.firstWhereOrNull(
-              (a) => a.name.toLowerCase().endsWith('.appimage'),
-            ) ??
-            archAssets.firstWhereOrNull(
-              (a) => a.name.toLowerCase().endsWith('.deb'),
-            ) ??
-            archAssets.firstWhereOrNull(
-              (a) => a.name.toLowerCase().endsWith('.tar.gz'),
-            ) ??
-            archAssets.first;
-      }
-
-      // 2. Fallback to any Linux installer type
-      return linuxAssets.firstWhereOrNull(
-            (a) => a.name.toLowerCase().endsWith('.appimage'),
-          ) ??
-          linuxAssets.firstWhereOrNull(
-            (a) => a.name.toLowerCase().endsWith('.deb'),
-          ) ??
-          linuxAssets.firstWhereOrNull(
-            (a) => a.name.toLowerCase().endsWith('.tar.gz'),
-          );
+      return linuxAsset(
+        assets,
+        isArm: version.contains('arm') || version.contains('aarch64'),
+        install: linuxInstallOf(
+          environment: Platform.environment,
+          executable: Platform.resolvedExecutable,
+        ),
+      );
     }
     return null;
   }
+
+  /// How SkyStream runs on Linux, from its [environment] and the path of its
+  /// [executable].
+  ///
+  /// The AppImage runtime sets `APPIMAGE` and `APPDIR` and runs the binary
+  /// from inside `APPDIR`. Both variables pass to whatever SkyStream starts, so
+  /// the binary's own path decides: another AppImage that started SkyStream
+  /// leaves them behind for a binary outside its `APPDIR`.
+  @visibleForTesting
+  static LinuxInstall linuxInstallOf({
+    required Map<String, String> environment,
+    required String executable,
+  }) {
+    final appDir = environment['APPDIR'] ?? '';
+    if ((environment['APPIMAGE'] ?? '').isNotEmpty &&
+        appDir.isNotEmpty &&
+        p.isWithin(appDir, executable)) {
+      return LinuxInstall.appImage;
+    }
+    if (p.isWithin(_debInstallDir, executable)) return LinuxInstall.deb;
+    return LinuxInstall.tarball;
+  }
+
+  /// Where the .deb installs SkyStream (fastforge's `/opt/<package_name>`).
+  static const _debInstallDir = '/opt/skystream';
+
+  /// The Linux asset an update of [install] downloads: its own format, built
+  /// for its architecture, so an update never installs a second copy beside
+  /// the one running. Null when the release has none, and the caller opens
+  /// the release's page instead.
+  ///
+  /// A name without an architecture serves either, as older releases named
+  /// them; a name for the other architecture is never chosen.
+  @visibleForTesting
+  static GithubAsset? linuxAsset(
+    List<GithubAsset> assets, {
+    required bool isArm,
+    required LinuxInstall install,
+  }) {
+    const arm = ['arm64', 'aarch64'];
+    const x64 = ['x64', 'x86_64', 'amd64'];
+    bool names(GithubAsset asset, List<String> archs) =>
+        archs.any(asset.name.toLowerCase().contains);
+
+    final linux = assets
+        .where((a) => a.name.toLowerCase().contains('linux'))
+        .where((a) => a.name.toLowerCase().endsWith(install.extension))
+        .toList();
+    return linux.firstWhereOrNull((a) => names(a, isArm ? arm : x64)) ??
+        linux.firstWhereOrNull((a) => !names(a, arm) && !names(a, x64));
+  }
+}
+
+/// How SkyStream was installed on Linux. An update comes in the same form.
+enum LinuxInstall {
+  /// An AppImage.
+  appImage('.appimage'),
+
+  /// The .deb.
+  deb('.deb'),
+
+  /// Anything else: the tarball, unpacked wherever its owner chose.
+  tarball('.tar.gz');
+
+  const LinuxInstall(this.extension);
+
+  /// The release asset's file extension, lower-cased.
+  final String extension;
 }

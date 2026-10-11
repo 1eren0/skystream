@@ -518,22 +518,22 @@
         <div class="step">
           <div class="step-n">1</div>
           <div class="step-body">
-            <h4>Install libVLC</h4>
-            <p>The player requires <code>libvlc</code>. Install it first: <code>sudo apt install libvlc5 vlc-plugin-base</code> (Debian/Ubuntu) or the equivalent for your distro.</p>
+            <h4>Install VLC and WebKitGTK</h4>
+            <p>SkyStream plays video with <code>libvlc</code> and clears bot checks with WebKitGTK 4.1. The <code>.deb</code> installs both for you. For the AppImage or the archive, install them first: <code>sudo apt install libvlc5 vlc-plugin-base libwebkit2gtk-4.1-0</code> (Debian/Ubuntu) or the equivalent for your distro.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-n">2</div>
           <div class="step-body">
-            <h4>Download the Linux archive</h4>
-            <p>Grab <code>skystream-linux.tar.gz</code> from the <a href="https://github.com/akashdh11/skystream/releases/latest" target="_blank" rel="noopener">Releases page</a> and extract it.</p>
+            <h4>Download the AppImage or Linux package</h4>
+            <p>Grab <code>skystream-linux.AppImage</code>, <code>skystream-linux.deb</code>, or <code>skystream-linux.tar.gz</code> from the <a href="https://github.com/akashdh11/skystream/releases/latest" target="_blank" rel="noopener">Releases page</a>.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-n">3</div>
           <div class="step-body">
-            <h4>Run the binary</h4>
-            <p>Make it executable and launch: <code>chmod +x ./skystream && ./skystream</code>. Then add extensions via <strong>Settings › Extensions › Add Repository</strong>.</p>
+            <h4>Run the application</h4>
+            <p>Install the <code>.deb</code> with <code>sudo apt install ./skystream-linux-*.deb</code>. Make the AppImage executable with <code>chmod +x skystream-linux-*.AppImage</code> and run it: it tells you if anything it needs is missing. Or extract the archive and run <code>./skystream</code>. Then add extensions via <strong>Settings › Extensions › Add Repository</strong>.</p>
           </div>
         </div>
       </div>

@@ -43,6 +43,7 @@
 
 
 ### ⚙️ Improvements
+- 🚀 **Linux AppImage** for x64 and arm64, beside the .deb and the archive (PR #125 by @vivin-neelankavil).
 - 🚀 Updated to Flutter 3.47.7, Android Gradle Plugin 9.1.1 and VLC 3.0.24.
 - 🚀 Fewer third-party plugins: flutter_inappwebview, screen_brightness and flutter_volume_controller are gone, replaced by SkyStream's own.
 - 🚀 Thousands of new automated tests, and checks that run the app on every platform.
