@@ -21,13 +21,19 @@
 ///    an `eventThrottleInterval` is given: the controller's throttle timer is
 ///    created in whatever zone the first throttled snapshot arrives in, and
 ///    a controller built outside the test body owns a timer flutter_test's
-///    fake async cannot see or drive.
+///    fake async cannot see or drive. The same goes for a timer a listener
+///    sets when a snapshot arrives - the side-car view's wake for its next
+///    line, for one.
+///  * The controller's playback clock needs no such care: [attach] builds it
+///    on the test's fake clock wherever it is called, so `tester.pump` moves
+///    it in a `setUp`-built controller too.
 ///  * `onListen`/`onCancel` on the event stream are block-bodied on purpose.
 ///    flutter_test hands `onListen`'s return value back as the `listen` reply,
 ///    and an arrow that returns the assigned sink is a reply the codec cannot
 ///    encode.
 library;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vlc_player/vlc_player.dart';
@@ -38,6 +44,15 @@ class FakeVlcEngine {
   FakeVlcEngine({this.viewId = 1});
 
   static const MethodChannel channel = MethodChannel('vlc_player');
+
+  /// The test's fake time, read when it is asked for rather than when a
+  /// controller is built: one built in `setUp` is driven in the body. Outside
+  /// a test body - `setUp`, or a plain `test` - time stands at the moment the
+  /// fake clock starts from.
+  static final Clock _testClock = Clock(() {
+    final binding = TestWidgetsFlutterBinding.instance;
+    return binding.inTest ? binding.clock.now() : DateTime.utc(2015);
+  });
 
   /// The id `create` answers with, and the view every event is sent for.
   final int viewId;
@@ -154,8 +169,10 @@ class FakeVlcEngine {
   /// pass the screen's 250 ms when the test is about that timing, and pump
   /// 400 ms after each [emit].
   Future<VlcPlayerController> attach({Duration? eventThrottleInterval}) async {
-    final controller = VlcPlayerController(
-      eventThrottleInterval: eventThrottleInterval,
+    // The playback clock takes its time from the zone it is built in.
+    final controller = withClock(
+      _testClock,
+      () => VlcPlayerController(eventThrottleInterval: eventThrottleInterval),
     );
     // `attach` is on an interface the package deliberately does not export;
     // the app-side tests reach it dynamically by convention.

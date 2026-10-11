@@ -581,8 +581,6 @@ void main() {
 
     testWidgets('while playing, puts a line up on its time between the '
         'engine\'s reports', (tester) async {
-      final start = tester.binding.clock.now();
-      Duration fake() => tester.binding.clock.now().difference(start);
       await engine.emit(<String, Object?>{
         'state': 'playing',
         'position': 4000,
@@ -597,7 +595,6 @@ void main() {
               controller: controller,
               subtitles: subtitles,
               settings: const PlayerSettings(),
-              clock: fake,
             ),
           ),
         ),
@@ -619,8 +616,6 @@ void main() {
     testWidgets('does not run on past a second without a report', (
       tester,
     ) async {
-      final start = tester.binding.clock.now();
-      Duration fake() => tester.binding.clock.now().difference(start);
       await engine.emit(<String, Object?>{
         'state': 'playing',
         'position': 3500,
@@ -635,7 +630,6 @@ void main() {
               controller: controller,
               subtitles: subtitles,
               settings: const PlayerSettings(),
-              clock: fake,
             ),
           ),
         ),
@@ -648,6 +642,141 @@ void main() {
 
       await engine.emit(<String, Object?>{'state': 'paused', 'position': 3500});
       await tester.pump();
+    });
+
+    testWidgets(
+      'a late VLC timestamp does not briefly hide an active SRT cue',
+      (tester) async {
+        await engine.emit(<String, Object?>{
+          'state': 'playing',
+          'position': 5200,
+        });
+        await pumpView(tester);
+        expect(find.text('First'), findsWidgets);
+
+        // The overlay has already displayed 5.2 s, but Android can publish an
+        // older snapshot just after it. This is clock jitter, not a seek.
+        await engine.emit(<String, Object?>{
+          'state': 'playing',
+          'position': 4900,
+        });
+        await tester.pump();
+        expect(find.text('First'), findsWidgets);
+
+        await engine.emit(<String, Object?>{
+          'state': 'paused',
+          'position': 4900,
+        });
+        await tester.pump();
+      },
+    );
+
+    testWidgets('a late VLC timestamp does not replay a finished SRT cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 8100,
+      });
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+
+      // Before the fix, rewinding the reported position across the 8 s cue
+      // boundary resurrected the expired line for a frame: a visible blink.
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 7900,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 7900});
+      await tester.pump();
+    });
+
+    testWidgets('buffering with an older timestamp holds the visible cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 5200,
+      });
+      await pumpView(tester);
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{
+        'state': 'buffering',
+        'position': 4900,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 4900});
+      await tester.pump();
+    });
+
+    testWidgets('a real backward seek still shows the earlier cue', (
+      tester,
+    ) async {
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 11000,
+      });
+      await pumpView(tester);
+      expect(find.text('Up top'), findsWidgets);
+
+      await controller.seekTo(const Duration(seconds: 6));
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 6000,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+      expect(find.text('Up top'), findsNothing);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 6000});
+      await tester.pump();
+    });
+
+    testWidgets('paused seeking and subtitle delay still move the clock back', (
+      tester,
+    ) async {
+      await at(8100);
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+
+      // A fine seek while paused, smaller than any jitter tolerance.
+      await controller.seekTo(const Duration(milliseconds: 7900));
+      await at(7900);
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      // A four-second delay moves the subtitle timeline back on purpose.
+      await at(7900, delayMs: 4000);
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
+    });
+
+    testWidgets('a subtitle delay moves the lines either way', (tester) async {
+      await at(9000);
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+      expect(find.text('Up top'), findsNothing);
+
+      // Shown 1.5 s early, the line due at ten is up at 8.5.
+      await at(9000, delayMs: -1500);
+      await tester.pump();
+      expect(find.text('Up top'), findsWidgets);
+
+      // Shown 2 s late, the line that ended at eight is up again.
+      await at(9000, delayMs: 2000);
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+      expect(find.text('Up top'), findsNothing);
+
+      await at(9000);
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
     });
 
     testWidgets('draws nothing once the file is off', (tester) async {
@@ -688,6 +817,230 @@ void main() {
       await at(11000);
       await tester.pump();
       expect(tester.getTopLeft(find.text('Up top').last).dy, lessThan(100));
+    });
+  });
+
+  /// The view timing lines against a playing engine. Each test attaches its
+  /// controller in the test body: the timer the view sets when the engine
+  /// reports is made in the zone the report arrives in, and only the body's
+  /// zone runs on the fake time the test pumps.
+  group('SideCarSubtitleView timing', () {
+    late FakeVlcEngine engine;
+    late VlcPlayerController controller;
+    late SideCarSubtitles subtitles;
+
+    setUp(() async {
+      engine = FakeVlcEngine()..install();
+      subtitles = SideCarSubtitles(
+        fetch: _Files({
+          'https://x/en.srt':
+              '1\n00:00:05,000 --> 00:00:08,000\nFirst\n\n'
+              '2\n00:00:10,000 --> 00:00:12,000\n{\\an8}Up top\n',
+        }).fetch,
+      );
+      final [english] = subtitles.replaceSourceTracks([
+        _source('https://x/en.srt'),
+      ]);
+      await subtitles.select(english);
+    });
+
+    tearDown(() {
+      subtitles.dispose();
+      controller.dispose();
+      engine.dispose();
+    });
+
+    Future<void> attach() async {
+      controller = await engine.attach();
+    }
+
+    Future<void> pumpView(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SideCarSubtitleView(
+              controller: controller,
+              subtitles: subtitles,
+              settings: const PlayerSettings(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('a delay set while playing times the next line by it', (
+      tester,
+    ) async {
+      await attach();
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 4000,
+      });
+      await pumpView(tester);
+
+      // Half a second early: the line due at five is up at 4.5.
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 4000,
+        'subtitleDelay': -500000,
+      });
+      await tester.pump(const Duration(milliseconds: 490));
+      expect(find.text('First'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 4510});
+      await tester.pump();
+    });
+
+    testWidgets('resuming after a pause does not run the clock on over the '
+        'paused time', (tester) async {
+      await attach();
+      // Every backend reports the position it paused at again on resume; the
+      // next time update comes later.
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 4000,
+      });
+      await pumpView(tester);
+      await tester.pump(const Duration(milliseconds: 200));
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 4200});
+      await tester.pump(const Duration(seconds: 3));
+
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 4200,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsNothing, reason: 'shown 0.8 s early');
+      await tester.pump(const Duration(milliseconds: 790));
+      expect(find.text('First'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 5010});
+      await tester.pump();
+    });
+
+    testWidgets('a half-second seek back while playing shows the line it '
+        'returns into', (tester) async {
+      await attach();
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 8100,
+      });
+      await pumpView(tester);
+      expect(find.text('First'), findsNothing);
+
+      // The player makes these itself: re-seating after a track switch, and
+      // nudging a stalled stream.
+      await controller.seekTo(const Duration(milliseconds: 7600));
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 7600,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 7600});
+      await tester.pump();
+    });
+
+    testWidgets('a 1.5 s seek back from the run-on clock is a seek, not '
+        'jitter', (tester) async {
+      await attach();
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 8000,
+      });
+      await pumpView(tester);
+      await tester.pump(const Duration(milliseconds: 900));
+      expect(find.text('First'), findsNothing);
+
+      await controller.seekTo(const Duration(milliseconds: 7400));
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 7400,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 7400});
+      await tester.pump();
+    });
+
+    testWidgets('pause, seek a little back, play: the line comes back and '
+        'stays', (tester) async {
+      await attach();
+      // VLCKit does not report a seek made while paused, and on play reports
+      // the old time once before the new one.
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 8100,
+      });
+      await pumpView(tester);
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 8100});
+      await tester.pump();
+      expect(find.text('First'), findsNothing);
+
+      await controller.seekTo(const Duration(milliseconds: 7700));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('First'), findsWidgets);
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 8100,
+      });
+      await tester.pump(const Duration(milliseconds: 10));
+      expect(find.text('First'), findsWidgets);
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 7700,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsWidgets);
+
+      await engine.emit(<String, Object?>{'state': 'paused', 'position': 7700});
+      await tester.pump();
+    });
+
+    testWidgets('one stale report seconds behind, with no seek asked for, '
+        'does not flash an old line', (tester) async {
+      await attach();
+      // Measured on HLS: straight after a 10 s seek the adaptive demuxer
+      // reported 29078, then 22161, then 29277.
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 11000,
+      });
+      await pumpView(tester);
+      expect(find.text('Up top'), findsWidgets);
+
+      await tester.pump(const Duration(milliseconds: 250));
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 6000,
+      });
+      await tester.pump();
+      expect(find.text('First'), findsNothing, reason: 'flashed an old line');
+      expect(find.text('Up top'), findsWidgets);
+
+      await tester.pump(const Duration(milliseconds: 250));
+      await engine.emit(<String, Object?>{
+        'state': 'playing',
+        'position': 11500,
+      });
+      await tester.pump();
+      expect(find.text('Up top'), findsWidgets);
+
+      await engine.emit(<String, Object?>{
+        'state': 'paused',
+        'position': 11500,
+      });
+      await tester.pump();
     });
   });
 

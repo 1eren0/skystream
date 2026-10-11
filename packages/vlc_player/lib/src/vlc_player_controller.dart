@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart'
 import 'vlc_media_info.dart';
 import 'vlc_http_headers.dart';
 import 'vlc_media_source.dart';
+import 'vlc_playback_clock.dart';
 import 'vlc_player_config.dart';
 import 'vlc_media_stats.dart';
 import 'vlc_player_controller_internals.dart';
@@ -259,6 +260,16 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
   /// it is looking at was asked for.
   int get seekRequests;
 
+  /// Where playback is at this moment, for anything drawn against the
+  /// picture between the engine's reports - subtitle lines a host draws
+  /// itself, above all.
+  ///
+  /// Fed every native snapshot ahead of [eventThrottleInterval], and told of
+  /// every seek and new media; see [VlcPlaybackClock] for how it runs on and
+  /// when it moves back. [VlcPlayerValue.position] stays the engine's own
+  /// last word.
+  VlcPlaybackClock get playbackClock;
+
   /// Sets VLC volume.
   ///
   /// Values are clamped to VLC's `0..200` range.
@@ -498,6 +509,11 @@ class _VlcPlayerController extends VlcPlayerController
   Duration? _seekLastSeen;
   int _seekMovesWithoutLanding = 0;
   bool _isDisposed = false;
+
+  final PlaybackClock _playbackClock = PlaybackClock();
+
+  @override
+  VlcPlaybackClock get playbackClock => _playbackClock;
 
   @override
   VlcBackgroundPolicy get backgroundPolicy =>
@@ -1054,6 +1070,9 @@ class _VlcPlayerController extends VlcPlayerController
     // A seek's target belongs to the media it was asked of.
     _clearPendingSeek();
     _dropMergedSeek();
+    // So does the clock's position: the new media starts where it is asked
+    // to, and nothing the engine said about the last one applies to it.
+    _playbackClock.restart(source.startPosition);
     // A measured length belongs to the media it was measured on.
     _durationCap = null;
     // Opening while the app is away must not start audio nobody can stop:
@@ -1170,6 +1189,7 @@ class _VlcPlayerController extends VlcPlayerController
     _seekOrigin = _pendingSeekTarget.value ?? value.position;
     _seekLastSeen = value.position;
     _seekMovesWithoutLanding = 0;
+    _playbackClock.seek(position);
     _pendingSeekTarget.value = position;
     return _sendOrMergeSeek(position);
   }
@@ -1298,6 +1318,21 @@ class _VlcPlayerController extends VlcPlayerController
         travelled.abs() >= asked.abs();
   }
 
+  /// Whether [next] ends the playback clock's wait at a seek's target: the
+  /// engine has arrived there, cannot any more, or there is no seek on its
+  /// way.
+  ///
+  /// Judged on every snapshot rather than on the published value that
+  /// [_watchSeekLanding] reads, so a landing held back by the event throttle
+  /// does not hold the clock with it.
+  bool _seekSettledBy(VlcPlayerValue next) {
+    final target = _pendingSeekTarget.value;
+    final origin = _seekOrigin;
+    if (target == null || origin == null) return true;
+    return !_canStillLand(next.state) ||
+        _seekLanded(next.position, target: target, origin: origin);
+  }
+
   /// A paused seek still lands; a stopped, ended, errored or idle engine
   /// never will.
   static bool _canStillLand(VlcPlaybackState state) {
@@ -1318,6 +1353,8 @@ class _VlcPlayerController extends VlcPlayerController
     _seekLastSeen = null;
     _seekMovesWithoutLanding = 0;
     _pendingSeekTarget.value = null;
+    // Nothing is on its way any more, so the clock stops waiting for it too.
+    _playbackClock.endSeek();
   }
 
   @override
@@ -1573,6 +1610,9 @@ class _VlcPlayerController extends VlcPlayerController
     final nextValue = _observeStall(
       _capDuration(VlcPlayerValue.fromEvent(event, previousValue)),
     );
+    // Every snapshot, ahead of the throttle: the clock runs on from the
+    // freshest report, and a throttled one is up to an interval old.
+    _playbackClock.report(nextValue, seekSettled: _seekSettledBy(nextValue));
     _setValueFromEvent(previousValue, nextValue);
     _applyInterruption(previousValue.interruption, nextValue.interruption);
     if (_playlistAutoAdvance &&
@@ -1628,11 +1668,14 @@ class _VlcPlayerController extends VlcPlayerController
   void _setPlayerError(VlcPlayerError playerError) {
     _cancelPendingThrottledValue();
     _cancelStallTimer();
-    value = value.copyWith(
+    final failed = value.copyWith(
       state: VlcPlaybackState.error,
       error: playerError,
       errorDescription: playerError.message,
     );
+    // Not a native snapshot, but the clock has to stop all the same.
+    _playbackClock.report(failed, seekSettled: true);
+    value = failed;
   }
 
   void _setValueFromEvent(
@@ -1821,6 +1864,7 @@ class _VlcPlayerController extends VlcPlayerController
     _clearPendingSeek();
     _dropMergedSeek();
     _pendingSeekTarget.dispose();
+    _playbackClock.dispose();
     if (viewId != null) {
       unawaited(_disposeNativeView(viewId));
     }

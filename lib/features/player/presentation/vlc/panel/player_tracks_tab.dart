@@ -332,12 +332,17 @@ class PlayerTracksTab extends StatelessWidget {
   ///
   /// Refused where a seek means nothing - a live feed has nowhere to go, and
   /// an unseekable source would simply fail the call.
+  ///
+  /// Here is the playback clock's position, not the engine's last word: that
+  /// is up to a throttle interval old, and VLCKit's does not move at all on a
+  /// seek made while paused, so re-seating there would undo the seek.
   Future<void> _reseat() async {
     final value = controller.value;
     if (value.isLive || !value.isSeekable) return;
-    if (value.position <= Duration.zero) return;
+    final position = controller.playbackClock.position;
+    if (position <= Duration.zero) return;
     try {
-      await controller.seekTo(value.position);
+      await controller.seekTo(position);
     } on Object {
       // A refused seek costs the immediacy, not the track change, which has
       // already happened.

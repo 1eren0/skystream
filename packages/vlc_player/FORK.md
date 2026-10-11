@@ -325,6 +325,34 @@ row, which is an engine that ignored the seek. `VlcPlayerValue.position` stays t
 resume point or a relative step never counts from a place playback did not reach; hosts show the
 target in their scrubber and clock. Covered by `test/vlc_player_seek_position_test.dart`.
 
+### 15. New: `playbackClock`, where playback is between reports
+
+A host drawing subtitle lines itself needs the position between the engine's reports, and the reports
+are sparse and rough: libVLC 3 updates its time at most every 250 ms and not at all while paused,
+Windows and Linux poll it every 500 ms, an HLS stream's time is a one-second staircase running up to
+a second behind (measured on 3.0.24: it wobbles back 1-31 ms more than thirty times a minute, and
+once reported 6.9 s behind straight after a seek), and VLCKit's cached time does not move on a seek.
+SkyStream's own clock, re-anchored to every report and run on through pauses, blinked lines about
+twenty times a minute on HLS.
+
+`VlcPlayerController.playbackClock` is one clock for every platform, fed every native snapshot ahead
+of the event throttle. It runs on from the freshest report at the playback speed, counting only
+time spent playing; takes a report less than 1.5 s behind it for a stale one; believes a jump back
+further than that only when the next report agrees; and runs on at most a second past the last
+report. It moves back only where the controller says playback did: a seek, which it shows at once
+and holds until the engine lands, new media, or the engine stopping or failing. After a start, a
+resume, a seek landing, a speed change or a stall, the first report that moves replaces its guess
+while the position it shows holds. `timeUntil` tells a reader when to look next.
+
+The 1.5 s is wall time, as the lag it allows for is, so at a faster speed it covers more of the
+media. And when every report for two seconds has trailed the clock by more than 300 ms of
+playing - a stale report taken as fresh, a time that went back with no seek, a silent freeze - the
+latest report replaces its anchor as well, and the position it shows holds until playback catches
+up. An HLS staircase, stepping up to where playback is about every 1.13 s, never does that.
+
+Covered by `test/vlc_playback_clock_test.dart`, and in the app by real libVLC time traces replayed
+through the controller and the subtitle view (`test/features/player/side_car_replay_test.dart`).
+
 ## Known gaps, not yet addressed
 
 - **Rendering path.** Android/iOS/macOS use `AndroidView`/`UiKitView`/

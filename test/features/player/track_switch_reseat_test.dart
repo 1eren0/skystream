@@ -77,6 +77,10 @@ void main() {
       tracks: tracks,
     );
 
+    // Where the viewer is: the playback clock has run on from the engine's
+    // last report while the panel opened.
+    final here = controller.playbackClock.position.inMilliseconds;
+    expect(here, greaterThan(60000));
     await tester.tap(find.text('French'));
     await tester.pumpAndSettle();
 
@@ -90,8 +94,43 @@ void main() {
     expect(
       (engine.callsTo('seekTo').last.arguments
           as Map<Object?, Object?>)['position'],
-      60000,
+      here,
       reason: 're-issued where the viewer already is, not somewhere else',
+    );
+
+    controller.dispose();
+  });
+
+  testWidgets('after a seek made while paused, re-seats at the seek\'s '
+      'target', (tester) async {
+    // VLCKit's time does not move on a seek made while paused, so the
+    // engine's last word is still where the seek left from: re-seating there
+    // would undo the seek.
+    final engine = playingEngine();
+    final controller = await attach(engine);
+    await engine.emit(<String, Object?>{
+      'state': 'paused',
+      'position': 60000,
+      'duration': 600000,
+    });
+    await controller.seekTo(const Duration(seconds: 90));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await pumpTracksTab(
+      tester,
+      controller: controller,
+      kind: PlayerTrackKind.audio,
+      tracks: tracks,
+    );
+
+    await tester.tap(find.text('French'));
+    await tester.pumpAndSettle();
+
+    expect(engine.methods, contains('setAudioTrack'));
+    expect(
+      (engine.callsTo('seekTo').last.arguments
+          as Map<Object?, Object?>)['position'],
+      90000,
     );
 
     controller.dispose();

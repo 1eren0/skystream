@@ -9,6 +9,7 @@ export 'src/vlc_media_stats.dart';
 export 'src/vlc_http_headers.dart';
 export 'src/vlc_media_source.dart';
 export 'src/vlc_media_info.dart';
+export 'src/vlc_playback_clock.dart' show VlcPlaybackClock;
 export 'src/vlc_player.dart';
 export 'src/vlc_player_config.dart';
 export 'src/vlc_video_fit.dart';

@@ -367,6 +367,13 @@ Important properties:
 - `currentMediaSource`: active or pending media source.
 - `hasNext`, `hasPrevious`: whether playlist navigation can move without
   wrapping.
+- `playbackClock`: where playback is at this moment, between the engine's
+  reports, for subtitle lines or anything else drawn against the picture. It
+  runs on at the playback speed while playing, jumps to a seek's target at
+  once, never moves back unless playback did (a seek, new media, a stop or a
+  failure), and holds a second past the engine's last report. Read
+  `position`; `timeUntil(target)` says when it will get there, and listeners
+  hear when it changes course.
 
 Media and playlist methods:
 

@@ -8,11 +8,12 @@
 /// file reads like a track inside the video, and follows a settings change at
 /// once.
 ///
-/// Timed off the engine's clock with its subtitle delay applied. The engine
-/// reports its position a few times a second, so between reports the clock is
-/// run on here at the playback speed, and one timer wakes the view at the next
-/// line's start or end: a line lands on its frame rather than up to half a
-/// second after it, and nothing is rebuilt in between.
+/// Timed off the controller's playback clock with the subtitle delay applied.
+/// The engine reports its position a few times a second, and coarsely; the
+/// clock runs on between reports and never steps back unless playback did.
+/// One timer wakes the view at the next line's start or end, so a line lands
+/// on its frame rather than up to half a second after it, and nothing is
+/// rebuilt in between.
 library;
 
 import 'dart:async';
@@ -27,12 +28,6 @@ import '../../../settings/presentation/player_settings_provider.dart';
 import '../../domain/side_car_subtitles.dart';
 import '../../domain/subtitle_cues.dart';
 import '../../domain/subtitle_style.dart';
-
-/// How far the clock is run on past the engine's last report. Past this the
-/// engine is late rather than between reports - a stall it has not announced
-/// yet - and subtitles running on over a frozen picture are worse than ones
-/// that wait.
-const Duration _kMaxRunOn = Duration(seconds: 1);
 
 /// Space between the lines and the edge of the player area, as a share of the
 /// frame height.
@@ -49,7 +44,6 @@ class SideCarSubtitleView extends StatefulWidget {
     required this.subtitles,
     required this.settings,
     this.bottomInset = 0,
-    this.clock,
     super.key,
   });
 
@@ -62,96 +56,76 @@ class SideCarSubtitleView extends StatefulWidget {
   /// the lines rather than jumping them.
   final double bottomInset;
 
-  /// Time since a fixed moment, which the clock between the engine's reports
-  /// is run on from. A stopwatch unless given; a test gives the fake clock
-  /// its timers run on.
-  final Duration Function()? clock;
-
   @override
   State<SideCarSubtitleView> createState() => _SideCarSubtitleViewState();
 }
 
 class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
-  final Stopwatch _stopwatch = Stopwatch()..start();
-
-  Duration get _now => widget.clock?.call() ?? _stopwatch.elapsed;
-
   /// Wakes the view when the lines on screen next change.
   Timer? _wake;
-
-  /// The engine's last reported position, and when on [_now] it came.
-  Duration _reported = Duration.zero;
-  Duration _reportedAt = Duration.zero;
 
   List<SubtitleCue> _shown = const [];
 
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_onEngine);
+    _listen(widget.controller);
     widget.subtitles.addListener(_refresh);
-    _onEngine();
+    _refresh();
   }
 
   @override
   void didUpdateWidget(SideCarSubtitleView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_onEngine);
-      widget.controller.addListener(_onEngine);
+      _stopListening(oldWidget.controller);
+      _listen(widget.controller);
     }
     if (oldWidget.subtitles != widget.subtitles) {
       oldWidget.subtitles.removeListener(_refresh);
       widget.subtitles.addListener(_refresh);
     }
-    _onEngine();
+    _refresh();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_onEngine);
+    _stopListening(widget.controller);
     widget.subtitles.removeListener(_refresh);
     _wake?.cancel();
     super.dispose();
   }
 
-  void _onEngine() {
-    final value = widget.controller.value;
-    if (value.position != _reported) {
-      _reported = value.position;
-      _reportedAt = _now;
-    }
-    _refresh();
+  // The clock for where playback is, the controller for the subtitle delay.
+  void _listen(VlcPlayerController controller) {
+    controller.addListener(_refresh);
+    controller.playbackClock.addListener(_refresh);
   }
 
-  /// How far the clock has been run on past the engine's last report.
-  Duration get _runOn {
-    final since = _now - _reportedAt;
-    return since > _kMaxRunOn ? _kMaxRunOn : since;
+  void _stopListening(VlcPlayerController controller) {
+    controller.removeListener(_refresh);
+    controller.playbackClock.removeListener(_refresh);
   }
 
   void _refresh() {
     _wake?.cancel();
     _wake = null;
     if (!mounted) return;
-    final value = widget.controller.value;
+    final clock = widget.controller.playbackClock;
+    final delay = widget.controller.value.subtitleDelay;
     final timeline = widget.subtitles.timeline;
-    final playing = value.isPlaying && value.playbackSpeed > 0;
-    final runOn = playing ? _runOn : Duration.zero;
     // The position the file's times are read against: where playback is,
     // less the delay - a positive delay shows every line later.
-    final at =
-        _reported +
-        runOn * (playing ? value.playbackSpeed : 1) -
-        value.subtitleDelay;
+    final at = clock.position - delay;
     final due = timeline.isEmpty ? const <SubtitleCue>[] : timeline.at(at);
     if (!listEquals(due, _shown)) setState(() => _shown = due);
 
-    // Past the run-on limit the next report is what moves anything.
-    if (!playing || runOn >= _kMaxRunOn) return;
     final next = timeline.nextChange(at);
     if (next == null) return;
-    final wait = (next - at) * (1 / value.playbackSpeed);
+    // Null while paused, or held until the engine reports again: then the
+    // clock tells this view when it moves.
+    final wait = clock.timeUntil(next + delay);
+    if (wait == null) return;
     // A millisecond over, so the wake lands inside the new line, not on the
     // edge of the old one.
     _wake = Timer(wait + const Duration(milliseconds: 1), _refresh);
