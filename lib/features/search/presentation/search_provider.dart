@@ -15,6 +15,7 @@ import '../../../../core/network/clearance/clearance.dart';
 import '../../../../core/network/clearance/site_checks.dart';
 import '../../../../core/nuvio/data/nuvio_repository.dart';
 import '../../explore/data/explore_tmdb_provider.dart';
+import '../domain/search_fold.dart';
 import 'search_sources.dart';
 
 part 'search_provider.g.dart';
@@ -81,30 +82,228 @@ class _FilterParams {
   const _FilterParams(this.items, this.queryParts);
 }
 
-List<MultimediaItem> _filterItems(_FilterParams params) => params.items
-    .where((item) => titleMatches(item.title, params.queryParts))
-    .toList();
-
-final _wordBreak = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
-
-/// The lowercase words of [text], split at anything that is not a letter or
-/// a digit, so a year in brackets ("(1940)") or a hyphenated name
-/// ("Spider-Man") is made of words like any other.
-@visibleForTesting
-List<String> searchWords(String text) => text
-    .toLowerCase()
-    .split(_wordBreak)
-    .where((word) => word.isNotEmpty)
-    .toList();
-
-/// Whether every one of [queryWords] begins a word of [title].
-@visibleForTesting
-bool titleMatches(String title, List<String> queryWords) {
-  final titleWords = searchWords(title);
-  return queryWords.every(
-    (query) => titleWords.any((word) => word.startsWith(query)),
-  );
+/// The extension's results that answer the query, in its order: all of them
+/// when it answered in other scripts than the query's.
+List<MultimediaItem> _filterItems(_FilterParams params) {
+  final items = params.items;
+  final titles = items.map((item) => item.title);
+  if (answeredInOtherScripts(titles, params.queryParts)) return items;
+  final query = _QueryWords(params.queryParts);
+  return [
+    for (final item in items)
+      if (query.foundIn(item.title)) item,
+  ];
 }
+
+final _wordBreak = RegExp(r'[^\p{L}\p{M}\p{N}]+', unicode: true);
+
+/// The words of [text] as search compares them: folded by [foldForSearch],
+/// then split at anything that is not a letter, a mark or a digit, so a year
+/// in brackets ("(1940)") or a hyphenated name ("Spider-Man") is made of
+/// words like any other, and a Hindi or Tamil word keeps its vowel signs.
+@visibleForTesting
+List<String> searchWords(String text) => _words(foldForSearch(text));
+
+List<String> _words(String folded) => [
+  for (final word in folded.split(_wordBreak))
+    if (word.isNotEmpty) word,
+];
+
+/// Whether [title] has every one of [queryWords], the words [searchWords]
+/// makes of a query: a word in a script written without spaces anywhere in
+/// it, and any other word at the start of one of its words.
+@visibleForTesting
+bool titleMatches(String title, List<String> queryWords) =>
+    _QueryWords(queryWords).foundIn(title);
+
+/// Whether a provider answered a search for [queryWords] in other scripts
+/// only: the query has letters, one of [titles] at least has a letter too,
+/// and none has a letter in a script the query is written in. A site may
+/// answer an Arabic search with Turkish titles ("Tasacak Bu Deniz", issue
+/// #36); none of them can show the query's words, so search keeps such an
+/// answer as the site sent it. Blank titles or bare years are in no script,
+/// and are held to the query's words.
+@visibleForTesting
+bool answeredInOtherScripts(Iterable<String> titles, List<String> queryWords) {
+  final query = queryWords.join(' ');
+  final scripts = [
+    for (final script in _scripts)
+      if (script.hasMatch(query)) script,
+  ];
+  return scripts.isNotEmpty &&
+      titles.any(_letter.hasMatch) &&
+      !titles.any((title) => scripts.any((script) => script.hasMatch(title)));
+}
+
+final _letter = RegExp(r'\p{L}', unicode: true);
+
+/// A letter of each script search tells apart, as Unicode names them: so
+/// Japanese kana and Chinese characters are scripts of their own.
+final _scripts = [
+  for (final script in const [
+    'Latin',
+    'Greek',
+    'Cyrillic',
+    'Armenian',
+    'Georgian',
+    'Hebrew',
+    'Arabic',
+    'Syriac',
+    'Thaana',
+    'Devanagari',
+    'Bengali',
+    'Gurmukhi',
+    'Gujarati',
+    'Oriya',
+    'Tamil',
+    'Telugu',
+    'Kannada',
+    'Malayalam',
+    'Sinhala',
+    'Thai',
+    'Lao',
+    'Tibetan',
+    'Myanmar',
+    'Khmer',
+    'Mongolian',
+    'Ethiopic',
+    'Hangul',
+    'Hiragana',
+    'Katakana',
+    'Han',
+  ])
+    RegExp('(?=\\p{L})\\p{Script=$script}', unicode: true),
+];
+
+/// A query's words, sorted once for all the titles of a search: those in a
+/// script written without spaces between words (Chinese, Japanese, Korean,
+/// Thai, Lao, Khmer, Burmese) are found anywhere in a title, across its
+/// spaces too; the others have to begin a word of it.
+class _QueryWords {
+  _QueryWords(List<String> words) {
+    for (final word in words) {
+      (_unspaced.hasMatch(word) ? _anywhere : _starts).add(word);
+    }
+  }
+
+  final _anywhere = <String>[];
+  final _starts = <String>[];
+
+  bool foundIn(String title) {
+    final folded = foldForSearch(title);
+    final words = _words(folded);
+    if (_anywhere.isNotEmpty) {
+      final joined = words.join();
+      if (!_anywhere.every(joined.contains)) return false;
+    }
+    if (_starts.isEmpty) return true;
+    _addOtherSpellings(title, folded, words);
+    return _starts.every(
+      (query) => words.any((word) => word.startsWith(query)),
+    );
+  }
+}
+
+/// A character of a script written without spaces between words.
+final _unspaced = RegExp(
+  r'[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}'
+  r'\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]',
+  unicode: true,
+);
+
+/// Adds to the [words] of [title], [folded], the other spellings of them a
+/// query may use: each run of them that an apostrophe, hyphen, dot, middle
+/// dot or zero-width (non-)joiner links, joined ("grey's" is "greys" too,
+/// "s.h.i.e.l.d" "shield"); German words with ae, oe and ue for ä, ö and ü;
+/// Hindi words with a nasal and virama as written, which [foldForSearch]
+/// writes as an anusvara before a consonant, for a word typed up to the
+/// nasal ("गेम" of "गेम्स"); and Arabic words without a leading "and" or
+/// article.
+void _addOtherSpellings(String title, String folded, List<String> words) {
+  _addJoined(folded, words);
+  if (_umlaut.hasMatch(title)) {
+    final spelledOut = foldForSearch(
+      title.toLowerCase().replaceAllMapped(
+        _umlaut,
+        (m) => _umlautSpellings[m[0]![0]]!,
+      ),
+    );
+    words.addAll(_words(spelledOut));
+    _addJoined(spelledOut, words);
+  }
+  for (final spelling in nasalSpellingsForSearch(title)) {
+    words.addAll(_words(spelling));
+  }
+  for (var i = 0, count = words.length; i < count; i++) {
+    _addArabicStems(words[i], words);
+  }
+}
+
+/// Adds to [words] each run of them in [folded] that a joiner links, joined.
+void _addJoined(String folded, List<String> words) {
+  if (!_joiner.hasMatch(folded)) return;
+  for (final run in _joinedRun.allMatches(folded)) {
+    final text = run[0]!;
+    if (_joiner.hasMatch(text)) words.add(text.replaceAll(_joiner, ''));
+  }
+}
+
+/// ä, ö or ü, precomposed or written with a combining diaeresis.
+final _umlaut = RegExp(
+  '[äöü]|[aou]\u{308}',
+  caseSensitive: false,
+  unicode: true,
+);
+
+/// What German writes for an umlaut, by its first letter, lowercased.
+const _umlautSpellings = {
+  'ä': 'ae',
+  'ö': 'oe',
+  'ü': 'ue',
+  'a': 'ae',
+  'o': 'oe',
+  'u': 'ue',
+};
+
+/// Adds to [words] the Arabic [word] without a leading "and" (و), when it has
+/// four letters or more, and without an article (ال, بال, كال, فال, لل) that
+/// leaves two letters or more: "وجيري" is "جيري" too, and "والسلام" both
+/// "السلام" and "سلام".
+void _addArabicStems(String word, List<String> words) {
+  final first = word.codeUnitAt(0);
+  if (first < 0x0620 || first > 0x064A) return;
+  var rest = word;
+  if (rest.length >= 4 && rest.codeUnitAt(0) == 0x0648) {
+    rest = rest.substring(1);
+    words.add(rest);
+  }
+  for (final article in _arabicArticles) {
+    if (rest.startsWith(article) && rest.length - article.length >= 2) {
+      words.add(rest.substring(article.length));
+      return;
+    }
+  }
+}
+
+const _arabicArticles = [
+  '\u{627}\u{644}', // al-
+  '\u{628}\u{627}\u{644}', // bi-al-
+  '\u{643}\u{627}\u{644}', // ka-al-
+  '\u{641}\u{627}\u{644}', // fa-al-
+  '\u{644}\u{644}', // li-al-
+];
+
+/// What links the parts of one title word, as [foldForSearch] writes it: an
+/// apostrophe, backtick, hyphen, dot, middle dot or zero-width (non-)joiner.
+const _joiners = "'`\\-.\u{B7}\u{200C}\u{200D}";
+
+final _joiner = RegExp('[$_joiners]');
+
+/// Words and the joiners between them.
+final _joinedRun = RegExp(
+  '[\\p{L}\\p{M}\\p{N}]+(?:[$_joiners][\\p{L}\\p{M}\\p{N}]+)*',
+  unicode: true,
+);
 
 /// Searches [manager]'s extensions for [query], with [others] (Stremio
 /// add-ons' and Nuvio's searchers) under the content filter.
@@ -136,7 +335,7 @@ Stream<SearchAggregateState> searchAllProviders(
   final clearance = Clearance.instance;
   final startedAt = clearance.isReady ? clearance.checks.now : DateTime.now();
 
-  if (query.isEmpty || providers.isEmpty) {
+  if (query.trim().isEmpty || providers.isEmpty) {
     yield SearchAggregateState(
       results: const [],
       isLoading: false,

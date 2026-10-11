@@ -20,6 +20,7 @@
 
 #### 🔎 Search
 - **Universal search** – One search bar for SkyStream, CloudStream, Stremio and Nuvio: a section for each Stremio add-on and one for Nuvio, with every result tagged with where it came from.
+- **Search in every language** – Titles are found whatever their accents, letter forms, digits or spacing: "pokemon" finds "Pokémon", and Arabic, Persian, Urdu, Hebrew, Turkish and Indian-language titles match the way they are typed. Japanese, Chinese and Thai titles written without spaces are found by any part of the name, and Korean ones with or without spaces. A provider whose titles are all in another script shows them instead of nothing (PR #127 by @1eren0).
 
 #### 🎬 Player & Playback
 - **Volume and brightness swipes like VLC** – Both follow your finger with no lag. The volume boost above 100% shows in orange, and a swipe from below 100% stops there first: swipe up again to go past it.
