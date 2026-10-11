@@ -37,6 +37,7 @@ class _FakeService implements AddonStreamService {
           addonId: 'a',
           addonName: 'Torrentio',
           name: 'Alpha 1080p',
+          audioLanguage: 'ja',
           title: 'Alpha',
           url: 'https://cdn.test/alpha.mkv',
         ),
@@ -108,6 +109,8 @@ void main() {
       ),
     );
     await _flush(tester);
+    expect(find.text('JA'), findsOneWidget,
+        reason: 'Stremio audio language must have its own source tag');
 
     await _press(tester, LogicalKeyboardKey.arrowDown);
     // Whichever row holds focus - the first one autofocuses, so DOWN lands on
