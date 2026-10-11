@@ -752,6 +752,23 @@ class AppLocalizationsTe extends AppLocalizations {
   String get install => 'ఇన్‌స్టాల్ చేయండి';
 
   @override
+  String get installFromThisRepository => 'Install from this repository';
+
+  @override
+  String installFromThisRepositoryTitle(String pluginName) {
+    return 'Install $pluginName from this repository?';
+  }
+
+  @override
+  String installFromThisRepositoryMessage(
+    String source,
+    String version,
+    String repoName,
+  ) {
+    return 'The copy you have came from $source. This installs version $version from $repoName in its place, and from then on its updates come from $repoName only.';
+  }
+
+  @override
   String get discoverSearchHint => 'Search community add-ons';
 
   @override

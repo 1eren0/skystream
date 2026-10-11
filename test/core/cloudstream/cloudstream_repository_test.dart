@@ -20,6 +20,8 @@ import 'package:skystream/core/cloudstream/cloudstream_provider.dart';
 import 'package:skystream/core/cloudstream/cloudstream_repository.dart';
 import 'package:skystream/core/cloudstream/extension_notices.dart';
 import 'package:skystream/core/domain/entity/multimedia_item.dart';
+import 'package:skystream/core/extensions/providers.dart';
+import 'package:skystream/core/extensions/services/repository_service.dart';
 import 'package:skystream/core/extensions/base_provider.dart';
 import 'package:skystream/core/extensions/extension_manager.dart';
 import 'package:skystream/core/network/dio_client_provider.dart';
@@ -49,6 +51,12 @@ class _FakeRepos implements HttpClientAdapter {
     if (host == 'web.test') {
       // A login page or a bot check where a repository was (git.disroot.org's for FStream, 2026-10-08).
       return ResponseBody.fromString('<!doctype html><html><head><title>Sign in</title></head></html>', 200);
+    }
+    if (host == 'cutt.ly') {
+      // The shortener knows one code, in lower case: its codes are case-sensitive.
+      return options.uri.path == '/megarepo'
+          ? ResponseBody.fromString('', 302, headers: {'location': ['https://repo.test/repo.json']})
+          : ResponseBody.fromString('not found', 404);
     }
     if (url.endsWith('/repo.json')) {
       return ResponseBody.fromString(
@@ -233,6 +241,8 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         dioClientProvider.overrideWithValue(Dio()..httpClientAdapter = network),
+        // Shortcodes are looked up through it; the real one reads the app's settings for its proxy.
+        repositoryServiceProvider.overrideWithValue(RepositoryService(Dio()..httpClientAdapter = network)),
         extensionManagerProvider.overrideWith(_NoopExtensionManager.new),
         cloudStreamEngineHostProvider.overrideWithValue(host),
         keptAppVersionProvider.overrideWith((ref) async => '2.0.0 +5'),
@@ -369,6 +379,16 @@ void main() {
     expect(await notifier.resolveUrl(' raw.githubusercontent.com/a/b/repo.json '), target);
     expect(await notifier.resolveUrl('http://raw.githubusercontent.com/a/b/repo.json'), target);
     expect(() => notifier.resolveUrl('  '), throwsA(isA<Exception>()));
+  });
+
+  // A television keyboard or a phone's may capitalise the first letter: "MegaRepo" found nothing.
+  test('a shortcode typed with capitals is tried in lower case too', () async {
+    final notifier = boot().read(cloudStreamRepositoryProvider.notifier);
+    expect(await notifier.resolveUrl('MegaRepo'), 'https://repo.test/repo.json');
+    expect(network.requested.where((url) => url.contains('cutt.ly')), [
+      'https://cutt.ly/MegaRepo',
+      'https://cutt.ly/megarepo',
+    ]);
   });
 
   // ViStream registers nothing unless it was installed from its own repository.

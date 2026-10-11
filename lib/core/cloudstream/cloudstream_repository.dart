@@ -350,8 +350,13 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       return _secure(url.startsWith(RegExp('https?://')) ? url : 'https://$url');
     }
     if (RegExp(r'^[a-zA-Z0-9!_-]+$').hasMatch(text)) {
-      final shortLink = text.startsWith('!') ? 'https://py.md/${text.substring(1)}' : 'https://cutt.ly/$text';
-      return _secure(await ref.read(repositoryServiceProvider).resolveShortcode([shortLink]));
+      // As typed, then in lower case: codes are case-sensitive, and a television keyboard or a
+      // phone's may capitalise the first letter.
+      String shortLink(String code) => code.startsWith('!') ? 'https://py.md/${code.substring(1)}' : 'https://cutt.ly/$code';
+      final lower = text.toLowerCase();
+      return _secure(
+        await ref.read(repositoryServiceProvider).resolveShortcode([shortLink(text), if (lower != text) shortLink(lower)]),
+      );
     }
     return _secure(text.contains('://') ? text : 'https://$text');
   }

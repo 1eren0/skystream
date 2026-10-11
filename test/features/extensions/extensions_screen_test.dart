@@ -649,4 +649,25 @@ void _tvDeadEndTests() {
     expect(find.widgetWithText(FilledButton, 'Add Repository'), findsNothing);
     expectFocusInBody(tester);
   });
+
+  // A repository's address or code is not a word - see CustomTextField.
+  testWidgets('the add repository field takes an address', (tester) async {
+    final controller = MutableExtensionsController(empty());
+    await tester.pumpWidget(hostFor(controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Browse Repositories'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Repository'));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(field.keyboardType, TextInputType.url);
+    expect(field.autocorrect, isFalse);
+  });
 }

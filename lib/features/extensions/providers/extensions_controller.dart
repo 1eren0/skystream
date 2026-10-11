@@ -91,6 +91,11 @@ class ExtensionsController extends _$ExtensionsController {
 
   bool _initialized = false;
 
+  /// Whether a repository the user saved did not load at launch: it may be
+  /// the one an older install came from, or another claiming that one's id,
+  /// so [_updateFor] matches no install by id until the next launch.
+  bool _savedRepositoryMissing = false;
+
   @override
   ExtensionsState build() {
     return const ExtensionsLoading();
@@ -134,6 +139,7 @@ class ExtensionsController extends _$ExtensionsController {
       final fetched = await Future.wait(
         urls.map((url) => _loadRepo(url, repositoryService)),
       );
+      _savedRepositoryMissing = fetched.contains(null);
 
       final repos = <ExtensionRepository>[];
       final available = <String, List<ExtensionPlugin>>{};
@@ -144,6 +150,8 @@ class ExtensionsController extends _$ExtensionsController {
         repos.add(entry.repo);
         available[entry.repo.url] = entry.plugins;
       }
+
+      if (!_savedRepositoryMissing) await _pinOlderInstalls(plugins, repos);
 
       // 3. Set Final State Once
       state = ExtensionsSuccess(
@@ -164,6 +172,46 @@ class ExtensionsController extends _$ExtensionsController {
       );
     }
   }
+
+  /// Gives each install from before installs kept their repository's address
+  /// the address of the one repository in [repos] declaring its repository's
+  /// id, in its install record, once: from then on that address alone
+  /// updates it, and a repository taking the id later cannot step in. Only
+  /// on a launch where every saved repository loaded, so none is missing that
+  /// may declare the id too; with two declaring it, it is left as it is, and
+  /// so is one whose id names no repository (see [_claimants]).
+  Future<void> _pinOlderInstalls(
+    List<ExtensionPlugin> plugins,
+    List<ExtensionRepository> repos,
+  ) async {
+    final storage = ref.read(pluginStorageServiceProvider);
+    for (var i = 0; i < plugins.length; i++) {
+      final plugin = plugins[i];
+      if (plugin.repositoryUrl != null) continue;
+      final claimants = _claimants(plugin.repositoryId, repos);
+      if (claimants.length != 1) continue;
+      try {
+        final pinned = await storage.pinRepositoryUrl(plugin, claimants.single);
+        if (pinned != null) plugins[i] = pinned;
+      } catch (e) {
+        if (kDebugMode) debugPrint('Could not pin ${plugin.packageName}: $e');
+      }
+    }
+  }
+
+  /// The addresses of the repositories in [repos] that declare [repositoryId]
+  /// as theirs, whether they list a given plugin or not. None for an id that
+  /// names no repository ([ExtensionPlugin.isPlaceholderRepositoryId]): one
+  /// declaring it as its own would be the claimant of every plugin installed
+  /// from a file, say, or bundled with the app.
+  static List<String> _claimants(
+    String repositoryId,
+    Iterable<ExtensionRepository> repos,
+  ) => [
+    if (!ExtensionPlugin.isPlaceholderRepositoryId(repositoryId))
+      for (final repo in repos)
+        if (repo.packageName == repositoryId) repo.url,
+  ];
 
   /// Fetches one repository and its plugin lists, or null if it is
   /// unreachable or malformed. A bad repository must not take the others down
@@ -484,21 +532,10 @@ class ExtensionsController extends _$ExtensionsController {
   ///
   /// Returns the display names of the plugins with an update waiting.
   Future<List<String>> checkForUpdates() async {
-    final updates = <String, ExtensionPlugin>{};
-    final onlineMap = <String, ExtensionPlugin>{};
-
-    for (final list in state.availablePlugins.values) {
-      for (final plugin in list) {
-        onlineMap[plugin.packageName] = plugin;
-      }
-    }
-
-    for (final installed in state.installedPlugins) {
-      final online = onlineMap[installed.packageName];
-      if (online != null && online.version > installed.version) {
-        updates[installed.packageName] = online;
-      }
-    }
+    final updates = <String, ExtensionPlugin>{
+      for (final installed in state.installedPlugins)
+        installed.packageName: ?_updateFor(installed),
+    };
 
     // Written even when empty, so a plugin the user has since updated by hand
     // stops advertising an update - but not when that would be a no-op state
@@ -519,6 +556,61 @@ class ExtensionsController extends _$ExtensionsController {
     return updates.values.map((plugin) => plugin.name).toList();
   }
 
+  /// The newest version of [installed] that the repository it came from
+  /// lists, when that is newer than what is installed.
+  ///
+  /// Only from that repository. Any repository can list a plugin under any
+  /// name - and a repository a collection adds on its own is followed without
+  /// anyone choosing it - so matching by name across all of them let one
+  /// replace another's plugin with code of its own, which the launch-time
+  /// update then installed. An install keeps the address it came from; one
+  /// from before that is matched by its repository's id instead, and only
+  /// while a single repository the user follows declares that id - listing
+  /// the plugin or not, since an id is whatever a repository says it is, and
+  /// counting only the ones that list it let a repository taking another's id
+  /// step in whenever that one stopped listing the plugin. Never on a launch
+  /// where a saved repository did not load, when the count is not known.
+  ExtensionPlugin? _updateFor(ExtensionPlugin installed) {
+    bool lists(ExtensionPlugin online) =>
+        online.packageName == installed.packageName &&
+        (installed.repositoryUrl != null ||
+            online.repositoryId == installed.repositoryId);
+
+    final from = installed.repositoryUrl;
+    final List<String> sources;
+    if (from != null) {
+      sources = [
+        for (final url in state.availablePlugins.keys)
+          if (sameAddress(url, from)) url,
+      ];
+    } else {
+      sources = _claimants(installed.repositoryId, state.repositories);
+      if (_savedRepositoryMissing || sources.length != 1) return null;
+    }
+
+    ExtensionPlugin? newest;
+    for (final online in sources.expand(
+      (url) => state.availablePlugins[url] ?? const <ExtensionPlugin>[],
+    )) {
+      if (!lists(online) || online.version <= installed.version) continue;
+      if (newest == null || online.version > newest.version) newest = online;
+    }
+    return newest;
+  }
+
+  /// Whether [a] and [b] are two spellings of one repository's address:
+  /// scheme and host in any case, a default port written out or not, escapes
+  /// in any case, with or without a trailing slash. Another scheme, port,
+  /// path, query or fragment is another address.
+  static bool sameAddress(String a, String b) {
+    String key(String url) {
+      final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
+      return Uri.tryParse(trimmed)?.toString() ?? trimmed;
+    }
+
+    return key(a) == key(b);
+  }
+
   Future<void> addRepository(String url, {Set<String>? visitedUrls}) =>
       _addRepository(url, visitedUrls ?? <String>{}, background: false);
 
@@ -526,11 +618,18 @@ class ExtensionsController extends _$ExtensionsController {
   /// repositories a collection newly lists, found on launch: a failure is
   /// logged and skipped instead of put on screen, and a repository the user
   /// has, or removed, is left as it is.
+  ///
+  /// A code the user enters is kept as the short link it was found at: later
+  /// launches look that code up, and none of the other spellings a typed
+  /// code is tried in, which anyone could register after it.
   Future<void> _addRepository(
     String url,
     Set<String> visitedUrls, {
     required bool background,
   }) async {
+    // What the user entered, rather than what a collection listed.
+    final entered = !background && visitedUrls.isEmpty;
+
     // Cycle Detection
     if (visitedUrls.contains(url)) {
       if (kDebugMode) {
@@ -549,7 +648,11 @@ class ExtensionsController extends _$ExtensionsController {
     );
     try {
       final repositoryService = ref.read(repositoryServiceProvider);
-      final repo = await repositoryService.fetchRepository(url);
+      final fetched = await repositoryService.fetchRepository(url);
+      final shortLink = entered ? fetched?.shortLink : null;
+      final repo = shortLink != null ? fetched?.withUrl(shortLink) : fetched;
+      final address = shortLink ?? url;
+      visitedUrls.add(address);
       if (repo != null) {
         // Handle Recursive Repositories (Megarepo)
         if (repo.includedRepos.isNotEmpty) {
@@ -560,7 +663,7 @@ class ExtensionsController extends _$ExtensionsController {
           }
           // Followed from now on: every launch reads it again, for the
           // repositories it lists later.
-          await _recordCollection(url, repo.includedRepos);
+          await _recordCollection(address, repo.includedRepos);
           final prefs = await SharedPreferences.getInstance();
           for (final subRepoUrl in repo.includedRepos) {
             if (background &&
@@ -596,13 +699,13 @@ class ExtensionsController extends _$ExtensionsController {
           // Persist URL (Only top-level or unique ones)
           final prefs = await SharedPreferences.getInstance();
           final urls = prefs.getStringList(repoUrlsKey) ?? [];
-          if (!urls.contains(url)) {
-            urls.add(url);
+          if (!urls.contains(address)) {
+            urls.add(address);
             await prefs.setStringList(repoUrlsKey, urls);
           }
           // Added on purpose, so no longer one the user removed.
           final removed = prefs.getStringList(removedRepoUrlsKey);
-          if (removed != null && removed.remove(url)) {
+          if (removed != null && removed.remove(address)) {
             await prefs.setStringList(removedRepoUrlsKey, removed);
           }
         }
@@ -724,7 +827,12 @@ class ExtensionsController extends _$ExtensionsController {
     required List<ExtensionRepository> remaining,
   }) async {
     final repoId = repo.packageName;
-    if (remaining.any((other) => other.packageName == repoId)) return;
+    // An id that names no repository takes nothing: it is what every plugin
+    // installed from a file, say, is recorded under.
+    if (ExtensionPlugin.isPlaceholderRepositoryId(repoId) ||
+        remaining.any((other) => other.packageName == repoId)) {
+      return;
+    }
 
     final storage = ref.read(pluginStorageServiceProvider);
     final gone = <String>{};
@@ -853,6 +961,8 @@ class ExtensionsController extends _$ExtensionsController {
           final installedPlugin = await storageService.installPlugin(
             savedFile.path,
             plugin.repositoryId,
+            repositoryUrl: plugin.repositoryUrl,
+            packageName: plugin.packageName,
           );
           final targetPlugin = installedPlugin ?? plugin;
 

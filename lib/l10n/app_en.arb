@@ -352,6 +352,34 @@
     }
   },
   "install": "Install",
+  "installFromThisRepository": "Install from this repository",
+  "@installFromThisRepository": {
+    "description": "Extensions screen, a repository's plugin row: the button for a plugin the user installed from another repository. It installs this repository's copy in its place, and its updates then come from this repository."
+  },
+  "installFromThisRepositoryTitle": "Install {pluginName} from this repository?",
+  "@installFromThisRepositoryTitle": {
+    "description": "Title of the dialog that confirms installing a repository's copy of a plugin the user installed from another repository.",
+    "placeholders": {
+      "pluginName": {
+        "type": "String"
+      }
+    }
+  },
+  "installFromThisRepositoryMessage": "The copy you have came from {source}. This installs version {version} from {repoName} in its place, and from then on its updates come from {repoName} only.",
+  "@installFromThisRepositoryMessage": {
+    "description": "Body of the same dialog. {source} is the web address of the repository the installed copy came from, {version} the version this repository lists, {repoName} this repository's name.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      },
+      "repoName": {
+        "type": "String"
+      }
+    }
+  },
   "discoverSearchHint": "Search community add-ons",
   "discoverClearSearch": "Clear",
   "discoverNeedsWebSetup": "Needs quick setup on the add-on's website",

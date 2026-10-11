@@ -111,4 +111,36 @@ void main() {
       reason: 'the version badge and the chevron share a centre',
     );
   });
+
+  // A repository's address is not a word - see CustomTextField.
+  testWidgets('the add repository field takes an address', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [nuvioRepositoryProvider.overrideWith(_Repo.new)],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.createDarkTheme(null),
+          home: const Scaffold(body: NuvioPluginsView()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    await tester.tap(find.text('Add Repository'));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(field.keyboardType, TextInputType.url);
+    expect(field.autocorrect, isFalse);
+  });
 }

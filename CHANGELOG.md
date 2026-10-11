@@ -38,6 +38,8 @@
 ---
 
 ### 🐞 *Bug Fixes & System Stability*
+- 🛠️ **Fixed: some repository short links and shortcodes didn't add their repository** – Links that pass through a redirect page now work, a shortcode works in any letter case ("Universe" adds SkyStream's own collection), and the add-repository boxes no longer autocorrect what you type (PR #129 by @1eren0).
+- 🛠️ **Fixed: another repository could replace an extension with its own code** – An extension now updates only from the repository it was installed from, and only to the extension that repository lists. To move an extension to another repository, use Install from this repository in that repository's list.
 - 🛠️ **Fixed: on TV, a keyboard closed with Back couldn't be opened again from its text field** – OK on the field opens it again, and Down moves on from the field to what is below it, in search on Home, Explore and the Search tab and in the text boxes of dialogs (PR #128 by @1eren0).
 - 🛠️ **Fixed: on some low-memory Google TV devices, the on-screen keyboard showed but typed nothing into SkyStream.**
 - 🛠️ **Fixed: on iPad, a video's sound stopped a second in** – The video went on playing silently until an audio track was picked again.

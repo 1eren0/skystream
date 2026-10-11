@@ -123,4 +123,34 @@ void main() {
     expect(tester.testTextInput.isVisible, isTrue);
     expect(inField(), isTrue);
   });
+
+  // A repository's address or code is not a word: autocorrect turned
+  // "universe" into "Universe", and codes are case-sensitive. Suggestions
+  // stay on: with them off, Flutter's Android engine asks for a visible
+  // password field instead, whose keyboard - on a phone or a television -
+  // has no "/" or ".com".
+  testWidgets('an address field is not corrected, and keeps the URL keyboard', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: CustomTextField(keyboardType: TextInputType.url)),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.keyboardType, TextInputType.url);
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isTrue);
+  });
+
+  testWidgets('a text field is still corrected and completed', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: CustomTextField())),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.autocorrect, isTrue);
+    expect(field.enableSuggestions, isTrue);
+  });
 }

@@ -211,6 +211,26 @@ void main() {
     },
   );
 
+  // "Local" is what an install with no repository id - one from a file -
+  // reads back as. It names no repository, so one declaring it as its own
+  // has no plugins to take with it.
+  test('takes nothing by an id that names no repository', () async {
+    final fromFile = _plugin('Delta', 'Local');
+    final disk = _Disk(<ExtensionPlugin>[fromFile, charlie]);
+    final container = await open(
+      saved: <String>[_zoro, _stars],
+      ids: <String, String>{_zoro: 'Local', _stars: 'com.stars'},
+      disk: disk,
+    );
+
+    await container
+        .read(extensionsControllerProvider.notifier)
+        .removeRepository(_zoro);
+
+    expect(disk.deleted, isEmpty);
+    expect(installedNames(container), <String>['Delta', 'Charlie']);
+  });
+
   test('one plugin that will not delete does not keep the rest', () async {
     final disk = _Disk(
       <ExtensionPlugin>[alpha, bravo],

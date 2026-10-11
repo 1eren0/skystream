@@ -756,6 +756,23 @@ class AppLocalizationsKn extends AppLocalizations {
   String get install => 'ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿ';
 
   @override
+  String get installFromThisRepository => 'ಈ ರೆಪೊಸಿಟರಿಯಿಂದ ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡಿ';
+
+  @override
+  String installFromThisRepositoryTitle(String pluginName) {
+    return '$pluginName ಅನ್ನು ಈ ರೆಪೊಸಿಟರಿಯಿಂದ ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುವುದೇ?';
+  }
+
+  @override
+  String installFromThisRepositoryMessage(
+    String source,
+    String version,
+    String repoName,
+  ) {
+    return 'ನಿಮ್ಮಲ್ಲಿರುವ ಪ್ರತಿ $source ನಿಂದ ಬಂದಿದೆ. ಇದು ಅದರ ಬದಲಿಗೆ $repoName ನಿಂದ ಆವೃತ್ತಿ $version ಅನ್ನು ಇನ್‌ಸ್ಟಾಲ್ ಮಾಡುತ್ತದೆ, ಮತ್ತು ಅಲ್ಲಿಂದ ಮುಂದೆ ಇದರ ಅಪ್‌ಡೇಟ್‌ಗಳು $repoName ನಿಂದ ಮಾತ್ರ ಬರುತ್ತವೆ.';
+  }
+
+  @override
   String get discoverSearchHint => 'Search community add-ons';
 
   @override

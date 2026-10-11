@@ -183,6 +183,14 @@ class ExtensionPlugin {
   final String packageName; // Unique Plugin ID (e.g. "com.hexated.superstream")
   final String name; // Display Name (e.g. "SuperStream")
   final String repositoryId; // "com.hexated" or "LocalAssets"
+
+  /// The address of the repository that listed the plugin: set on plugins
+  /// read from a repository, and kept in an install's `meta.json`. Null for
+  /// an install from before it was kept.
+  ///
+  /// Never read by [ExtensionPlugin.fromJson]: a listing entry or a plugin's
+  /// own manifest would otherwise choose where its updates come from.
+  final String? repositoryUrl;
   final String sourceUrl; // Download Link or Local Path
   final int version;
   final String? iconUrl;
@@ -204,6 +212,7 @@ class ExtensionPlugin {
     required this.packageName,
     required this.name,
     required this.repositoryId,
+    this.repositoryUrl,
     required this.sourceUrl,
     required this.version,
     this.status = 1,
@@ -221,6 +230,22 @@ class ExtensionPlugin {
 
   /// Helper to check if this is a debug/asset plugin
   bool get isDebug => packageName.endsWith('.debug');
+
+  /// Whether [repositoryId] is one the app gives a plugin when no repository
+  /// it can name supplied one: `Local` for one found on disk without its
+  /// repository's id - as one installed from a file is recorded -
+  /// `UnknownRepo` for one just installed without one, `LocalAssets` for one
+  /// bundled with the app, `Unknown` for one listed inside a manifest that
+  /// declares no id, or a blank one. Such an id names no repository: none
+  /// claims a plugin by it, not even one declaring it as its own.
+  static bool isPlaceholderRepositoryId(String repositoryId) =>
+      repositoryId.trim().isEmpty ||
+      const {
+        'Local',
+        'UnknownRepo',
+        'LocalAssets',
+        'Unknown',
+      }.contains(repositoryId);
 
   /// Local File Path relative to plugin root
   /// e.g. "plugin/[packageName]/plugin.js"
@@ -282,11 +307,12 @@ class ExtensionPlugin {
     );
   }
 
-  ExtensionPlugin copyWith({String? customBaseUrl}) {
+  ExtensionPlugin copyWith({String? customBaseUrl, String? repositoryUrl}) {
     return ExtensionPlugin(
       packageName: packageName,
       name: name,
       repositoryId: repositoryId,
+      repositoryUrl: repositoryUrl ?? this.repositoryUrl,
       sourceUrl: sourceUrl,
       version: version,
       status: status,

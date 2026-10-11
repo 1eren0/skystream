@@ -36,6 +36,7 @@ class _NuvioPluginsViewState extends ConsumerState<NuvioPluginsView> {
       title: 'Add Nuvio Repository',
       message: 'Paste the plugin manifest URL (the JSON listing "scrapers"). A bare host works too.',
       hintText: 'https://example.com/plugins/manifest.json',
+      keyboardType: TextInputType.url,
       confirmLabel: 'Add',
       width: 480,
     );

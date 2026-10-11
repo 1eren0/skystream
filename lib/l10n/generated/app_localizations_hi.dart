@@ -747,6 +747,23 @@ class AppLocalizationsHi extends AppLocalizations {
   String get install => 'इंस्टॉल करें';
 
   @override
+  String get installFromThisRepository => 'इस रिपॉजिटरी से इंस्टॉल करें';
+
+  @override
+  String installFromThisRepositoryTitle(String pluginName) {
+    return '$pluginName इस रिपॉजिटरी से इंस्टॉल करें?';
+  }
+
+  @override
+  String installFromThisRepositoryMessage(
+    String source,
+    String version,
+    String repoName,
+  ) {
+    return 'आपके पास मौजूद कॉपी $source से आई थी। यह उसकी जगह $repoName से संस्करण $version इंस्टॉल करेगा, और इसके बाद इसके अपडेट केवल $repoName से आएँगे।';
+  }
+
+  @override
   String get discoverSearchHint => 'Search community add-ons';
 
   @override

@@ -87,6 +87,7 @@ class _HeaderState extends ConsumerState<_Header> {
       title: l10n.cloudStreamAddRepositoryTitle,
       message: l10n.cloudStreamAddRepositoryMessage,
       hintText: l10n.repoUrlOrShortcode,
+      keyboardType: TextInputType.url,
       confirmLabel: l10n.cloudStreamAdd,
       showPasteButton: true,
       width: 480,

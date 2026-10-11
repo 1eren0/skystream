@@ -227,4 +227,28 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('cs3_cloudstream_switch')));
     expect(fake.switched, [false]);
   });
+
+  // A repository's address or code is not a word - see CustomTextField.
+  testWidgets('the add repository field takes an address', (tester) async {
+    final fake = _FakeCloudStream(const CloudStreamState(isLoading: false));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [cloudStreamRepositoryProvider.overrideWith(() => fake)],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: CloudStreamScreen(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Repositories'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add Repository').last);
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)));
+    expect(field.keyboardType, TextInputType.url);
+    expect(field.autocorrect, isFalse);
+  });
 }

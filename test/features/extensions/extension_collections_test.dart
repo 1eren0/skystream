@@ -32,8 +32,10 @@ import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/core/storage/storage_service.dart';
 import 'package:skystream/features/extensions/providers/extensions_controller.dart';
 
-/// What the user typed to add the collection. Shortcodes resolve inside
-/// `fetchRepository`, so this is also the key the collection is stored under.
+/// What the user typed to add the collection. This fake web reads it as an
+/// address, so it is also the key the collection is stored under. (The real
+/// service finds a code's short link, which the collection is kept as - see
+/// shortcode_repository_test.dart.)
 const String _universe = 'universe';
 const String _mini = 'https://mini.test/collection.json';
 const String _a = 'https://a.test/repo.json';

@@ -1527,6 +1527,28 @@ abstract class AppLocalizations {
   /// **'Install'**
   String get install;
 
+  /// Extensions screen, a repository's plugin row: the button for a plugin the user installed from another repository. It installs this repository's copy in its place, and its updates then come from this repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Install from this repository'**
+  String get installFromThisRepository;
+
+  /// Title of the dialog that confirms installing a repository's copy of a plugin the user installed from another repository.
+  ///
+  /// In en, this message translates to:
+  /// **'Install {pluginName} from this repository?'**
+  String installFromThisRepositoryTitle(String pluginName);
+
+  /// Body of the same dialog. {source} is the web address of the repository the installed copy came from, {version} the version this repository lists, {repoName} this repository's name.
+  ///
+  /// In en, this message translates to:
+  /// **'The copy you have came from {source}. This installs version {version} from {repoName} in its place, and from then on its updates come from {repoName} only.'**
+  String installFromThisRepositoryMessage(
+    String source,
+    String version,
+    String repoName,
+  );
+
   /// No description provided for @discoverSearchHint.
   ///
   /// In en, this message translates to:

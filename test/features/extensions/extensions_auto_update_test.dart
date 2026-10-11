@@ -122,8 +122,10 @@ class _FakePluginStorageService extends PluginStorageService {
   @override
   Future<ExtensionPlugin?> installPlugin(
     String filePath,
-    String? explicitRepoId,
-  ) async {
+    String? explicitRepoId, {
+    String? repositoryUrl,
+    String? packageName,
+  }) async {
     installCalls.add(filePath);
     final url = await File(filePath).readAsString();
     final plugin = _online.firstWhere((p) => p.sourceUrl == url);

@@ -17,6 +17,13 @@ import '../../../shared/focus/app_focus.dart';
 
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
+/// Whether [installed] came from the repository at [repositoryUrl]. An
+/// install from before addresses were kept came from none that can be told.
+bool _installedFrom(ExtensionPlugin installed, String repositoryUrl) {
+  final from = installed.repositoryUrl;
+  return from != null && ExtensionsController.sameAddress(from, repositoryUrl);
+}
+
 class ExtensionsScreen extends ConsumerStatefulWidget {
   final bool isEmbedded;
 
@@ -784,6 +791,9 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
                     onPressed: allInstalled || plugins.isEmpty
                         ? null
                         : () {
+                            // A plugin installed from another repository is
+                            // that one's to update: this one's copy would
+                            // move it here.
                             final pluginsToInstall = plugins.where((p) {
                               final installed = state.installedPlugins
                                   .cast<ExtensionPlugin?>()
@@ -793,7 +803,8 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
                                     orElse: () => null,
                                   );
                               return installed == null ||
-                                  p.version > installed.version;
+                                  (_installedFrom(installed, repo.url) &&
+                                      p.version > installed.version);
                             }).toList();
 
                             if (pluginsToInstall.isNotEmpty) {
@@ -819,7 +830,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
             final isLast = entry.key == plugins.length - 1;
             return Column(
               children: [
-                _PluginTile(plugin: entry.value),
+                _PluginTile(plugin: entry.value, repository: repo),
                 if (!isLast)
                   Divider(
                     height: 1,
@@ -875,6 +886,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
       context,
       title: l10n.addRepository,
       hintText: l10n.repoUrlOrShortcode,
+      keyboardType: TextInputType.url,
       confirmLabel: l10n.addRepo,
     );
     if (url == null || url.isEmpty || !context.mounted) {
@@ -894,7 +906,15 @@ class _PluginTile extends ConsumerStatefulWidget {
   final ExtensionPlugin plugin;
   final bool isDebugSection;
 
-  const _PluginTile({required this.plugin, this.isDebugSection = false});
+  /// The repository whose card the row is on, which listed [plugin]. Null
+  /// outside a repository's card.
+  final ExtensionRepository? repository;
+
+  const _PluginTile({
+    required this.plugin,
+    this.isDebugSection = false,
+    this.repository,
+  });
 
   @override
   ConsumerState<_PluginTile> createState() => _PluginTileState();
@@ -1055,6 +1075,22 @@ class _PluginTileState extends ConsumerState<_PluginTile> {
                     },
                   ),
 
+                // Installed from another repository: that one alone updates
+                // it, so with it gone it would never update again. Moving it
+                // here is the user's call, made in a dialog that says where
+                // the copy they have came from.
+                if ((widget.repository, installedPlugin?.repositoryUrl)
+                    case (final repository?, final from?)
+                    when !ExtensionsController.sameAddress(
+                      from,
+                      repository.url,
+                    ))
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz),
+                    tooltip: l10n.installFromThisRepository,
+                    onPressed: () => _confirmInstallHere(from, repository),
+                  ),
+
                 if (isInstalled)
                   FutureBuilder<List<PluginSettingDefinition>>(
                     future: _settingsFor(installedPlugin),
@@ -1146,6 +1182,43 @@ class _PluginTileState extends ConsumerState<_PluginTile> {
     );
 
     return _FocusableRow(child: tile);
+  }
+
+  /// Installs [repository]'s copy of the plugin in place of the one installed
+  /// from [from], once the user agrees: its updates come from [repository]
+  /// from then on.
+  Future<void> _confirmInstallHere(
+    String from,
+    ExtensionRepository repository,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l10n.installFromThisRepositoryTitle(widget.plugin.name)),
+        content: Text(
+          l10n.installFromThisRepositoryMessage(
+            from,
+            widget.plugin.version.toString(),
+            repository.name,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.install),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ref
+        .read(extensionsControllerProvider.notifier)
+        .installPlugin(widget.plugin);
   }
 
   /// Subtitle widget: description · version/authors line · language chips.

@@ -280,6 +280,11 @@ class _CustomTextFieldState extends State<CustomTextField> {
           border: widget.decoration?.border ?? enabledBorder,
         );
 
+    // An address - a repository's URL or its shortcode - is not a word, and a
+    // keyboard that corrects or capitalises one breaks it. Suggestions stay
+    // on: with them off, Flutter's Android engine asks for a visible password
+    // field, which overrides the URL keyboard and its "/" and ".com".
+    final isAddress = widget.keyboardType == TextInputType.url;
     return TextField(
       focusNode: _focusNode,
       controller: widget.controller,
@@ -288,6 +293,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
       textInputAction: widget.textInputAction ?? TextInputAction.done,
       obscureText: widget.obscureText,
       keyboardType: widget.keyboardType,
+      autocorrect: !isAddress,
       onSubmitted: (value) {
         // Call user callback first — it may navigate away or close a host
         // dialog, so bail out if we got unmounted before moving focus.

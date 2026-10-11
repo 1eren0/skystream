@@ -56,7 +56,15 @@ class _InstallArgs {
   final Uint8List bytes;
   final String pluginsRootPath;
   final String? explicitRepoId;
-  _InstallArgs(this.bytes, this.pluginsRootPath, this.explicitRepoId);
+  final String? repositoryUrl;
+  final String? packageName;
+  _InstallArgs(
+    this.bytes,
+    this.pluginsRootPath,
+    this.explicitRepoId,
+    this.repositoryUrl,
+    this.packageName,
+  );
 }
 
 class _InstallResult {
@@ -97,6 +105,18 @@ Future<_InstallResult> _installPluginIsolate(_InstallArgs args) async {
     throw Exception(
       'Invalid .sky: unsafe packageName "\$packageName". Expected a name like '
       'com.author.plugin — letters, digits, dot, dash and underscore only.',
+    );
+  }
+
+  // The archive must be the plugin its repository listed. The name it gives
+  // itself picks the folder below and the plugin it replaces: one listed as
+  // a plugin of its repository's own could otherwise overwrite a plugin
+  // installed from somewhere else, and take it over.
+  final listed = args.packageName;
+  if (listed != null && packageName != listed) {
+    throw Exception(
+      'Invalid .sky: it is "$packageName", but the repository listed it as '
+      '"$listed"',
     );
   }
 
@@ -161,6 +181,10 @@ Future<_InstallResult> _installPluginIsolate(_InstallArgs args) async {
     final metaFile = File(p.join(stagingDir.path, 'meta.json'));
     final metaData = Map<String, dynamic>.from(manifestMap);
     metaData['repositoryId'] = args.explicitRepoId;
+    // Where it was installed from: its updates may come from there alone.
+    // Always written, so a `repositoryUrl` in the plugin's own manifest,
+    // copied in above, never stands in for it.
+    metaData['repositoryUrl'] = args.repositoryUrl;
     if (installSha256 != null) {
       metaData['installSha256'] = installSha256;
       metaData['installSha256At'] = DateTime.now().toIso8601String();
@@ -211,10 +235,19 @@ class PluginStorageService {
   /// The ZIP decode + extraction is delegated to a background isolate via
   /// `compute()` so a multi-MB plugin doesn't freeze the UI thread during
   /// install (audit B11).
+  ///
+  /// [repositoryUrl] is the address of the repository that listed it, kept so
+  /// that only that repository's listing can update it.
+  ///
+  /// [packageName] is the plugin the repository listed: an archive that
+  /// names another plugin is refused before anything on disk is touched. Null
+  /// for a file that no repository listed, which installs as what it names.
   Future<ExtensionPlugin?> installPlugin(
     String filePath,
-    String? explicitRepoId,
-  ) async {
+    String? explicitRepoId, {
+    String? repositoryUrl,
+    String? packageName,
+  }) async {
     if (kDebugMode) {
       debugPrint("PluginStorageService: Installing .sky from $filePath");
     }
@@ -226,10 +259,19 @@ class PluginStorageService {
 
     final result = await compute(
       _installPluginIsolate,
-      _InstallArgs(bytes, rootDir.path, explicitRepoId),
+      _InstallArgs(
+        bytes,
+        rootDir.path,
+        explicitRepoId,
+        repositoryUrl,
+        packageName,
+      ),
     );
 
-    final plugin = ExtensionPlugin.fromJson(result.manifestMap, result.repoId);
+    final plugin = ExtensionPlugin.fromJson(
+      result.manifestMap,
+      result.repoId,
+    ).copyWith(repositoryUrl: repositoryUrl);
 
     if (kDebugMode) {
       debugPrint(
@@ -237,6 +279,33 @@ class PluginStorageService {
       );
     }
     return plugin;
+  }
+
+  /// Records [repositoryUrl] in [plugin]'s install record as the address it
+  /// came from, for an install from before that was kept: its updates come
+  /// from there alone from then on. An install that has an address keeps it.
+  /// Returns the plugin as now recorded, or null when nothing was written.
+  Future<ExtensionPlugin?> pinRepositoryUrl(
+    ExtensionPlugin plugin,
+    String repositoryUrl,
+  ) async {
+    final rootDir = await _pluginsDir;
+    final dir = resolvePluginPathWithin(rootDir.path, plugin.packageName);
+    if (dir == null) return null;
+    final metaFile = File(p.join(dir, 'meta.json'));
+    if (!await metaFile.exists()) return null;
+    final meta = jsonDecode(await metaFile.readAsString());
+    // An address that is not text is no address (see listInstalledPlugins).
+    if (meta is! Map<String, dynamic> || meta['repositoryUrl'] is String) {
+      return null;
+    }
+    meta['repositoryUrl'] = repositoryUrl;
+    // Written beside the record and moved over it, so a write cut short
+    // leaves the old record rather than one that no longer reads.
+    final staged = File('${metaFile.path}.tmp');
+    await staged.writeAsString(jsonEncode(meta), flush: true);
+    await staged.rename(metaFile.path);
+    return plugin.copyWith(repositoryUrl: repositoryUrl);
   }
 
   /// Deletes a plugin directory (by Package Name).
@@ -299,7 +368,15 @@ class PluginStorageService {
             final content = await metaFile.readAsString();
             final json = jsonDecode(content) as Map<String, dynamic>;
             final repoId = json['repositoryId'] as String? ?? 'Local';
-            plugins.add(ExtensionPlugin.fromJson(json, repoId));
+            // Where it was installed from, as the install recorded it: an
+            // address that is not text is no address.
+            final from = json['repositoryUrl'];
+            plugins.add(
+              ExtensionPlugin.fromJson(
+                json,
+                repoId,
+              ).copyWith(repositoryUrl: from is String ? from : null),
+            );
             continue;
           }
 
@@ -311,6 +388,8 @@ class PluginStorageService {
             // Auto-generate meta.json if missing
             const repoId = 'Local';
             manifest['repositoryId'] = repoId;
+            // Not known, and not the plugin's to say.
+            manifest['repositoryUrl'] = null;
             await metaFile.writeAsString(jsonEncode(manifest));
             plugins.add(ExtensionPlugin.fromJson(manifest, repoId));
             continue;
@@ -328,9 +407,16 @@ class PluginStorageService {
     return plugins;
   }
 
+  /// Whether [plugin] is one the app ships in its own assets: tagged
+  /// `LocalAssets`, and its code an asset. A repository can declare that id
+  /// for itself, and what is installed from it is an install like any other.
+  static bool _isBundled(ExtensionPlugin plugin) =>
+      plugin.repositoryId == 'LocalAssets' &&
+      plugin.sourceUrl.startsWith('assets/');
+
   /// Get full path to the JS file for a plugin
   Future<String> getPluginJsPath(ExtensionPlugin plugin) async {
-    if (plugin.repositoryId == 'LocalAssets') {
+    if (_isBundled(plugin)) {
       return plugin.sourceUrl;
     }
 
@@ -356,11 +442,11 @@ class PluginStorageService {
   ///   before PR-08c so we have nothing to compare against).
   /// - `false` — hash mismatch; refuse to load the plugin.
   ///
-  /// Asset-bundled plugins (`repositoryId == 'LocalAssets'`) always pass
-  /// — they're shipped inside the signed APK / IPA.
+  /// Asset-bundled plugins ([_isBundled]) always pass — they're shipped
+  /// inside the signed APK / IPA.
   /// Audit B5 / PR-08c.
   Future<bool> verifyIntegrity(ExtensionPlugin plugin) async {
-    if (plugin.repositoryId == 'LocalAssets') return true;
+    if (_isBundled(plugin)) return true;
 
     final rootDir = await _pluginsDir;
     final pluginPath = resolvePluginPathWithin(
