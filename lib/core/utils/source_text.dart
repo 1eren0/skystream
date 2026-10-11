@@ -53,3 +53,20 @@ String buildSourceDetail(Iterable<String?> parts, {String fallback = ''}) {
   if (out.isEmpty) return cleanSourceText(fallback);
   return out.join(' · ');
 }
+
+    
+/// A stream's declared audio language as a short source-card badge.
+///
+/// This deliberately never infers audio from the movie's title or filename:
+/// titles can contain language names without describing the audio track.
+String? sourceAudioLanguageTag(String? value) {
+  final language = value?.trim();
+  if (language == null || language.isEmpty || language.length > 24) {
+    return null;
+  }
+  if (const {'und', 'unknown', 'n/a', 'none', 'auto'}
+      .contains(language.toLowerCase())) {
+    return null;
+  }
+  return language.toUpperCase();
+}
