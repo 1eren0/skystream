@@ -327,6 +327,11 @@ class LinuxVlcPlayer {
     });
   }
 
+  std::string SetSubtitleLook(const vlc_player::VlcSubtitleLookValues& look,
+                              bool* applied) {
+    return core_->SetSubtitleLook(look, applied);
+  }
+
   std::vector<uint8_t> TakeSnapshot(uint32_t width,
                                     uint32_t height,
                                     std::string* error) {
@@ -766,6 +771,34 @@ static FlMethodResponse* handle_method(VlcPlayerPlugin* self,
                             "A subtitle delay value is required.");
     }
     error = player->SetSubtitleDelay(delay);
+  } else if (strcmp(method, "setSubtitleLook") == 0) {
+    vlc_player::VlcSubtitleLookValues look;
+    int64_t text_scale = 0;
+    int64_t color = 0;
+    int64_t background_color = 0;
+    int64_t background_opacity = 0;
+    int64_t outline_thickness = 0;
+    if (!ReadInt(arguments, "textScale", &text_scale) ||
+        !ReadInt(arguments, "color", &color) ||
+        !ReadInt(arguments, "backgroundColor", &background_color) ||
+        !ReadInt(arguments, "backgroundOpacity", &background_opacity) ||
+        !ReadInt(arguments, "outlineThickness", &outline_thickness) ||
+        !ReadDouble(arguments, "raise", &look.raise)) {
+      return error_response("invalid_args",
+                            "Every subtitle look value is required.");
+    }
+    look.text_scale = static_cast<int>(text_scale);
+    look.color = static_cast<int>(color);
+    look.background_color = static_cast<int>(background_color);
+    look.background_opacity = static_cast<int>(background_opacity);
+    look.outline_thickness = static_cast<int>(outline_thickness);
+    bool applied = false;
+    const std::string look_error = player->SetSubtitleLook(look, &applied);
+    if (!look_error.empty()) {
+      return error_response("vlc_error", look_error);
+    }
+    g_autoptr(FlValue) result = fl_value_new_bool(applied);
+    return FL_METHOD_RESPONSE(fl_method_success_response_new(result));
   } else if (strcmp(method, "takeSnapshot") == 0) {
     int64_t width = 0;
     int64_t height = 0;

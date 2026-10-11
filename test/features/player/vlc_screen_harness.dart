@@ -37,6 +37,8 @@ import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/core/storage/storage_service.dart';
 import 'package:skystream/core/providers/device_info_provider.dart';
 import 'package:skystream/features/library/presentation/history_provider.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_panel.dart'
+    show SubtitleStyleBinding;
 import 'package:skystream/features/player/presentation/vlc/side_car_fetch.dart';
 import 'package:skystream/features/player/presentation/vlc/vlc_player_screen.dart';
 import 'package:skystream/features/player/presentation/vlc/vlc_player_controls.dart';
@@ -190,6 +192,43 @@ class QuietSettings extends SettingsRepository {
 
   @override
   bool isAnimeSkipIntegrationEnabled() => false;
+}
+
+/// [QuietSettings] with somewhere to keep the player's settings: what a
+/// setter of `PlayerSettingsNotifier` writes is held here and read back, so a
+/// test can change a setting the way the viewer does and see it stored.
+class MemorySettings extends QuietSettings {
+  final Map<String, Object?> stored = <String, Object?>{};
+
+  @override
+  Future<void> setPlayerSetting(String key, dynamic value) async {
+    stored[key] = value;
+  }
+
+  @override
+  T? getPlayerSetting<T>(String key, {T? defaultValue}) =>
+      stored.containsKey(key) ? stored[key] as T? : defaultValue;
+}
+
+/// The panel's subtitle style, on the real notifier in [container], built the
+/// way the screen builds it: the settings republished on every change, and
+/// the notifier asked for at each one.
+SubtitleStyleBinding subtitleStyleBindingFor(ProviderContainer container) {
+  final settings = ValueNotifier<PlayerSettings>(
+    container.read(playerSettingsProvider).requireValue,
+  );
+  addTearDown(settings.dispose);
+  container.listen<AsyncValue<PlayerSettings>>(playerSettingsProvider, (
+    _,
+    next,
+  ) {
+    final value = next.asData?.value;
+    if (value != null) settings.value = value;
+  });
+  return SubtitleStyleBinding(
+    settings: settings,
+    notifier: () => container.read(playerSettingsProvider.notifier),
+  );
 }
 
 /// A download lookup that waits to be let go.

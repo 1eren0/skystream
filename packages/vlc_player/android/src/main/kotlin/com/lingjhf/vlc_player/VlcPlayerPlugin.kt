@@ -150,6 +150,14 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
                 }
                 player.setAudioDelay(delay, result)
             }
+            "setSubtitleLook" -> {
+                val look = subtitleLookOf(call)
+                if (look == null) {
+                    result.error("invalid_args", "Every subtitle look value is required.", null)
+                    return
+                }
+                player.setSubtitleLook(look, result)
+            }
             "setSubtitleDelay" -> {
                 val delay = call.argument<Number>("delay")?.toLong()
                 if (delay == null) {
@@ -299,6 +307,19 @@ class VlcPlayerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
         )
         players[viewId] = player
         result.success(mapOf("viewId" to viewId, "textureId" to producer.id()))
+    }
+
+    /// The look a setSubtitleLook call carries; null when any value is missing.
+    private fun subtitleLookOf(call: MethodCall): VlcNativeSubtitles.Look? {
+        fun int(name: String) = call.argument<Number>(name)?.toInt()
+        return VlcNativeSubtitles.Look(
+            textScale = int("textScale") ?: return null,
+            color = int("color") ?: return null,
+            backgroundColor = int("backgroundColor") ?: return null,
+            backgroundOpacity = int("backgroundOpacity") ?: return null,
+            outlineThickness = int("outlineThickness") ?: return null,
+            raise = call.argument<Number>("raise")?.toDouble() ?: return null,
+        )
     }
 
     private fun disposePlayer(viewId: Long) {

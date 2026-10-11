@@ -12,9 +12,9 @@
 /// hand-routes an arrow key.
 ///
 /// A tab can open a second step in the panel's place - the Subtitles tab's
-/// online search - under a title and a Back button ([PanelPage]). Back from
-/// there is back to the tab, focused on the row that opened it; only Back
-/// from the tabs closes the panel.
+/// online search and its subtitle style - under a title and a Back button
+/// ([PanelPage]). Back from there is back to the tab, focused on the row that
+/// opened it; only Back from the tabs closes the panel.
 ///
 /// Data is live: the screen publishes a [PanelData] through a
 /// `ValueListenable` and the panel rebuilds from it, so a failover, a late
@@ -53,11 +53,13 @@ import 'player_panel_page.dart';
 import 'player_panel_row.dart';
 import 'player_panel_shell.dart';
 import 'player_sources_tab.dart';
+import 'player_subtitle_style_page.dart';
 import 'player_tracks_tab.dart';
 import '../../../../../shared/focus/app_focus.dart';
 
 export 'player_panel_data.dart'
     show EpisodeProgress, EpisodeProgressLookup, PanelData;
+export 'player_subtitle_style_page.dart' show SubtitleStyleBinding;
 
 /// The panel's tabs, in the order they are shown.
 enum PlayerPanelTab { sources, audio, subtitles, episodes, files }
@@ -101,6 +103,9 @@ Set<PlayerPanelTab> availablePanelTabs({
 ///
 /// [onAudioPicked] hears of each audio track the viewer puts on from the Audio
 /// tab - see [PlayerTracksTab.onAudioPicked].
+///
+/// [subtitleStyle] is the viewer's subtitle settings, for the Subtitles tab's
+/// Subtitle style page - see [PlayerTracksTab.subtitleStyle].
 Future<void> showPlayerPanel(
   BuildContext context, {
   required VlcPlayerController controller,
@@ -115,6 +120,7 @@ Future<void> showPlayerPanel(
   EpisodeProgressLookup? episodeProgress,
   SideCarSubtitles? sideCars,
   ValueChanged<VlcTrackDescription>? onAudioPicked,
+  SubtitleStyleBinding? subtitleStyle,
 }) {
   return Navigator.of(context).push<void>(
     _PlayerPanelRoute(
@@ -133,6 +139,7 @@ Future<void> showPlayerPanel(
           episodeProgress: episodeProgress,
           sideCars: sideCars,
           onAudioPicked: onAudioPicked,
+          subtitleStyle: subtitleStyle,
           onClose: () => Navigator.of(routeContext).pop(),
         );
       },
@@ -243,6 +250,7 @@ class PlayerPanel extends StatefulWidget {
     this.episodeProgress,
     this.sideCars,
     this.onAudioPicked,
+    this.subtitleStyle,
     super.key,
   });
 
@@ -278,6 +286,10 @@ class PlayerPanel extends StatefulWidget {
   /// Each audio track the viewer puts on from the Audio tab - see
   /// [PlayerTracksTab.onAudioPicked].
   final ValueChanged<VlcTrackDescription>? onAudioPicked;
+
+  /// The viewer's subtitle settings, for the Subtitles tab's Subtitle style
+  /// page - see [PlayerTracksTab.subtitleStyle].
+  final SubtitleStyleBinding? subtitleStyle;
 
   @override
   State<PlayerPanel> createState() => _PlayerPanelState();
@@ -330,6 +342,10 @@ class _PlayerPanelState extends State<PlayerPanel> {
   /// it - and Back from the search lands on that row, not its old position.
   final FocusNode _searchRow = FocusNode(debugLabel: 'panel search row');
 
+  /// The Subtitles tab's Subtitle style row, owned here for the same reason:
+  /// Back from the page lands on it wherever the list has moved it.
+  final FocusNode _styleRow = FocusNode(debugLabel: 'panel style row');
+
   @override
   void initState() {
     super.initState();
@@ -356,6 +372,7 @@ class _PlayerPanelState extends State<PlayerPanel> {
   void dispose() {
     widget.controller.removeListener(_onEngine);
     _searchRow.dispose();
+    _styleRow.dispose();
     super.dispose();
   }
 
@@ -861,6 +878,8 @@ class _PlayerPanelState extends State<PlayerPanel> {
           onTracksChanged: _reloadTracks,
           onOpenPage: _openPage,
           searchFocusNode: isAudio ? null : _searchRow,
+          subtitleStyle: isAudio ? null : widget.subtitleStyle,
+          styleFocusNode: isAudio ? null : _styleRow,
           onAudioPicked: isAudio ? widget.onAudioPicked : null,
         );
       },

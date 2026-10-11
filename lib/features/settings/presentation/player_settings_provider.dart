@@ -7,6 +7,7 @@ import '../../../core/storage/settings_repository.dart';
 import '../../../core/storage/storage_service.dart'
     show kOsPasswordKey, kSubDlPasswordKey;
 import '../../player/domain/network_buffer.dart';
+import '../../player/domain/subtitle_code_pages.dart';
 import '../../player/domain/track_language.dart';
 import '../../player/data/subtitle_providers.dart';
 import '../../../core/network/dio_client_provider.dart';
@@ -69,6 +70,28 @@ enum SubtitleDefault {
   off,
 }
 
+/// How heavily subtitle letters are outlined.
+///
+/// Both renderers take it, each in its own unit: libVLC as a share of the
+/// glyph, SkyStream's own subtitles as a stroke - see `subtitle_style.dart`.
+/// [thin] is the outline every install had before this was a setting.
+enum SubtitleOutline { none, thin, normal, thick }
+
+/// The typeface subtitles are drawn in.
+///
+/// [standard] is each renderer's own, which is what every install had before
+/// this was a setting; the others are families every platform has under some
+/// name - see `subtitleFontFamily`.
+enum SubtitleFont { standard, serif, monospace }
+
+/// The lifts the player offers for subtitles, as shares of the picture's
+/// height: at the bottom, and up to a fifth of the way up.
+const List<double> kSubtitleRaises = <double>[0, 0.05, 0.1, 0.15, 0.2];
+
+/// The text opacities the player offers, opaque first. A quarter is the
+/// least: text nobody can see is not a style.
+const List<double> kSubtitleTextOpacities = <double>[1, 0.75, 0.5, 0.25];
+
 class PlayerSettings {
   final PlayerGesture leftGesture;
   final PlayerGesture rightGesture;
@@ -80,6 +103,34 @@ class PlayerSettings {
   final int subtitleColor;
   final int subtitleBackgroundColor;
   final double subtitleBackgroundOpacity;
+
+  /// How heavily the letters are outlined.
+  final SubtitleOutline subtitleOutline;
+
+  /// How far the lines are lifted from the bottom, as a share of the picture's
+  /// height: one of [kSubtitleRaises].
+  final double subtitleRaise;
+
+  /// Whether the letters are bold.
+  ///
+  /// This, [subtitleFont], [subtitleTextOpacity] and [subtitleEncoding] reach
+  /// libVLC only when a player is created, so a track inside the video takes
+  /// them the next time the player opens. SkyStream's own subtitle files
+  /// follow all four at once.
+  final bool subtitleBold;
+
+  final SubtitleFont subtitleFont;
+
+  /// How opaque the letters are: one of [kSubtitleTextOpacities].
+  final double subtitleTextOpacity;
+
+  /// The code page subtitle files that are not Unicode are read in, by
+  /// libVLC's name for it (`Windows-1251`), or empty for Auto - Windows-1252,
+  /// which is what every install read them as before this was a setting.
+  ///
+  /// A change reads the files already fetched again, so the one showing
+  /// changes at once - see `SideCarSubtitles.encoding`.
+  final String subtitleEncoding;
 
   /// Whether a newly opened video starts with a subtitle showing.
   /// [SubtitleDefault.auto] is what every install did before this setting
@@ -176,6 +227,12 @@ class PlayerSettings {
     this.subtitleColor = 0xFFFFFFFF, // White
     this.subtitleBackgroundColor = 0x00000000, // Transparent
     this.subtitleBackgroundOpacity = 0.5, // Default opacity (50%)
+    this.subtitleOutline = SubtitleOutline.thin,
+    this.subtitleRaise = 0.0,
+    this.subtitleBold = false,
+    this.subtitleFont = SubtitleFont.standard,
+    this.subtitleTextOpacity = 1.0,
+    this.subtitleEncoding = '',
     this.subtitleDefault = SubtitleDefault.auto,
     this.preferredAudioLanguage = '',
     this.hardwareDecoding = true,
@@ -211,6 +268,12 @@ class PlayerSettings {
     int? subtitleColor,
     int? subtitleBackgroundColor,
     double? subtitleBackgroundOpacity,
+    SubtitleOutline? subtitleOutline,
+    double? subtitleRaise,
+    bool? subtitleBold,
+    SubtitleFont? subtitleFont,
+    double? subtitleTextOpacity,
+    String? subtitleEncoding,
     SubtitleDefault? subtitleDefault,
     String? preferredAudioLanguage,
     bool? hardwareDecoding,
@@ -248,6 +311,12 @@ class PlayerSettings {
           subtitleBackgroundColor ?? this.subtitleBackgroundColor,
       subtitleBackgroundOpacity:
           subtitleBackgroundOpacity ?? this.subtitleBackgroundOpacity,
+      subtitleOutline: subtitleOutline ?? this.subtitleOutline,
+      subtitleRaise: subtitleRaise ?? this.subtitleRaise,
+      subtitleBold: subtitleBold ?? this.subtitleBold,
+      subtitleFont: subtitleFont ?? this.subtitleFont,
+      subtitleTextOpacity: subtitleTextOpacity ?? this.subtitleTextOpacity,
+      subtitleEncoding: subtitleEncoding ?? this.subtitleEncoding,
       subtitleDefault: subtitleDefault ?? this.subtitleDefault,
       preferredAudioLanguage:
           preferredAudioLanguage ?? this.preferredAudioLanguage,
@@ -357,6 +426,32 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
         (storage.getPlayerSetting('player_sub_bg_opacity') as num?)
             ?.toDouble() ??
         0.5;
+    // A name this build does not know - written by a newer one, or a
+    // corrupted box - reads as the default, as the subtitle default does.
+    final subOutline = SubtitleOutline.values.firstWhere(
+      (e) => e.name == storage.getPlayerSetting<String>('player_sub_outline'),
+      orElse: () => SubtitleOutline.thin,
+    );
+    final subRaise =
+        (storage.getPlayerSetting('player_sub_raise') as num?)?.toDouble() ??
+        0.0;
+    final subBold =
+        storage.getPlayerSetting<bool>(
+          'player_sub_bold',
+          defaultValue: false,
+        ) ??
+        false;
+    final subFont = SubtitleFont.values.firstWhere(
+      (e) => e.name == storage.getPlayerSetting<String>('player_sub_font'),
+      orElse: () => SubtitleFont.standard,
+    );
+    final subTextOpacity =
+        (storage.getPlayerSetting('player_sub_text_opacity') as num?)
+            ?.toDouble() ??
+        1.0;
+    final subEncoding = _knownEncoding(
+      storage.getPlayerSetting<String>('player_sub_encoding'),
+    );
     // Absent (a fresh install, or an upgrade from before this setting) and
     // unrecognised (a value written by a newer build, or a corrupted box) both
     // land on Auto, which is the behaviour every install already had.
@@ -453,6 +548,12 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
       subtitleColor: subColor,
       subtitleBackgroundColor: subBg,
       subtitleBackgroundOpacity: subBgOpacity,
+      subtitleOutline: subOutline,
+      subtitleRaise: subRaise,
+      subtitleBold: subBold,
+      subtitleFont: subFont,
+      subtitleTextOpacity: subTextOpacity,
+      subtitleEncoding: subEncoding,
       subtitleDefault: subtitleDefault,
       preferredAudioLanguage: preferredAudioLanguage,
       hardwareDecoding: hwDec,
@@ -647,6 +748,76 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
     );
   }
 
+  /// Saves only the size, without rewriting the viewer's colour and
+  /// background choices: the player's Subtitle style page steps it on its own.
+  Future<void> setSubtitleSize(double size) async {
+    final value = size.round().clamp(10, 80).toDouble();
+    await _repository.setPlayerSetting('player_sub_size', value);
+    _update((PlayerSettings current) => current.copyWith(subtitleSize: value));
+  }
+
+  /// Saves only the text colour, as [setSubtitleSize] saves only the size.
+  Future<void> setSubtitleColor(int color) async {
+    await _repository.setPlayerSetting('player_sub_color', color);
+    _update((PlayerSettings c) => c.copyWith(subtitleColor: color));
+  }
+
+  /// The box behind the text: its colour and its opacity together, because
+  /// neither means anything alone - zero opacity is no box, whatever the
+  /// colour says.
+  Future<void> setSubtitleBackground(int color, double opacity) async {
+    await _repository.setPlayerSetting('player_sub_bg', color);
+    await _repository.setPlayerSetting('player_sub_bg_opacity', opacity);
+    _update(
+      (PlayerSettings c) => c.copyWith(
+        subtitleBackgroundColor: color,
+        subtitleBackgroundOpacity: opacity,
+      ),
+    );
+  }
+
+  Future<void> setSubtitleOutline(SubtitleOutline outline) async {
+    await _repository.setPlayerSetting('player_sub_outline', outline.name);
+    _update((PlayerSettings c) => c.copyWith(subtitleOutline: outline));
+  }
+
+  /// Held to [kSubtitleRaises]' range, so a lift from an older or newer build
+  /// lands inside what this one offers.
+  Future<void> setSubtitleRaise(double raise) async {
+    final value = raise
+        .clamp(kSubtitleRaises.first, kSubtitleRaises.last)
+        .toDouble();
+    await _repository.setPlayerSetting('player_sub_raise', value);
+    _update((PlayerSettings c) => c.copyWith(subtitleRaise: value));
+  }
+
+  Future<void> setSubtitleBold(bool bold) async {
+    await _repository.setPlayerSetting('player_sub_bold', bold);
+    _update((PlayerSettings c) => c.copyWith(subtitleBold: bold));
+  }
+
+  Future<void> setSubtitleFont(SubtitleFont font) async {
+    await _repository.setPlayerSetting('player_sub_font', font.name);
+    _update((PlayerSettings c) => c.copyWith(subtitleFont: font));
+  }
+
+  /// Held to [kSubtitleTextOpacities]' range: a quarter at the least.
+  Future<void> setSubtitleTextOpacity(double opacity) async {
+    final value = opacity
+        .clamp(kSubtitleTextOpacities.last, kSubtitleTextOpacities.first)
+        .toDouble();
+    await _repository.setPlayerSetting('player_sub_text_opacity', value);
+    _update((PlayerSettings c) => c.copyWith(subtitleTextOpacity: value));
+  }
+
+  /// A code page this build has no table for is stored as Auto: libVLC would
+  /// be handed a name SkyStream's own reader cannot follow.
+  Future<void> setSubtitleEncoding(String encoding) async {
+    final value = _knownEncoding(encoding);
+    await _repository.setPlayerSetting('player_sub_encoding', value);
+    _update((PlayerSettings c) => c.copyWith(subtitleEncoding: value));
+  }
+
   Future<void> setPreferredPlayer(String? playerId) async {
     if (playerId == null) {
       await _repository.setPlayerSetting('player_preferred', null);
@@ -667,19 +838,51 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
     _update((PlayerSettings c) => c.copyWith(subtitleBackgroundOpacity: val));
   }
 
+  /// Every subtitle appearance setting back to what a fresh install has, and
+  /// nothing else.
   Future<void> resetSubtitleSettings() async {
-    await _repository.setPlayerSetting('player_sub_size', 22.0);
-    await _repository.setPlayerSetting('player_sub_color', 0xFFFFFFFF);
-    await _repository.setPlayerSetting('player_sub_bg', 0x00000000);
-    await _repository.setPlayerSetting('player_sub_bg_opacity', 0.5);
-    await _repository.setPlayerSetting('player_sub_pos', 100.0);
+    const PlayerSettings fresh = PlayerSettings();
+    await _repository.setPlayerSetting('player_sub_size', fresh.subtitleSize);
+    await _repository.setPlayerSetting('player_sub_color', fresh.subtitleColor);
+    await _repository.setPlayerSetting(
+      'player_sub_bg',
+      fresh.subtitleBackgroundColor,
+    );
+    await _repository.setPlayerSetting(
+      'player_sub_bg_opacity',
+      fresh.subtitleBackgroundOpacity,
+    );
+    await _repository.setPlayerSetting(
+      'player_sub_outline',
+      fresh.subtitleOutline.name,
+    );
+    await _repository.setPlayerSetting('player_sub_raise', fresh.subtitleRaise);
+    await _repository.setPlayerSetting('player_sub_bold', fresh.subtitleBold);
+    await _repository.setPlayerSetting(
+      'player_sub_font',
+      fresh.subtitleFont.name,
+    );
+    await _repository.setPlayerSetting(
+      'player_sub_text_opacity',
+      fresh.subtitleTextOpacity,
+    );
+    await _repository.setPlayerSetting(
+      'player_sub_encoding',
+      fresh.subtitleEncoding,
+    );
 
     _update(
       (PlayerSettings current) => current.copyWith(
-        subtitleSize: 22.0,
-        subtitleColor: 0xFFFFFFFF,
-        subtitleBackgroundColor: 0x00000000,
-        subtitleBackgroundOpacity: 0.5,
+        subtitleSize: fresh.subtitleSize,
+        subtitleColor: fresh.subtitleColor,
+        subtitleBackgroundColor: fresh.subtitleBackgroundColor,
+        subtitleBackgroundOpacity: fresh.subtitleBackgroundOpacity,
+        subtitleOutline: fresh.subtitleOutline,
+        subtitleRaise: fresh.subtitleRaise,
+        subtitleBold: fresh.subtitleBold,
+        subtitleFont: fresh.subtitleFont,
+        subtitleTextOpacity: fresh.subtitleTextOpacity,
+        subtitleEncoding: fresh.subtitleEncoding,
       ),
     );
   }
@@ -820,6 +1023,10 @@ class PlayerSettingsNotifier extends _$PlayerSettingsNotifier {
       orElse: () => fallback,
     );
   }
+
+  /// [encoding] when this build can read files in it, else Auto.
+  static String _knownEncoding(String? encoding) =>
+      subtitleCodePages.containsKey(encoding) ? encoding! : '';
 
   QualityFilterMode _parseFilterMode(String? s) {
     if (s == null) return QualityFilterMode.any;

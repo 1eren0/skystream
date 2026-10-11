@@ -41,6 +41,8 @@ import 'package:flutter/material.dart';
 import 'package:vlc_player/vlc_player.dart';
 
 import '../../../../../l10n/generated/app_localizations.dart';
+import '../../../../settings/presentation/player_settings_provider.dart';
+import '../../../../settings/presentation/widgets/subtitle_appearance_settings.dart';
 import '../../../domain/side_car_subtitles.dart';
 import '../../../domain/subtitle_search_target.dart';
 import '../../../domain/track_language.dart';
@@ -51,6 +53,7 @@ import 'player_panel_labels.dart';
 import 'player_panel_page.dart';
 import 'player_panel_row.dart';
 import 'player_subtitle_search_page.dart';
+import 'player_subtitle_style_page.dart';
 
 /// Which list a tab is showing. The two differ by more than a title: only
 /// subtitles have an Off and two ways to add a track from outside.
@@ -93,6 +96,8 @@ class PlayerTracksTab extends StatelessWidget {
     this.sideCars,
     this.target,
     this.searchFocusNode,
+    this.subtitleStyle,
+    this.styleFocusNode,
     this.isTv = false,
     this.autofocus = false,
     this.onAudioPicked,
@@ -137,6 +142,16 @@ class PlayerTracksTab extends StatelessWidget {
   /// search can hand focus back to that row wherever the list has moved it -
   /// a file the search added is listed ahead of it.
   final FocusNode? searchFocusNode;
+
+  /// The viewer's subtitle settings, for the Subtitle style row and the page
+  /// it opens. Handed down from the screen rather than read here: the panel
+  /// reads no providers. Null where there is no screen behind the panel, and
+  /// then there is no row.
+  final SubtitleStyleBinding? subtitleStyle;
+
+  /// The Subtitle style row's focus stop, held by the panel for the same
+  /// reason as [searchFocusNode].
+  final FocusNode? styleFocusNode;
 
   /// The subtitle files SkyStream draws, listed after the video's own tracks.
   /// Null only where there is no screen behind the panel to draw them; files
@@ -392,13 +407,14 @@ class PlayerTracksTab extends StatelessWidget {
     ];
   }
 
-  /// The two ways a subtitle the stream does not carry gets on screen, and
-  /// the one runtime adjustment, which moves files and the video's own tracks
-  /// alike.
+  /// The two ways a subtitle the stream does not carry gets on screen, the
+  /// delay, which moves files and the video's own tracks alike, and how they
+  /// look.
   ///
   /// Both entry points end at [_addFile], which lists the file and turns it
   /// on, so neither needs anywhere to put its result.
   List<Widget> _subtitleExtras(BuildContext context, AppLocalizations l10n) {
+    final style = subtitleStyle;
     return <Widget>[
       PanelSubheader(title: l10n.subtitleOptions),
       PanelRow(
@@ -417,7 +433,31 @@ class PlayerTracksTab extends StatelessWidget {
         select: (value) => value.subtitleDelay,
         apply: controller.setSubtitleDelay,
       ),
+      if (style != null) _styleRow(l10n, style),
     ];
+  }
+
+  /// Opens the Subtitle style page, and says what the size and the colour
+  /// are now.
+  Widget _styleRow(AppLocalizations l10n, SubtitleStyleBinding style) {
+    return ValueListenableBuilder<PlayerSettings>(
+      valueListenable: style.settings,
+      builder: (context, settings, _) => PanelRow(
+        label: l10n.subtitleStyle,
+        icon: Icons.text_format_rounded,
+        detail: l10n.subtitleStyleSummary(
+          settings.subtitleSize.round(),
+          subtitleColorLabel(l10n, settings.subtitleColor),
+        ),
+        focusNode: styleFocusNode,
+        onTap: () => onOpenPage(
+          PanelPage(
+            title: l10n.subtitleStyle,
+            builder: (context, close) => SubtitleStylePage(style: style),
+          ),
+        ),
+      ),
+    );
   }
 
   /// A delay stepper that follows the engine's own value - the natives echo a
@@ -434,6 +474,8 @@ class PlayerTracksTab extends StatelessWidget {
       builder: (context, delay) => PanelStepperRow(
         label: label,
         value: delayLabel(delay),
+        increasedValue: delayLabel(delay + delayStepFor(PanelStep.fine)),
+        decreasedValue: delayLabel(delay - delayStepFor(PanelStep.fine)),
         onDecrease: (step) =>
             unawaited(_step(() => apply(delay - delayStepFor(step)))),
         onIncrease: (step) =>

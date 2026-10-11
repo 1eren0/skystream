@@ -1005,9 +1005,9 @@
   "@seedsPeers": {
     "description": "Label under the seed and peer counts on the torrent stats card, shown as \"12 / 34\"."
   },
-  "subtitleAppearanceNote": "The engine draws subtitles, so it is handed these when playback starts — a change applies to the next video.",
+  "subtitleAppearanceNote": "Changes show at once. While a video plays, Subtitle style in the player's Subtitles tab changes them too.",
   "@subtitleAppearanceNote": {
-    "description": "Why the subtitle appearance settings do not alter a video that is already playing."
+    "description": "Under the subtitle preview in Subtitle Settings. A change takes effect at once, and the same settings are on the player's Subtitle style page (subtitleStyle), opened from its Subtitles tab, for changing them while watching."
   },
   "textSize": "Text size",
   "@textSize": {
@@ -1019,7 +1019,7 @@
   },
   "resetSubtitleAppearance": "Reset subtitle appearance",
   "@resetSubtitleAppearance": {
-    "description": "Puts size, colour and background back to what a fresh install uses."
+    "description": "Puts every subtitle appearance setting - size, text colour, background, outline, position, bold, font, text opacity and encoding - back to what a fresh install uses."
   },
   "resetSubtitleAppearanceSubtitle": "Back to white text at size 22",
   "@resetSubtitleAppearanceSubtitle": {
@@ -1085,6 +1085,160 @@
   "colorDarkGrey": "Dark grey",
   "@colorDarkGrey": {
     "description": "A caption background colour the viewer can pick. Named, not shown as a hex value."
+  },
+  "subtitleStyle": "Subtitle style",
+  "@subtitleStyle": {
+    "description": "The row in the player's Subtitles tab that opens a page of every subtitle look setting, and that page's title. Style here is how subtitles look: size, colours, outline, position, font."
+  },
+  "subtitleStyleSummary": "{size} · {color}",
+  "@subtitleStyleSummary": {
+    "description": "Second line of the Subtitle style row in the player: the text size and the text colour's name, for example \"22 · White\". {color} is one of the color* strings.",
+    "placeholders": {
+      "size": {
+        "type": "int"
+      },
+      "color": {
+        "type": "String"
+      }
+    }
+  },
+  "subtitleBackgroundOpacity": "Background opacity",
+  "@subtitleBackgroundOpacity": {
+    "description": "How see-through the box behind subtitle text is. A row of the player's Subtitle style page, shown only while the box is on."
+  },
+  "subtitleOutline": "Outline",
+  "@subtitleOutline": {
+    "description": "How thick the dark edge drawn around each subtitle letter is. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog."
+  },
+  "subtitleOutlineNone": "None",
+  "@subtitleOutlineNone": {
+    "description": "Outline choice: no edge around the letters."
+  },
+  "subtitleOutlineThin": "Thin",
+  "@subtitleOutlineThin": {
+    "description": "Outline choice: a thin edge around the letters. What a fresh install uses."
+  },
+  "subtitleOutlineNormal": "Normal",
+  "@subtitleOutlineNormal": {
+    "description": "Outline choice: a medium edge around the letters."
+  },
+  "subtitleOutlineThick": "Thick",
+  "@subtitleOutlineThick": {
+    "description": "Outline choice: a thick edge around the letters."
+  },
+  "subtitlePosition": "Position",
+  "@subtitlePosition": {
+    "description": "How high subtitles sit above the bottom of the picture. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog."
+  },
+  "subtitlePositionBottom": "Bottom",
+  "@subtitlePositionBottom": {
+    "description": "Position choice: subtitles in their usual place at the bottom of the picture, not lifted."
+  },
+  "subtitlePositionRaised": "+{percent}%",
+  "@subtitlePositionRaised": {
+    "description": "Position choice: subtitles lifted from the bottom by {percent} percent of the picture's height, for example \"+10%\".",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "subtitleBold": "Bold",
+  "@subtitleBold": {
+    "description": "Whether subtitle letters are bold. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog; its choices are the existing Off and On."
+  },
+  "subtitleFont": "Font",
+  "@subtitleFont": {
+    "description": "The typeface subtitles are drawn in. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog."
+  },
+  "subtitleFontDefault": "Default",
+  "@subtitleFontDefault": {
+    "description": "Font choice: the device's own typeface for subtitles. What a fresh install uses."
+  },
+  "subtitleFontSerif": "Serif",
+  "@subtitleFontSerif": {
+    "description": "Font choice: a typeface with serifs, such as Times New Roman."
+  },
+  "subtitleFontMonospace": "Monospace",
+  "@subtitleFontMonospace": {
+    "description": "Font choice: a typeface whose letters are all the same width, such as Courier."
+  },
+  "subtitleTextOpacity": "Text opacity",
+  "@subtitleTextOpacity": {
+    "description": "How see-through subtitle letters are. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog."
+  },
+  "subtitlePercent": "{percent}%",
+  "@subtitlePercent": {
+    "description": "An opacity as a percentage, for example \"75%\": the value of the opacity rows and the choices in their dialog.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "subtitleEncoding": "Encoding",
+  "@subtitleEncoding": {
+    "description": "The character set subtitle files that are not Unicode are read in. Only old files need it: a wrong one shows letters as gibberish. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog."
+  },
+  "subtitleEncodingAuto": "Auto",
+  "@subtitleEncodingAuto": {
+    "description": "Encoding choice and the default: Unicode files are read as Unicode, and any other file as Western."
+  },
+  "subtitleEncodingCentralEuropean": "Central European",
+  "@subtitleEncodingCentralEuropean": {
+    "description": "Encoding choice: the Windows-1250 code page, for Polish, Czech, Slovak, Hungarian, Croatian, Romanian and the like."
+  },
+  "subtitleEncodingCyrillic": "Cyrillic",
+  "@subtitleEncodingCyrillic": {
+    "description": "Encoding choice: the Windows-1251 code page, for Russian, Ukrainian, Bulgarian, Serbian and the like."
+  },
+  "subtitleEncodingWestern": "Western",
+  "@subtitleEncodingWestern": {
+    "description": "Encoding choice: the Windows-1252 code page, for English, French, German, Spanish and the like."
+  },
+  "subtitleEncodingGreek": "Greek",
+  "@subtitleEncodingGreek": {
+    "description": "Encoding choice: the Windows-1253 code page."
+  },
+  "subtitleEncodingTurkish": "Turkish",
+  "@subtitleEncodingTurkish": {
+    "description": "Encoding choice: the Windows-1254 code page."
+  },
+  "subtitleEncodingHebrew": "Hebrew",
+  "@subtitleEncodingHebrew": {
+    "description": "Encoding choice: the Windows-1255 code page."
+  },
+  "subtitleEncodingArabic": "Arabic",
+  "@subtitleEncodingArabic": {
+    "description": "Encoding choice: the Windows-1256 code page, for Arabic, Persian and Urdu."
+  },
+  "subtitleEncodingBaltic": "Baltic",
+  "@subtitleEncodingBaltic": {
+    "description": "Encoding choice: the Windows-1257 code page, for Estonian, Latvian and Lithuanian."
+  },
+  "subtitleEncodingVietnamese": "Vietnamese",
+  "@subtitleEncodingVietnamese": {
+    "description": "Encoding choice: the Windows-1258 code page."
+  },
+  "subtitleNextTime": "Next time the player opens",
+  "@subtitleNextTime": {
+    "description": "Heading over the subtitle settings that reach subtitles inside a video only when the player next opens: bold, font, text opacity and encoding."
+  },
+  "subtitleNextTimeNote": "These change subtitle files at once, and subtitles inside the video the next time the player opens.",
+  "@subtitleNextTimeNote": {
+    "description": "Note under subtitleNextTime, and above the same four rows in Subtitle Settings. Subtitle files are the ones the app draws itself; subtitles inside the video are drawn by the video engine, which takes these four only when it starts."
+  },
+  "resetSubtitleStyle": "Reset subtitle style",
+  "@resetSubtitleStyle": {
+    "description": "Last row of the player's Subtitle style page: puts every subtitle look setting back to what a fresh install uses."
+  },
+  "stepperDecrease": "Decrease",
+  "@stepperDecrease": {
+    "description": "What a screen reader says for the minus button beside a value stepped with Left/Right in the player's side panel - a subtitle size, a delay, a colour."
+  },
+  "stepperIncrease": "Increase",
+  "@stepperIncrease": {
+    "description": "What a screen reader says for the plus button beside a value stepped with Left/Right in the player's side panel - a subtitle size, a delay, a colour."
   },
   "playerNowPlaying": "Now playing",
   "@playerNowPlaying": {

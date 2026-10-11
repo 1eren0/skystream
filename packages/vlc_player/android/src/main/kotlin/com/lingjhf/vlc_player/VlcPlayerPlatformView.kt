@@ -98,6 +98,11 @@ internal class VlcPlayerPlatformView(
                 bottom != oldBottom
             ) {
                 scheduleAttachViews()
+                // A raise is a share of the picture, which the view's size
+                // can resize on screen.
+                if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                    reapplySubtitleLook()
+                }
             }
         }
     }
@@ -202,6 +207,10 @@ internal class VlcPlayerPlatformView(
     private var duckFactor = 1.0f
     private var interruption = INTERRUPTION_NONE
     private var playbackSpeed = 1.0f
+
+    /// The subtitle look the host last asked for, carried to each new player
+    /// as the speed and volume are. Null until it asks.
+    private var subtitleLook: VlcNativeSubtitles.Look? = null
     private var bufferingProgress: Double? = null
     private var errorCode: String? = null
     private var errorDescription: String? = null
@@ -335,6 +344,7 @@ internal class VlcPlayerPlatformView(
         mediaPlayer.rate = playbackSpeed
         applyVolume()
         applyVideoGeometry(mediaPlayer)
+        applySubtitleLook()
         attachViewsIfNeeded()
 
         releaser.execute {
@@ -464,6 +474,57 @@ internal class VlcPlayerPlatformView(
         }
         sendSnapshot()
         result.success(null)
+    }
+
+    /// Restyles the subtitle lines libVLC draws, from their next line; answers
+    /// whether it could. Kept, so the next player takes it too.
+    fun setSubtitleLook(look: VlcNativeSubtitles.Look, result: MethodChannel.Result) {
+        if (!ensureActive(result)) {
+            return
+        }
+        subtitleLook = look
+        result.success(applySubtitleLook())
+    }
+
+    /// Applies the kept look to the current player, its raise worked out for
+    /// the picture as it is now - see VlcSubtitleMargin.
+    private fun applySubtitleLook(): Boolean {
+        val look = subtitleLook ?: return false
+        val margin = if (look.raise > 0.0) {
+            // libvlc-android keeps the track list it first read, and an
+            // adaptive stream's rendition change resizes the picture without a
+            // word to it: read the picture afresh.
+            dropCachedTracks()
+            val track = sizedVideoTrack()
+            val (viewWidth, viewHeight) = when (target) {
+                is VlcRenderTarget.VideoLayout -> target.layout.width to target.layout.height
+                is VlcRenderTarget.Texture -> videoLayoutWidth to videoLayoutHeight
+            }
+            VlcSubtitleMargin.pixels(
+                raise = look.raise,
+                videoWidth = track?.width ?: 0,
+                videoHeight = track?.height ?: 0,
+                sarNum = track?.sarNum ?: 1,
+                sarDen = track?.sarDen ?: 1,
+                crop = cropGeometry,
+                viewWidth = viewWidth,
+                viewHeight = viewHeight,
+                stretched = aspectRatio != null,
+                drawnOnDisplay = VlcNativeSubtitles.drawnOnDisplay(mediaPlayer),
+            )
+        } else {
+            0
+        }
+        return VlcNativeSubtitles.apply(mediaPlayer, look, margin)
+    }
+
+    /// Works the kept raise out again, for what changed the picture's size on
+    /// screen or what libVLC lays the lines out on.
+    private fun reapplySubtitleLook() {
+        if (disposed || (subtitleLook?.raise ?: 0.0) <= 0.0) {
+            return
+        }
+        applySubtitleLook()
     }
 
     fun setSubtitleDelay(microseconds: Long, result: MethodChannel.Result) {
@@ -758,11 +819,16 @@ internal class VlcPlayerPlatformView(
                 errorDescription = "VLC encountered an error while playing the media."
                 updateState(STATE_ERROR)
             }
+            MediaPlayer.Event.Vout -> {
+                // A new video output: the picture's size, and whether its
+                // display draws the lines itself, are known from here.
+                reapplySubtitleLook()
+                sendSnapshot()
+            }
             MediaPlayer.Event.TimeChanged,
             MediaPlayer.Event.PositionChanged,
             MediaPlayer.Event.LengthChanged,
             MediaPlayer.Event.SeekableChanged,
-            MediaPlayer.Event.Vout,
             MediaPlayer.Event.ESSelected,
             -> sendSnapshot()
             MediaPlayer.Event.ESAdded,
@@ -890,6 +956,7 @@ internal class VlcPlayerPlatformView(
         cropGeometry = crop?.takeIf { it.isNotEmpty() }
         aspectRatio = aspect?.takeIf { it.isNotEmpty() }
         applyVideoGeometry(mediaPlayer)
+        reapplySubtitleLook()
         result.success(null)
     }
 

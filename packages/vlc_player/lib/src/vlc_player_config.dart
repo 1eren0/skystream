@@ -275,9 +275,10 @@ enum VlcSubtitleAlignment {
 
 /// Appearance of VLC-rendered subtitles.
 ///
-/// These are libVLC instance options: VLC 3.x cannot restyle subtitles on a
-/// running player, so changing a style means creating a new player. A host
-/// that needs live restyling renders subtitles itself instead.
+/// These are libVLC instance options, fixed when the player is created. Part
+/// of the look - size, colours, background, outline and position - can change
+/// on a running player through [VlcPlayerController.setSubtitleLook]; the rest
+/// waits for a new player.
 @immutable
 class VlcSubtitleStyle {
   const VlcSubtitleStyle({
@@ -294,6 +295,7 @@ class VlcSubtitleStyle {
     this.marginPixels,
     this.alignment,
     this.autoDetectFiles,
+    this.encoding,
   });
 
   /// Font family name (`--freetype-font`).
@@ -320,7 +322,8 @@ class VlcSubtitleStyle {
   /// Outline colour (`--freetype-outline-color` + opacity).
   final Color? outlineColor;
 
-  /// Outline thickness in pixels (`--freetype-outline-thickness`).
+  /// Outline thickness as a percent of the glyph size
+  /// (`--freetype-outline-thickness`); VLC's own presets are 2, 4 and 6.
   final int? outlineThickness;
 
   /// Drop-shadow colour (`--freetype-shadow-color` + opacity).
@@ -344,6 +347,12 @@ class VlcSubtitleStyle {
   /// Off keeps VLC from adding tracks the host's own subtitle list does not
   /// know about.
   final bool? autoDetectFiles;
+
+  /// The character set text subtitles that are not Unicode are read in
+  /// (`--subsdec-encoding`), by libVLC's name for it: `Windows-1251`.
+  ///
+  /// Null or empty leaves the choice to libVLC.
+  final String? encoding;
 
   /// VLC colour options take a 24-bit integer; opacity is a separate 0-255.
   static int _rgb(Color color) {
@@ -386,8 +395,83 @@ class VlcSubtitleStyle {
       if (alignment != null) '--freetype-text-align=${alignment!._value}',
       if (autoDetectFiles != null)
         autoDetectFiles! ? '--sub-autodetect-file' : '--no-sub-autodetect-file',
+      if (encoding != null && encoding!.isNotEmpty)
+        '--subsdec-encoding=$encoding',
     ];
   }
+}
+
+/// The look of the subtitle lines libVLC draws into the picture, changed
+/// while the video plays: see [VlcPlayerController.setSubtitleLook].
+///
+/// [VlcSubtitleStyle] is fixed when the player is created; this is what can
+/// change after. [textScale] is in libVLC's own terms, a percent of the size
+/// the player was created with; [raise] is a share of the picture's height.
+@immutable
+class VlcSubtitleLook {
+  const VlcSubtitleLook({
+    this.textScale = 100,
+    required this.color,
+    required this.backgroundColor,
+    this.backgroundOpacity = 0,
+    this.outlineThickness = 2,
+    this.raise = 0,
+  });
+
+  /// Percent of the size the player was created with (`sub-text-scale`),
+  /// held to libVLC's 10..500.
+  final int textScale;
+
+  /// The text's colour; its alpha is the player's, fixed at creation.
+  final Color color;
+
+  /// The box's colour behind the text; [backgroundOpacity] is its alpha.
+  final Color backgroundColor;
+
+  /// 0..255; 0 draws no box.
+  final int backgroundOpacity;
+
+  /// As [VlcSubtitleStyle.outlineThickness]; 0 draws none.
+  final int outlineThickness;
+
+  /// How far the lines are lifted from the bottom, as a share of the
+  /// picture's height: 0.1 lifts them a tenth of it. Held to 0..0.5.
+  ///
+  /// libVLC takes pixels (`sub-margin`), and not always the picture's: where
+  /// Android's OpenGL output draws the lines itself, they are pixels of the
+  /// picture on screen. Each platform works out its own, and the controller
+  /// sends the look again whenever the picture changes size.
+  final double raise;
+
+  /// The values libVLC takes, held to what it accepts.
+  Map<String, Object> toArguments() => <String, Object>{
+    'textScale': textScale.clamp(10, 500),
+    'color': VlcSubtitleStyle._rgb(color),
+    'backgroundColor': VlcSubtitleStyle._rgb(backgroundColor),
+    'backgroundOpacity': backgroundOpacity.clamp(0, 255),
+    'outlineThickness': outlineThickness < 0 ? 0 : outlineThickness,
+    'raise': raise.isNaN ? 0.0 : raise.clamp(0.0, 0.5).toDouble(),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is VlcSubtitleLook &&
+      other.textScale == textScale &&
+      other.color == color &&
+      other.backgroundColor == backgroundColor &&
+      other.backgroundOpacity == backgroundOpacity &&
+      other.outlineThickness == outlineThickness &&
+      other.raise == raise;
+
+  @override
+  int get hashCode => Object.hash(
+    textScale,
+    color,
+    backgroundColor,
+    backgroundOpacity,
+    outlineThickness,
+    raise,
+  );
 }
 
 /// Top-level VLC instance configuration.
@@ -557,8 +641,9 @@ abstract final class VlcPlayerCapabilities {
 
   /// Whether subtitle appearance can be changed while a player is running.
   ///
-  /// False for VLC 3.x: styling is fixed at instance creation. See
-  /// [VlcSubtitleStyle].
+  /// False for VLC 3.x: a [VlcSubtitleStyle] is fixed at instance creation.
+  /// The look of the lines libVLC draws can still change while a video plays,
+  /// through [VlcPlayerController.setSubtitleLook] where that answers true.
   static const bool supportsRuntimeSubtitleStyling = false;
 
   /// Whether the engine reports HDR metadata or performs tone mapping.

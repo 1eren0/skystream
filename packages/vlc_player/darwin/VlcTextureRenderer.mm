@@ -11,6 +11,7 @@
 #include <mutex>
 
 #include "vlc_frame_sink.h"
+#include "vlc_subtitle_look.h"
 #include "vlc_video_output.h"
 
 /// VLCKit and MobileVLCKit both publish the underlying libvlc handle through
@@ -367,6 +368,41 @@ class CVPixelBufferSink final : public vlc_player::VlcFrameSink {
 
 }  // namespace
 
+// libvlccore's functions the subtitle look sets variables through, which
+// VLCKit's libVLC exports but none of its headers declares. Declared loosely -
+// only their addresses are taken here, and vlc_subtitle_look.c calls them
+// through their own types - and named, so a build that strips unused code
+// keeps them where the framework is linked in statically.
+extern "C" {
+void var_Type(void);
+void var_Create(void);
+void var_SetChecked(void);
+void vlc_list_children(void);
+void vlc_list_release(void);
+}
+
+static vlc_subtitle_look_function ResolveInVLCKit(const char *name) {
+  struct Entry {
+    const char *name;
+    vlc_subtitle_look_function function;
+  };
+  static const Entry kFunctions[] = {
+      {"libvlc_get_version",
+       reinterpret_cast<vlc_subtitle_look_function>(&libvlc_get_version)},
+      {"var_Type", &var_Type},
+      {"var_Create", &var_Create},
+      {"var_SetChecked", &var_SetChecked},
+      {"vlc_list_children", &vlc_list_children},
+      {"vlc_list_release", &vlc_list_release},
+  };
+  for (const Entry &entry : kFunctions) {
+    if (std::strcmp(entry.name, name) == 0) {
+      return entry.function;
+    }
+  }
+  return nullptr;
+}
+
 @implementation VlcTextureRenderer {
   std::unique_ptr<CVPixelBufferSink> _sink;
   std::unique_ptr<vlc_player::VlcVideoOutput> _output;
@@ -391,6 +427,26 @@ class CVPixelBufferSink final : public vlc_player::VlcFrameSink {
   _output =
       std::make_unique<vlc_player::VlcVideoOutput>(player, _sink.get());
   return self;
+}
+
++ (BOOL)applySubtitleLookToMediaPlayer:(VLCMediaPlayer *)mediaPlayer
+                             textScale:(NSInteger)textScale
+                                 color:(NSInteger)color
+                       backgroundColor:(NSInteger)backgroundColor
+                     backgroundOpacity:(NSInteger)backgroundOpacity
+                      outlineThickness:(NSInteger)outlineThickness
+                                margin:(NSInteger)margin {
+  vlc_subtitle_look look;
+  look.text_scale = static_cast<int>(textScale);
+  look.color = static_cast<int>(color);
+  look.background_color = static_cast<int>(backgroundColor);
+  look.background_opacity = static_cast<int>(backgroundOpacity);
+  look.outline_thickness = static_cast<int>(outlineThickness);
+  look.margin = static_cast<int>(margin);
+  return vlc_subtitle_look_apply(mediaPlayer.libVLCMediaPlayer, &look,
+                                 ResolveInVLCKit)
+             ? YES
+             : NO;
 }
 
 - (NSString *)chroma {

@@ -2219,4 +2219,224 @@ void main() {
       controller.dispose();
     });
   });
+
+  // libVLC draws the subtitle lines inside the picture, and its style is an
+  // option of the instance; this restyles them while the video plays.
+  group('subtitle look', () {
+    void answer(Object? Function(MethodCall call) reply) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(VlcMethodChannelHarness.methodChannel, (
+            call,
+          ) async {
+            calls.add(call);
+            return reply(call);
+          });
+    }
+
+    Future<VlcPlayerController> attached(int viewId) async {
+      final controller = VlcPlayerController();
+      mockEventChannel(viewId);
+      await harness.attachController(controller, viewId);
+      return controller;
+    }
+
+    test('is sent in libVLC terms, with the view id', () async {
+      final controller = await attached(21);
+      answer((call) => call.method == 'setSubtitleLook' ? true : null);
+
+      final applied = await controller.setSubtitleLook(
+        const VlcSubtitleLook(
+          textScale: 150,
+          color: Color(0xFFFFEB3B),
+          backgroundColor: Color(0x80000000),
+          backgroundOpacity: 128,
+          outlineThickness: 4,
+          raise: 0.1,
+        ),
+      );
+
+      expect(applied, isTrue);
+      expect(
+        calls.singleWhere((call) => call.method == 'setSubtitleLook').arguments,
+        <String, Object?>{
+          'viewId': 21,
+          'textScale': 150,
+          'color': 0xFFEB3B,
+          'backgroundColor': 0x000000,
+          'backgroundOpacity': 128,
+          'outlineThickness': 4,
+          'raise': 0.1,
+        },
+      );
+    });
+
+    test('is held to what libVLC accepts', () async {
+      final controller = await attached(22);
+      answer((call) => call.method == 'setSubtitleLook' ? true : null);
+
+      await controller.setSubtitleLook(
+        const VlcSubtitleLook(
+          textScale: 900,
+          color: Color(0xFFFFFFFF),
+          backgroundColor: Color(0xFF000000),
+          backgroundOpacity: 400,
+          outlineThickness: -3,
+          raise: -0.2,
+        ),
+      );
+      await controller.setSubtitleLook(
+        const VlcSubtitleLook(
+          textScale: 1,
+          color: Color(0xFFFFFFFF),
+          backgroundColor: Color(0xFF000000),
+          backgroundOpacity: -1,
+          raise: 0.9,
+        ),
+      );
+
+      final sent = [
+        for (final call in calls)
+          if (call.method == 'setSubtitleLook')
+            call.arguments as Map<Object?, Object?>,
+      ];
+      expect(sent[0]['textScale'], 500);
+      expect(sent[0]['backgroundOpacity'], 255);
+      expect(sent[0]['outlineThickness'], 0);
+      expect(sent[0]['raise'], 0.0);
+      expect(sent[1]['textScale'], 10);
+      expect(sent[1]['backgroundOpacity'], 0);
+      expect(sent[1]['raise'], 0.5);
+    });
+
+    Map<String, Object?> sized(int width, int height, {int position = 1000}) =>
+        <String, Object?>{
+          'state': 'playing',
+          'position': position,
+          'duration': 10000,
+          'volume': 100,
+          'playbackSpeed': 1.0,
+          'isReady': true,
+          'isSeekable': true,
+          'isLive': false,
+          'videoSize': <String, Object?>{'width': width, 'height': height},
+        };
+
+    Iterable<MethodCall> looks() =>
+        calls.where((call) => call.method == 'setSubtitleLook');
+
+    test('is sent again when the picture changes size, its raise being a '
+        "share of the picture's height", () async {
+      final controller = await attached(25);
+      answer((call) => call.method == 'setSubtitleLook' ? true : null);
+      await controller.setSubtitleLook(
+        const VlcSubtitleLook(
+          color: Color(0xFFFFFFFF),
+          backgroundColor: Color(0xFF000000),
+          raise: 0.1,
+        ),
+      );
+
+      await harness.sendEvent(25, sized(640, 360));
+      await harness.sendEvent(25, sized(640, 360, position: 1250));
+      await harness.sendEvent(25, sized(1280, 720));
+      await pumpEventQueue();
+
+      expect(looks(), hasLength(3));
+      expect(looks().last.arguments, looks().first.arguments);
+    });
+
+    test(
+      'a look that raises nothing is not sent again for a new size',
+      () async {
+        final controller = await attached(26);
+        answer((call) => call.method == 'setSubtitleLook' ? true : null);
+        await harness.sendEvent(26, sized(640, 360));
+        await controller.setSubtitleLook(
+          const VlcSubtitleLook(
+            color: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF000000),
+          ),
+        );
+
+        await harness.sendEvent(26, sized(1280, 720));
+        await pumpEventQueue();
+
+        expect(looks(), hasLength(1));
+      },
+    );
+
+    test('reaches a player created later', () async {
+      final controller = await attached(27);
+      answer((call) => call.method == 'setSubtitleLook' ? true : null);
+      await controller.setSubtitleLook(
+        const VlcSubtitleLook(
+          color: Color(0xFFFFFFFF),
+          backgroundColor: Color(0xFF000000),
+          raise: 0.05,
+        ),
+      );
+
+      mockEventChannel(28);
+      await harness.attachController(controller, 28);
+
+      expect(looks(), hasLength(2));
+      expect((looks().last.arguments as Map<Object?, Object?>)['viewId'], 28);
+      expect((looks().last.arguments as Map<Object?, Object?>)['raise'], 0.05);
+    });
+
+    test('set before there is a player, waits for one', () async {
+      final controller = VlcPlayerController();
+      addTearDown(controller.dispose);
+      answer((call) => call.method == 'setSubtitleLook' ? true : null);
+
+      expect(
+        await controller.setSubtitleLook(
+          const VlcSubtitleLook(
+            color: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF000000),
+          ),
+        ),
+        isFalse,
+      );
+      expect(looks(), isEmpty);
+
+      mockEventChannel(29);
+      await harness.attachController(controller, 29);
+
+      expect(looks(), hasLength(1));
+    });
+
+    test('an engine that cannot restyle its lines says so', () async {
+      final controller = await attached(23);
+      answer((call) => call.method == 'setSubtitleLook' ? false : null);
+
+      expect(
+        await controller.setSubtitleLook(
+          const VlcSubtitleLook(
+            color: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF000000),
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('a platform without the call says no, rather than failing', () async {
+      final controller = await attached(24);
+      answer((call) {
+        if (call.method == 'setSubtitleLook') throw MissingPluginException();
+        return null;
+      });
+
+      expect(
+        await controller.setSubtitleLook(
+          const VlcSubtitleLook(
+            color: Color(0xFFFFFFFF),
+            backgroundColor: Color(0xFF000000),
+          ),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

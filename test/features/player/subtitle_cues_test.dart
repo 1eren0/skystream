@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/features/player/domain/subtitle_cues.dart';
@@ -354,6 +355,88 @@ Dialogue: Marked=0,0:00:01.00,0:00:02.00,*Default,,0000,0000,0000,,{\a10}Middle
         '“Café”€',
       );
     });
+
+    test('reads a file that is not Unicode in the code page chosen', () {
+      // A word in each language, as its code page writes it.
+      const words = <String, (List<int>, String)>{
+        'Windows-1250': ([0x5A, 0x61, 0xBF, 0xF3, 0xB3, 0xE6], 'Zażółć'),
+        'Windows-1251': ([0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2], 'Привет'),
+        'Windows-1252': ([0x93, 0x43, 0x61, 0x66, 0xE9, 0x94], '“Café”'),
+        'Windows-1253': ([0xC3, 0xE5, 0xE9, 0xDC], 'Γειά'),
+        'Windows-1254': ([0x49, 0xFE, 0xFD, 0x6B], 'Işık'),
+        'Windows-1255': ([0xF9, 0xEC, 0xE5, 0xED], 'שלום'),
+        'Windows-1256': ([0xD3, 0xE1, 0xC7, 0xE3], 'سلام'),
+        'Windows-1257': ([0x41, 0xE8, 0x69, 0xFB], 'Ačiū'),
+        // Vietnamese spells most tones with a combining mark, kept as one.
+        'Windows-1258': ([0xD0, 0xFD, 0xF5, 0xCC], 'Đươ\u0300'),
+      };
+      for (final MapEntry(key: encoding, value: (bytes, word))
+          in words.entries) {
+        expect(
+          decodeSubtitleBytes(bytes, encoding: encoding),
+          word,
+          reason: encoding,
+        );
+      }
+    });
+
+    test('a byte order mark or valid UTF-8 wins over the code page', () {
+      // A Unicode file read as Cyrillic would be nothing but garbage: the
+      // chosen code page is for the files that are not Unicode.
+      expect(
+        decodeSubtitleBytes(utf8.encode('Привет'), encoding: 'Windows-1251'),
+        'Привет',
+      );
+      expect(
+        decodeSubtitleBytes([
+          0xEF,
+          0xBB,
+          0xBF,
+          ...utf8.encode('Olá'),
+        ], encoding: 'Windows-1251'),
+        'Olá',
+      );
+      expect(
+        decodeSubtitleBytes([0xFF, 0xFE, 0x1F, 0x04], encoding: 'Windows-1253'),
+        'П',
+      );
+    });
+
+    test('Auto, and a name it does not know, read Windows-1252', () {
+      const bytes = <int>[0xCF, 0xF0, 0xE8];
+      expect(decodeSubtitleBytes(bytes), 'Ïðè');
+      expect(decodeSubtitleBytes(bytes, encoding: ''), 'Ïðè');
+      expect(decodeSubtitleBytes(bytes, encoding: 'KOI8-R'), 'Ïðè');
+    });
+
+    test('a byte the code page leaves undefined reads as U+FFFD', () {
+      expect(decodeSubtitleBytes([0x41, 0x81]), 'A\uFFFD');
+      expect(decodeSubtitleBytes([0xAA], encoding: 'Windows-1253'), '\uFFFD');
+    });
+
+    test('the tables are what tool/subtitle_code_pages.py makes', () {
+      final table = File('lib/features/player/domain/subtitle_code_pages.dart')
+          .readAsStringSync();
+      // A python3 that is there and cannot run is skipped like one that is
+      // not there: Windows' App Execution Alias, with no Python behind it,
+      // answers every call by exiting 9009.
+      ProcessResult? version;
+      try {
+        version = Process.runSync('python3', ['--version']);
+      } on ProcessException {
+        version = null;
+      }
+      if (version == null || version.exitCode != 0) {
+        markTestSkipped('no python3 to run the generator with');
+        return;
+      }
+      final made = Process.runSync('python3', [
+        '-I',
+        'tool/subtitle_code_pages.py',
+      ]);
+      expect(made.exitCode, 0, reason: '${made.stderr}');
+      expect(made.stdout, table);
+    });
   });
 
   group('HLS subtitle playlists', () {
@@ -454,6 +537,38 @@ seg2.vtt
 
       expect(load.failure, isNull);
       expect(load.cues.single.text, 'Hi');
+    });
+
+    test('reads a file that is not Unicode in the code page given', () async {
+      final file = <int>[
+        ...ascii.encode('1\n00:00:01,000 --> 00:00:02,000\n'),
+        0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2, // Привет in Windows-1251
+        0x0A,
+      ];
+      final load = await loadSubtitleCues(
+        Uri.parse('https://x/ru.srt'),
+        (url) async => file,
+        encoding: 'Windows-1251',
+      );
+
+      expect(load.cues.single.text, 'Привет');
+    });
+
+    test('reads a playlist\'s segments in the code page given', () async {
+      final segment = <int>[
+        ...ascii.encode('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n'),
+        0xC3, 0xE5, 0xE9, 0xDC, // Γειά in Windows-1253
+        0x0A,
+      ];
+      final load = await loadSubtitleCues(
+        Uri.parse('https://x/subs.m3u8'),
+        (url) async => url.path.endsWith('.m3u8')
+            ? ascii.encode('#EXTM3U\n#EXTINF:10,\n0.vtt\n#EXT-X-ENDLIST\n')
+            : segment,
+        encoding: 'Windows-1253',
+      );
+
+      expect(load.cues.single.text, 'Γειά');
     });
 
     test(

@@ -599,6 +599,10 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   late final SideCarSubtitles _sideCars = SideCarSubtitles(
     fetch: (url, headers) => _read(sideCarFetchProvider)(url, headers),
     onUnreadable: _handSideCarToEngine,
+    // Kept in step by [_onPlayerSettings], which reads the files already
+    // fetched again when it changes.
+    encoding:
+        _read(playerSettingsProvider).asData?.value.subtitleEncoding ?? '',
   );
 
   /// Whether Auto still owes this media its look for a subtitle in the
@@ -727,6 +731,19 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   final ValueNotifier<PanelData> _panelData = ValueNotifier<PanelData>(
     PanelData.empty,
   );
+
+  /// The viewer's player settings as they stand, for the panel's Subtitle
+  /// style page, which reads no providers. Republished on every change - see
+  /// [_onPlayerSettings].
+  late final ValueNotifier<PlayerSettings> _playerSettings;
+
+  /// libVLC's relative size the controller was created with: the look's text
+  /// scale is a percent of it. With the controller, it stays for every source
+  /// and episode this screen plays.
+  late final int _createdRelativeSize;
+
+  /// The look last handed to the controller - see [_restyleSubtitles].
+  VlcSubtitleLook? _sentLook;
 
   ProviderContainer? _container;
 
@@ -932,6 +949,17 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       // binary.
       options: const <String>['--http-reconnect'],
     );
+    // The style above is fixed with the player. What libVLC can change while
+    // it plays follows the settings from here, starting now - the lift has no
+    // creation option of its own - and the controller hands the look to the
+    // native player once it exists.
+    _createdRelativeSize = relativeSizeFor(settings.subtitleSize);
+    _playerSettings = ValueNotifier<PlayerSettings>(settings);
+    _restyleSubtitles(settings);
+    ref.listenManual<AsyncValue<PlayerSettings>>(
+      playerSettingsProvider,
+      (_, next) => _onPlayerSettings(next.asData?.value),
+    );
 
     _controller.addListener(_onPlaybackValue);
     _sideCars.addListener(_onSideCars);
@@ -942,6 +970,35 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _listenForNetworkRestore();
     _attachPip();
     unawaited(_start());
+  }
+
+  /// A player setting changed. The panel's copy follows, libVLC's lines do
+  /// too when the change is one they show, and the subtitle files are read
+  /// again in a new encoding.
+  void _onPlayerSettings(PlayerSettings? settings) {
+    if (settings == null || _disposed) return;
+    _playerSettings.value = settings;
+    _restyleSubtitles(settings);
+    _sideCars.encoding = settings.subtitleEncoding;
+  }
+
+  /// Hands libVLC the look [settings] give its lines inside the video, when
+  /// it is not the one they have: from their next line, and their lift at
+  /// once. Subtitle files restyle by themselves, drawn from the settings.
+  ///
+  /// Best effort. An engine that cannot restyle answers false and keeps the
+  /// look it was created with, and nothing about that is worth a word to the
+  /// viewer; the controller keeps the look for a player created later.
+  void _restyleSubtitles(PlayerSettings settings) {
+    final look = subtitleLookFrom(
+      settings,
+      createdRelativeSize: _createdRelativeSize,
+    );
+    if (look == _sentLook) return;
+    _sentLook = look;
+    unawaited(
+      _controller.setSubtitleLook(look).catchError((Object _) => false),
+    );
   }
 
   /// Wires the PiP window's transport buttons to the controller.
@@ -2986,6 +3043,12 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       episodeProgress: _episodeProgressFor,
       onPickFile: (file) => unawaited(_applyTorrentFile(file)),
       onAudioPicked: _onAudioPicked,
+      // The settings, live, and the notifier to change them through: the
+      // panel's Subtitle style page has no ProviderScope of its own to ask.
+      subtitleStyle: SubtitleStyleBinding(
+        settings: _playerSettings,
+        notifier: () => _read(playerSettingsProvider.notifier),
+      ),
       // Held so Back has something to close - see [_dismissOverlay].
       onOpened: (panelContext) => _sheetContext = panelContext,
     );
@@ -4119,6 +4182,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // an open panel's builder may still unsubscribe, which a disposed
     // notifier allows.
     _panelData.dispose();
+    _playerSettings.dispose();
     _bufferedFraction.dispose();
     _sideCars.removeListener(_onSideCars);
     _sideCars.dispose();

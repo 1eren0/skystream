@@ -12,8 +12,52 @@
 #include <thread>
 #include <utility>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
+#include "vlc_subtitle_look.h"
+
 namespace vlc_player {
 namespace {
+
+// Finds what a subtitle look needs in the libVLC this player runs on:
+// libvlc_get_version in libvlc, the rest in libvlccore, which libvlc loads.
+vlc_subtitle_look_function ResolveInLibVlc(const char* name) {
+#ifdef _WIN32
+  for (const wchar_t* library : {L"libvlccore.dll", L"libvlc.dll"}) {
+    HMODULE module = GetModuleHandleW(library);
+    if (module == nullptr) {
+      continue;
+    }
+    if (FARPROC found = GetProcAddress(module, name)) {
+      return reinterpret_cast<vlc_subtitle_look_function>(found);
+    }
+  }
+  return nullptr;
+#else
+  // Already loaded, by the libvlc this plugin links: never loaded here.
+  static void* const libraries[] = {
+      dlopen("libvlccore.so.9", RTLD_NOW | RTLD_NOLOAD),
+      dlopen("libvlc.so.5", RTLD_NOW | RTLD_NOLOAD),
+  };
+  for (void* library : libraries) {
+    if (library == nullptr) {
+      continue;
+    }
+    if (void* found = dlsym(library, name)) {
+      return reinterpret_cast<vlc_subtitle_look_function>(found);
+    }
+  }
+  return reinterpret_cast<vlc_subtitle_look_function>(
+      dlsym(RTLD_DEFAULT, name));
+#endif
+}
 
 int64_t NonNegative(libvlc_time_t value) {
   return std::max<int64_t>(0, value);
@@ -324,6 +368,48 @@ std::string VlcPlayerCore::SetSubtitleDelay(int64_t microseconds) {
   return "";
 }
 
+std::string VlcPlayerCore::SetSubtitleLook(const VlcSubtitleLookValues& look,
+                                           bool* applied) {
+  *applied = false;
+  const auto error = ActiveError();
+  if (!error.empty()) {
+    return error;
+  }
+  vlc_subtitle_look values;
+  values.text_scale = look.text_scale;
+  values.color = look.color;
+  values.background_color = look.background_color;
+  values.background_opacity = look.background_opacity;
+  values.outline_thickness = look.outline_thickness;
+  values.margin = SubtitleMargin(look.raise, SubtitleLayoutHeight());
+  *applied = vlc_subtitle_look_apply(player_->get(), &values, ResolveInLibVlc);
+  return "";
+}
+
+unsigned VlcPlayerCore::SubtitleLayoutHeight() const {
+  uint32_t frame_width = 0;
+  uint32_t frame_height = 0;
+  if (frame_sink_ != nullptr) {
+    frame_sink_->FrameSize(&frame_width, &frame_height);
+  }
+  if (frame_height > 0) {
+    return frame_height;
+  }
+  unsigned width = 0;
+  unsigned height = 0;
+  if (player_ == nullptr || !player_->size(0, &width, &height)) {
+    return 0;
+  }
+  return height;
+}
+
+int VlcPlayerCore::SubtitleMargin(double raise, unsigned height) {
+  if (!(raise > 0) || height == 0) {
+    return 0;
+  }
+  return static_cast<int>(std::lround(std::min(raise, 0.5) * height));
+}
+
 std::vector<uint8_t> VlcPlayerCore::TakeSnapshot(uint32_t width,
                                                  uint32_t height,
                                                  std::string* error) {
@@ -610,6 +696,10 @@ void VlcPlayerCore::ResizeVideoBufferForTesting(uint32_t width,
                                                 uint32_t height,
                                                 uint32_t pitch) {
   frame_sink_->ResizeForTesting(width, height, pitch);
+}
+
+int VlcPlayerCore::SubtitleMarginForTesting(double raise) const {
+  return SubtitleMargin(raise, SubtitleLayoutHeight());
 }
 
 void VlcPlayerCore::SimulateFrameForTesting(uint8_t value) {

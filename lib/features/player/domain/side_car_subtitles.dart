@@ -84,10 +84,36 @@ class SideCarTrack {
 
 /// The side-cars of whatever is playing, and the one on screen.
 class SideCarSubtitles extends ChangeNotifier {
-  SideCarSubtitles({required SideCarFetch fetch, this.onUnreadable})
-    : _fetch = fetch;
+  SideCarSubtitles({
+    required SideCarFetch fetch,
+    this.onUnreadable,
+    String encoding = '',
+  }) : _fetch = fetch,
+       _encoding = encoding;
 
   final SideCarFetch _fetch;
+
+  /// The code page a file that is not Unicode is read in, by libVLC's name -
+  /// the viewer's setting, empty for Auto.
+  ///
+  /// A change reads every file already fetched again, from the bytes kept
+  /// when it arrived rather than from the network, so the line on screen
+  /// changes at once: a file showing as gibberish is what the setting is for.
+  /// A file still on its way is read again once it has arrived.
+  String get encoding => _encoding;
+  set encoding(String value) {
+    if (value == _encoding || _disposed) return;
+    _encoding = value;
+    for (final track in List.of(_tracks)) {
+      if (statusOf(track) == SideCarStatus.ready) unawaited(_reread(track));
+    }
+  }
+
+  String _encoding;
+
+  /// What was fetched for each track - a file, or a playlist and its
+  /// segments - by URL, for [encoding] to read again.
+  final Map<int, Map<Uri, List<int>>> _bytes = {};
 
   /// Takes a side-car that arrived in no format read here - MicroDVD,
   /// VobSub, TTML - so libVLC can have a go at it instead. The track has
@@ -204,6 +230,7 @@ class SideCarSubtitles extends ChangeNotifier {
     _status.remove(track.id);
     _timelines.remove(track.id);
     _loads.remove(track.id);
+    _bytes.remove(track.id);
   }
 
   Future<bool> _load(SideCarTrack track, Duration from) {
@@ -219,9 +246,11 @@ class SideCarSubtitles extends ChangeNotifier {
     // for other content, or the whole screen gone.
     bool gone() => _disposed || !_tracks.contains(track);
 
+    final encoding = _encoding;
     final result = await loadSubtitleCues(
       track.url,
-      (url) => _fetch(url, track.headers),
+      (url) => _fetchKept(track, url),
+      encoding: encoding,
       from: from,
       onProgress: (cues) {
         if (gone()) return;
@@ -238,6 +267,8 @@ class SideCarSubtitles extends ChangeNotifier {
       _status[track.id] = SideCarStatus.ready;
       _timelines[track.id] = SubtitleTimeline(result.cues);
       _notify();
+      // The viewer changed the encoding while it was on its way.
+      if (_encoding != encoding) await _reread(track);
       return true;
     }
 
@@ -256,6 +287,32 @@ class SideCarSubtitles extends ChangeNotifier {
     if (_active == track) _active = null;
     _notify();
     return false;
+  }
+
+  /// Fetches [url] for [track], keeping what arrives for [encoding].
+  Future<List<int>?> _fetchKept(SideCarTrack track, Uri url) async {
+    final bytes = await _fetch(url, track.headers);
+    if (bytes != null && !_disposed && _tracks.contains(track)) {
+      (_bytes[track.id] ??= <Uri, List<int>>{})[url] = bytes;
+    }
+    return bytes;
+  }
+
+  /// Reads [track] again in [encoding], from the bytes kept for it and
+  /// nothing else: a segment that never arrived stays missing, as it was.
+  Future<void> _reread(SideCarTrack track) async {
+    bool gone() => _disposed || !_tracks.contains(track);
+    final encoding = _encoding;
+    final result = await loadSubtitleCues(
+      track.url,
+      (url) async => _bytes[track.id]?[url],
+      encoding: encoding,
+      cancelled: gone,
+    );
+    // A later change has its own read under way.
+    if (gone() || result.failure != null || encoding != _encoding) return;
+    _timelines[track.id] = SubtitleTimeline(result.cues);
+    if (_active == track) _notify();
   }
 
   void _notify() {

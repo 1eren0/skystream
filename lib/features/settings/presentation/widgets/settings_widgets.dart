@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/utils/layout_constants.dart';
@@ -241,3 +243,47 @@ class _SettingsTileState extends State<SettingsTile> {
     );
   }
 }
+
+/// Scrolls its child into view once, on the frame after the picker is laid
+/// out.
+///
+/// [ListTile.autofocus] gives the current value the focus but does not move a
+/// [Scrollable]. In a picker taller than its dialog — the language list is
+/// thirty-odd rows — that would focus the right row off screen and still open
+/// the list on row one, which is the bug this is here to close. A no-op when
+/// the list already fits, since there is then nothing to scroll.
+class ScrollIntoView extends StatefulWidget {
+  const ScrollIntoView({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  State<ScrollIntoView> createState() => _ScrollIntoViewState();
+}
+
+class _ScrollIntoViewState extends State<ScrollIntoView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || Scrollable.maybeOf(context) == null) return;
+      // Duration.zero jumps rather than animating: the picker should already
+      // be showing the current value on the first frame the viewer sees.
+      unawaited(
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.5,
+          duration: Duration.zero,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// Wraps the one option row that matches the current value so it is scrolled
+/// into view. Pair with `autofocus: isCurrent` on the row itself.
+Widget currentOption({required bool isCurrent, required Widget child}) =>
+    isCurrent ? ScrollIntoView(child: child) : child;

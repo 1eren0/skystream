@@ -58,6 +58,19 @@ NS_ASSUME_NONNULL_BEGIN
 /// required before the media player is torn down.
 - (void)detach;
 
+/// Restyles the subtitle lines libVLC draws into `mediaPlayer`'s picture:
+/// text tracks show it from their next line, and the margin moves the line on
+/// screen at once. NO when this libVLC cannot. See
+/// src/native/vlc_subtitle_look.h; values are VlcSubtitleLook's.
++ (BOOL)applySubtitleLookToMediaPlayer:(VLCMediaPlayer *)mediaPlayer
+                             textScale:(NSInteger)textScale
+                                 color:(NSInteger)color
+                       backgroundColor:(NSInteger)backgroundColor
+                     backgroundOpacity:(NSInteger)backgroundOpacity
+                      outlineThickness:(NSInteger)outlineThickness
+                                margin:(NSInteger)margin
+    NS_SWIFT_NAME(applySubtitleLook(to:textScale:color:backgroundColor:backgroundOpacity:outlineThickness:margin:));
+
 @end
 
 NS_ASSUME_NONNULL_END

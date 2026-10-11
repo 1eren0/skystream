@@ -156,6 +156,17 @@ void main() {
         ]),
       );
     });
+
+    test('names the encoding text subtitles are read in, when one is set', () {
+      expect(
+        const VlcSubtitleStyle(encoding: 'Windows-1251').toOptions(),
+        <String>['--subsdec-encoding=Windows-1251'],
+      );
+      // Empty is libVLC's own choice, so nothing is said: an empty value
+      // would be a flag with nothing after it.
+      expect(const VlcSubtitleStyle(encoding: '').toOptions(), isEmpty);
+      expect(const VlcSubtitleStyle().toOptions(), isEmpty);
+    });
   });
 
   group('VlcPlayerConfig', () {

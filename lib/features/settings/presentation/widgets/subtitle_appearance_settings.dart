@@ -5,6 +5,9 @@
 /// [PlayerSettings.subtitleBackgroundOpacity] into the libVLC options the
 /// engine honours — but the only screen that ever wrote those four fields left
 /// with the media_kit player, so every user has been pinned to the defaults.
+/// The outline, the lift, bold, the font, the text opacity and the encoding
+/// joined them with the player's Subtitle style page, which edits the same
+/// settings while a video plays.
 ///
 /// The preview is built from `subtitleStyleFrom` rather than from the raw
 /// settings, so it cannot drift from what the engine is told. It reproduces
@@ -13,11 +16,14 @@
 /// text and why the preview scales with the screen instead of with the slider.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import '../../../../shared/widgets/custom_widgets.dart';
+import '../../../player/domain/subtitle_code_pages.dart';
 import '../../../player/domain/subtitle_style.dart';
 import '../player_settings_provider.dart';
 import 'settings_widgets.dart';
@@ -65,6 +71,65 @@ String subtitleColorLabel(AppLocalizations l10n, int argb) => switch (argb) {
   _ => '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}',
 };
 
+/// The offered box colour with the red, green and blue of [argb], or [argb]
+/// itself when none has them.
+///
+/// The box's stored alpha is never drawn - the opacity is - so a fresh
+/// install's transparent black is the Black box.
+int subtitleBackgroundColorOf(int argb) {
+  for (final offered in kSubtitleBackgroundColors) {
+    if ((offered & 0xFFFFFF) == (argb & 0xFFFFFF)) return offered;
+  }
+  return argb;
+}
+
+/// Every encoding the player offers: Auto, then each code page there is a
+/// table for, in code page order.
+final List<String> kSubtitleEncodings = <String>['', ...subtitleCodePages.keys];
+
+String subtitleOutlineLabel(AppLocalizations l10n, SubtitleOutline outline) =>
+    switch (outline) {
+      SubtitleOutline.none => l10n.subtitleOutlineNone,
+      SubtitleOutline.thin => l10n.subtitleOutlineThin,
+      SubtitleOutline.normal => l10n.subtitleOutlineNormal,
+      SubtitleOutline.thick => l10n.subtitleOutlineThick,
+    };
+
+/// Bottom for no lift, and the lift as a share of the picture otherwise.
+String subtitlePositionLabel(AppLocalizations l10n, double raise) {
+  final percent = (raise * 100).round();
+  return percent == 0
+      ? l10n.subtitlePositionBottom
+      : l10n.subtitlePositionRaised(percent);
+}
+
+String subtitleFontLabel(AppLocalizations l10n, SubtitleFont font) =>
+    switch (font) {
+      SubtitleFont.standard => l10n.subtitleFontDefault,
+      SubtitleFont.serif => l10n.subtitleFontSerif,
+      SubtitleFont.monospace => l10n.subtitleFontMonospace,
+    };
+
+String subtitleOpacityLabel(AppLocalizations l10n, double opacity) =>
+    l10n.subtitlePercent((opacity * 100).round());
+
+/// A code page by the languages it is for, which is how people know them;
+/// its own name for one this build does not offer.
+String subtitleEncodingLabel(AppLocalizations l10n, String encoding) =>
+    switch (encoding) {
+      '' => l10n.subtitleEncodingAuto,
+      'Windows-1250' => l10n.subtitleEncodingCentralEuropean,
+      'Windows-1251' => l10n.subtitleEncodingCyrillic,
+      'Windows-1252' => l10n.subtitleEncodingWestern,
+      'Windows-1253' => l10n.subtitleEncodingGreek,
+      'Windows-1254' => l10n.subtitleEncodingTurkish,
+      'Windows-1255' => l10n.subtitleEncodingHebrew,
+      'Windows-1256' => l10n.subtitleEncodingArabic,
+      'Windows-1257' => l10n.subtitleEncodingBaltic,
+      'Windows-1258' => l10n.subtitleEncodingVietnamese,
+      _ => encoding,
+    };
+
 /// One-line summary of the background box.
 ///
 /// Zero opacity is the only way to get no box at all — `subtitleStyleFrom`
@@ -75,10 +140,21 @@ String subtitleBackgroundLabel(AppLocalizations l10n, PlayerSettings settings) {
       .round();
   if (percent == 0) return l10n.off;
   return l10n.subtitleBackgroundSummary(
-    subtitleColorLabel(l10n, settings.subtitleBackgroundColor),
+    subtitleColorLabel(
+      l10n,
+      subtitleBackgroundColorOf(settings.subtitleBackgroundColor),
+    ),
     percent,
   );
 }
+
+/// The one of [choices] closest to [value], so a stored value between them -
+/// from a build that offered other steps - still has a place in the list.
+double nearestSubtitleChoice(List<double> choices, double value) =>
+    choices.reduce(
+      (best, choice) =>
+          (choice - value).abs() < (best - value).abs() ? choice : best,
+    );
 
 /// Subtitle appearance rows, styled like every other section on the screen.
 class SubtitleAppearanceGroup extends ConsumerWidget {
@@ -129,6 +205,100 @@ class SubtitleAppearanceGroup extends ConsumerWidget {
           onTap: () => showSubtitleBackgroundDialog(context, ref, settings),
         ),
         SettingsTile(
+          icon: Icons.border_style_rounded,
+          title: l10n.subtitleOutline,
+          subtitle: subtitleOutlineLabel(l10n, settings.subtitleOutline),
+          onTap: () => _showChoiceDialog<SubtitleOutline>(
+            context,
+            title: l10n.subtitleOutline,
+            choices: SubtitleOutline.values,
+            current: settings.subtitleOutline,
+            name: (outline) => subtitleOutlineLabel(l10n, outline),
+            choose: _notifier(ref).setSubtitleOutline,
+          ),
+        ),
+        SettingsTile(
+          icon: Icons.vertical_align_bottom_rounded,
+          title: l10n.subtitlePosition,
+          subtitle: subtitlePositionLabel(l10n, settings.subtitleRaise),
+          onTap: () => _showChoiceDialog<double>(
+            context,
+            title: l10n.subtitlePosition,
+            choices: kSubtitleRaises,
+            current: nearestSubtitleChoice(
+              kSubtitleRaises,
+              settings.subtitleRaise,
+            ),
+            name: (raise) => subtitlePositionLabel(l10n, raise),
+            choose: _notifier(ref).setSubtitleRaise,
+          ),
+        ),
+        // libVLC takes these four only when a player is created, so they are
+        // set apart, under the same note the player's Subtitle style page
+        // gives them.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            l10n.subtitleNextTimeNote,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        SettingsTile(
+          icon: Icons.format_bold_rounded,
+          title: l10n.subtitleBold,
+          subtitle: settings.subtitleBold ? l10n.on : l10n.off,
+          onTap: () => _showChoiceDialog<bool>(
+            context,
+            title: l10n.subtitleBold,
+            choices: const <bool>[false, true],
+            current: settings.subtitleBold,
+            name: (bold) => bold ? l10n.on : l10n.off,
+            choose: _notifier(ref).setSubtitleBold,
+          ),
+        ),
+        SettingsTile(
+          icon: Icons.font_download_outlined,
+          title: l10n.subtitleFont,
+          subtitle: subtitleFontLabel(l10n, settings.subtitleFont),
+          onTap: () => _showChoiceDialog<SubtitleFont>(
+            context,
+            title: l10n.subtitleFont,
+            choices: SubtitleFont.values,
+            current: settings.subtitleFont,
+            name: (font) => subtitleFontLabel(l10n, font),
+            choose: _notifier(ref).setSubtitleFont,
+          ),
+        ),
+        SettingsTile(
+          icon: Icons.opacity_rounded,
+          title: l10n.subtitleTextOpacity,
+          subtitle: subtitleOpacityLabel(l10n, settings.subtitleTextOpacity),
+          onTap: () => _showChoiceDialog<double>(
+            context,
+            title: l10n.subtitleTextOpacity,
+            choices: kSubtitleTextOpacities,
+            current: nearestSubtitleChoice(
+              kSubtitleTextOpacities,
+              settings.subtitleTextOpacity,
+            ),
+            name: (opacity) => subtitleOpacityLabel(l10n, opacity),
+            choose: _notifier(ref).setSubtitleTextOpacity,
+          ),
+        ),
+        SettingsTile(
+          icon: Icons.translate_rounded,
+          title: l10n.subtitleEncoding,
+          subtitle: subtitleEncodingLabel(l10n, settings.subtitleEncoding),
+          onTap: () => _showChoiceDialog<String>(
+            context,
+            title: l10n.subtitleEncoding,
+            choices: kSubtitleEncodings,
+            current: settings.subtitleEncoding,
+            name: (encoding) => subtitleEncodingLabel(l10n, encoding),
+            choose: _notifier(ref).setSubtitleEncoding,
+          ),
+        ),
+        SettingsTile(
           icon: Icons.restart_alt_rounded,
           title: l10n.resetSubtitleAppearance,
           subtitle: l10n.resetSubtitleAppearanceSubtitle,
@@ -139,6 +309,60 @@ class SubtitleAppearanceGroup extends ConsumerWidget {
       ],
     );
   }
+}
+
+PlayerSettingsNotifier _notifier(WidgetRef ref) =>
+    ref.read(playerSettingsProvider.notifier);
+
+/// One of [choices], applied on selection like the other option lists here.
+///
+/// The choice in force is focused and on screen as the list opens, so a
+/// remote starts on it rather than outside the dialog or below its edge.
+void _showChoiceDialog<T>(
+  BuildContext context, {
+  required String title,
+  required List<T> choices,
+  required T current,
+  required String Function(T value) name,
+  required Future<void> Function(T value) choose,
+}) {
+  showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      void pick(T value) {
+        unawaited(choose(value));
+        Navigator.pop<void>(ctx);
+      }
+
+      return AlertDialog(
+        surfaceTintColor: Colors.transparent,
+        title: Text(title),
+        content: RadioGroup<T>(
+          groupValue: current,
+          onChanged: (value) {
+            if (value != null) pick(value);
+          },
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final choice in choices)
+                  currentOption(
+                    isCurrent: choice == current,
+                    child: ListTile(
+                      autofocus: choice == current,
+                      leading: Radio<T>(value: choice),
+                      title: Text(name(choice)),
+                      onTap: () => pick(choice),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// A sample caption drawn the way the player will draw it: libVLC for a
@@ -161,15 +385,24 @@ class SubtitlePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = subtitleStyleFrom(settings);
-    final fontSize = subtitleFontSize(style, MediaQuery.sizeOf(context));
-    final outline = (style.outlineThickness ?? 0).toDouble();
+    final fontSize = subtitleFontSize(settings, MediaQuery.sizeOf(context));
+    final outline = subtitleOutlineWidth(settings.subtitleOutline);
+    final weight = settings.subtitleBold ? FontWeight.w800 : FontWeight.w600;
+    // Tracks the text so the preview reads as a frame rather than a label,
+    // and stops growing before it takes over the screen it is describing.
+    final height = (fontSize * 1.9 + 24).clamp(72.0, 160.0);
 
     return Container(
-      // Tracks the text so the preview reads as a frame rather than a label,
-      // and stops growing before it takes over the screen it is describing.
-      height: (fontSize * 1.9 + 24).clamp(72.0, 160.0),
+      height: height,
       alignment: Alignment.bottomCenter,
-      padding: const EdgeInsets.all(8),
+      // The lift as the player draws it: a share of the frame, the preview
+      // standing in for the picture.
+      padding: EdgeInsets.fromLTRB(
+        8,
+        8,
+        8,
+        8 + settings.subtitleRaise.clamp(0.0, 0.5) * height,
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         gradient: const LinearGradient(
@@ -193,7 +426,8 @@ class SubtitlePreview extends StatelessWidget {
                 maxLines: 1,
                 style: TextStyle(
                   fontSize: fontSize,
-                  fontWeight: FontWeight.w600,
+                  fontFamily: style.fontFamily,
+                  fontWeight: weight,
                   foreground: Paint()
                     ..style = PaintingStyle.stroke
                     ..strokeWidth = outline
@@ -205,7 +439,8 @@ class SubtitlePreview extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 fontSize: fontSize,
-                fontWeight: FontWeight.w600,
+                fontFamily: style.fontFamily,
+                fontWeight: weight,
                 color: style.color,
               ),
             ),

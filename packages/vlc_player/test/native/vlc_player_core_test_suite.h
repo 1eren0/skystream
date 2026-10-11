@@ -263,6 +263,52 @@ TEST(VlcPlayerCore, CopyPixelsPublishesOnlyNewRenderGenerations) {
             core->RenderGenerationForTesting());
 }
 
+TEST(VlcPlayerCore, SubtitleMarginIsAShareOfThePicture) {
+  // libVLC lays the lines out on the frame sink's buffer: the picture's size.
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(0.15, 360), 54);
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(0.1, 1080), 108);
+  // Held to half the picture.
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(0.9, 360), 180);
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(0, 360), 0);
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(-0.1, 360), 0);
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(
+                std::numeric_limits<double>::quiet_NaN(), 360),
+            0);
+  // Before the picture has a size.
+  EXPECT_EQ(VlcPlayerCore::SubtitleMargin(0.15, 0), 0);
+}
+
+TEST(VlcPlayerCore, RaisesSubtitlesByAShareOfThePictureItDraws) {
+  auto core = MakeCore();
+
+  ASSERT_TRUE(core->is_valid()) << core->error();
+
+  // Before any frame there is no picture to take a share of.
+  EXPECT_EQ(core->SubtitleMarginForTesting(0.15), 0);
+  // The frame sink's picture is what libVLC lays the lines out on, and the
+  // size the host sends the look again for - not the media's declared size,
+  // which libVLC updates later for an adaptive stream or an MPEG-TS.
+  core->ResizeVideoBufferForTesting(640, 360, 640 * 4);
+  EXPECT_EQ(core->SubtitleMarginForTesting(0.15), 54);
+}
+
+TEST(VlcPlayerCore, RestylesSubtitlesOnTheLibVlcItRunsOn) {
+  auto core = MakeCore();
+
+  ASSERT_TRUE(core->is_valid()) << core->error();
+
+  VlcSubtitleLookValues look;
+  look.text_scale = 150;
+  look.color = 0xFFEB3B;
+  look.background_opacity = 128;
+  look.raise = 0.1;
+  bool applied = false;
+  EXPECT_EQ(core->SetSubtitleLook(look, &applied), "");
+  // Every libVLC this plugin ships with or finds is 3.0, whose libvlccore
+  // exports what a look needs.
+  EXPECT_TRUE(applied);
+}
+
 TEST(VlcPlayerCore, DisposeIsIdempotentAndGuardsCommands) {
   auto core = MakeCore();
 
@@ -277,6 +323,10 @@ TEST(VlcPlayerCore, DisposeIsIdempotentAndGuardsCommands) {
   EXPECT_EQ(core->SetAudioDelay(1000), "The vlc_player has been disposed.");
   EXPECT_EQ(core->SetSubtitleDelay(1000),
             "The vlc_player has been disposed.");
+  bool applied = true;
+  EXPECT_EQ(core->SetSubtitleLook(VlcSubtitleLookValues(), &applied),
+            "The vlc_player has been disposed.");
+  EXPECT_FALSE(applied);
   EXPECT_TRUE(core->GetAudioTracks().empty());
 }
 

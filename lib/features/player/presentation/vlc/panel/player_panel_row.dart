@@ -13,6 +13,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -452,12 +453,28 @@ class PanelStepperRow extends StatefulWidget {
     required this.onDecrease,
     required this.onIncrease,
     this.onReset,
+    this.resetTooltip,
+    this.increasedValue,
+    this.decreasedValue,
     this.autofocus = false,
     super.key,
   });
 
   final String label;
   final String value;
+
+  /// What [value] would read after one step up or down, for a screen reader
+  /// to say before it is taken. Null at an end the value stops at.
+  ///
+  /// A screen reader is offered the step itself only with what it would
+  /// make - Flutter asks for the one with the other - so a row with neither
+  /// steps by its -/+ buttons alone, which are named either way.
+  final String? increasedValue;
+  final String? decreasedValue;
+
+  /// What the pointer's reset button says it does. The delay rows' words
+  /// unless given.
+  final String? resetTooltip;
 
   /// One step down or up. [PanelStep.coarse] when the key is being held (a
   /// repeat event) or the inline button is, [PanelStep.fine] for a press and
@@ -485,9 +502,22 @@ class _PanelStepperRowState extends State<PanelStepperRow> {
   Widget build(BuildContext context) {
     final reset = widget.onReset;
     final metrics = PlayerPanelMetrics.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    // One node for the row: its label and value said once, and the steps a
+    // remote takes with Left/Right offered as the screen reader's own
+    // increase and decrease. The texts below are the same words drawn, so
+    // they are left out; the -/+ and reset buttons are named for themselves.
     return Semantics(
       label: widget.label,
       value: widget.value,
+      increasedValue: widget.increasedValue,
+      decreasedValue: widget.decreasedValue,
+      onIncrease: widget.increasedValue == null
+          ? null
+          : () => widget.onIncrease(PanelStep.fine),
+      onDecrease: widget.decreasedValue == null
+          ? null
+          : () => widget.onDecrease(PanelStep.fine),
       child: Focus(
         autofocus: widget.autofocus,
         onFocusChange: (value) => setState(() => _focused = value),
@@ -538,56 +568,86 @@ class _PanelStepperRowState extends State<PanelStepperRow> {
               selected: false,
               hovered: _hovered,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: HotstarPlayerStyle.primaryText,
-                      fontSize: metrics.rowLabelSize,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                // Not separately focusable: the row is one stop, and these are
-                // the pointer's way in.
-                ExcludeFocus(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _StepButton(
-                        icon: Icons.remove_rounded,
-                        onStep: widget.onDecrease,
-                      ),
-                      SizedBox(
-                        width: metrics.stepperValueWidth,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // The value is never narrower than the delay's column, so a
+                // delay reads as it always has, and grows for a word like
+                // "Central European" - the label is what gives way. Past the
+                // room -/+ and reset leave, it wraps rather than being cut.
+                final target = metrics.iconSize + metrics.stepIconPadding * 2;
+                final room =
+                    constraints.maxWidth - target * (reset == null ? 2 : 3);
+                return Row(
+                  children: [
+                    Expanded(
+                      child: ExcludeSemantics(
                         child: Text(
-                          widget.value,
-                          textAlign: TextAlign.center,
+                          widget.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: HotstarPlayerStyle.primaryText,
-                            fontSize: metrics.stepperValueSize,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const <FontFeature>[
-                              FontFeature.tabularFigures(),
-                            ],
+                            fontSize: metrics.rowLabelSize,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
-                      _StepButton(
-                        icon: Icons.add_rounded,
-                        onStep: widget.onIncrease,
+                    ),
+                    // Not separately focusable: the row is one stop, and these
+                    // are the pointer's way in.
+                    ExcludeFocus(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _StepButton(
+                            icon: Icons.remove_rounded,
+                            label: l10n.stepperDecrease,
+                            onStep: widget.onDecrease,
+                          ),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: metrics.stepperValueWidth,
+                              maxWidth: math.max(
+                                metrics.stepperValueWidth,
+                                room,
+                              ),
+                            ),
+                            child: ExcludeSemantics(
+                              child: Text(
+                                widget.value,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: HotstarPlayerStyle.primaryText,
+                                  fontSize: metrics.stepperValueSize,
+                                  fontWeight: FontWeight.w700,
+                                  fontFeatures: const <FontFeature>[
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          _StepButton(
+                            icon: Icons.add_rounded,
+                            label: l10n.stepperIncrease,
+                            onStep: widget.onIncrease,
+                          ),
+                          // Only ever drawn with something to undo, so it is
+                          // also the row's one hint that the value has been
+                          // moved.
+                          if (reset != null)
+                            _ResetButton(
+                              onTap: reset,
+                              message: widget.resetTooltip,
+                            ),
+                        ],
                       ),
-                      // Only ever drawn with something to undo, so it is also
-                      // the row's one hint that the value has been moved.
-                      if (reset != null) _ResetButton(onTap: reset),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -607,9 +667,16 @@ const Duration _kHoldRepeat = Duration(milliseconds: 400);
 /// One of the stepper's inline -/+ buttons: a tap is [PanelStep.fine], a hold
 /// repeats [PanelStep.coarse].
 class _StepButton extends StatefulWidget {
-  const _StepButton({required this.icon, required this.onStep});
+  const _StepButton({
+    required this.icon,
+    required this.label,
+    required this.onStep,
+  });
 
   final IconData icon;
+
+  /// What a screen reader calls the button: the glyph says nothing to one.
+  final String label;
   final void Function(PanelStep step) onStep;
 
   @override
@@ -658,13 +725,18 @@ class _StepButtonState extends State<_StepButton> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _down(),
-      onTapUp: (_) => _up(),
-      onTapCancel: _cancel,
-      onTap: _tap,
-      child: _StepIcon(icon: widget.icon),
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _down(),
+        onTapUp: (_) => _up(),
+        onTapCancel: _cancel,
+        onTap: _tap,
+        child: _StepIcon(icon: widget.icon),
+      ),
     );
   }
 }
@@ -672,14 +744,15 @@ class _StepButtonState extends State<_StepButton> {
 /// The pointer's Select: what a remote does with Select on this row, for an
 /// input that has no Select. Drawn only when there is something to reset.
 class _ResetButton extends StatelessWidget {
-  const _ResetButton({required this.onTap});
+  const _ResetButton({required this.onTap, this.message});
 
   final VoidCallback onTap;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: AppLocalizations.of(context)!.resetDelay,
+      message: message ?? AppLocalizations.of(context)!.resetDelay,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,

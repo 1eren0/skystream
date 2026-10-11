@@ -294,6 +294,22 @@ abstract class VlcPlayerController extends ValueNotifier<VlcPlayerValue> {
   /// Positive values delay subtitles; negative values show subtitles earlier.
   Future<void> setSubtitleDelay(Duration delay);
 
+  /// Restyles the subtitle lines libVLC draws into the picture while the video
+  /// plays: text tracks inside the video show [look] from their next line, and
+  /// its raise moves the line on screen at once.
+  ///
+  /// libVLC 3 has no public call for this; the platform sets the variables its
+  /// text renderer reads as it draws. SSA/ASS tracks keep their own styles,
+  /// and bitmap tracks their pictures; the raise still moves both. CEA-608
+  /// captions keep their grid's size, and closed captions' own colours win.
+  /// On Darwin's platform view, which lays lines out on the screen's picture,
+  /// the raise comes out smaller than asked. The look stays with the
+  /// controller: a player created later starts with it.
+  ///
+  /// Answers whether the engine applied it - false before any player exists,
+  /// on a libVLC other than 3.0, or on a platform without the call.
+  Future<bool> setSubtitleLook(VlcSubtitleLook look);
+
   /// Captures the current video frame as PNG bytes.
   ///
   /// [width] and [height] must be positive when provided.
@@ -481,6 +497,11 @@ class _VlcPlayerController extends VlcPlayerController
   /// so a player created later - a reattach - starts with it.
   VlcVideoGeometry _videoGeometry = VlcVideoGeometry.none;
 
+  /// The look [setSubtitleLook] last asked for, kept for a player created
+  /// later, and sent again when the picture changes size: its raise is a
+  /// share of the picture's height, which libVLC takes in pixels.
+  VlcSubtitleLook? _subtitleLook;
+
   /// Counts down [stallIndicatorDelay] from the first snapshot whose position
   /// matched the one before it. Armed only while the engine claims to be
   /// running, and disarmed by any movement of the clock.
@@ -579,6 +600,8 @@ class _VlcPlayerController extends VlcPlayerController
     // new native player has no crop and no aspect of its own, so a fit that
     // needs neither costs no call.
     if (_videoGeometry != VlcVideoGeometry.none) await _sendVideoGeometry();
+    // Ahead of the media as well, so its first line already has the look.
+    if (_subtitleLook != null) await _resendSubtitleLook();
     _ensureNotDisposed();
 
     final pendingMediaSource = _pendingMediaSource;
@@ -638,6 +661,8 @@ class _VlcPlayerController extends VlcPlayerController
     // new native player has no crop and no aspect of its own, so a fit that
     // needs neither costs no call.
     if (_videoGeometry != VlcVideoGeometry.none) await _sendVideoGeometry();
+    // Ahead of the media as well, so its first line already has the look.
+    if (_subtitleLook != null) await _resendSubtitleLook();
     _ensureNotDisposed();
 
     final pendingMediaSource = _pendingMediaSource;
@@ -1396,6 +1421,35 @@ class _VlcPlayerController extends VlcPlayerController
   }
 
   @override
+  Future<bool> setSubtitleLook(VlcSubtitleLook look) async {
+    _ensureNotDisposed();
+    _subtitleLook = look;
+    if (_viewId == null) return false;
+    return _sendSubtitleLook();
+  }
+
+  Future<bool> _sendSubtitleLook() async {
+    final look = _subtitleLook;
+    if (look == null) return false;
+    try {
+      return await _invokeFor<bool>('setSubtitleLook', look.toArguments()) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Best effort: a look the engine cannot take leaves the lines as they were.
+  Future<void> _resendSubtitleLook() async {
+    if (_viewId == null) return;
+    try {
+      await _sendSubtitleLook();
+    } catch (error) {
+      if (kDebugMode) debugPrint('vlc_player: setSubtitleLook failed: $error');
+    }
+  }
+
+  @override
   Future<Uint8List> takeSnapshot({int? width, int? height}) async {
     if (width != null && width <= 0) {
       throw ArgumentError.value(width, 'width', 'Must be positive.');
@@ -1614,6 +1668,11 @@ class _VlcPlayerController extends VlcPlayerController
     // freshest report, and a throttled one is up to an interval old.
     _playbackClock.report(nextValue, seekSettled: _seekSettledBy(nextValue));
     _setValueFromEvent(previousValue, nextValue);
+    if (nextValue.videoSize != null &&
+        nextValue.videoSize != previousValue.videoSize &&
+        (_subtitleLook?.raise ?? 0) > 0) {
+      unawaited(_resendSubtitleLook());
+    }
     _applyInterruption(previousValue.interruption, nextValue.interruption);
     if (_playlistAutoAdvance &&
         previousValue.state != VlcPlaybackState.ended &&

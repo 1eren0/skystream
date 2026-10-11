@@ -6,7 +6,8 @@
 /// under the text and nothing else. Sized and styled from the same numbers
 /// the settings preview and libVLC use ([subtitleFontSize]), so a subtitle
 /// file reads like a track inside the video, and follows a settings change at
-/// once.
+/// once - bold, the font and the text opacity included, which libVLC only
+/// takes when a player is created.
 ///
 /// Timed off the controller's playback clock with the subtitle delay applied.
 /// The engine reports its position a few times a second, and coarsely; the
@@ -145,9 +146,13 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
 
   Widget _lines(Size area) {
     final style = subtitleStyleFrom(widget.settings);
-    final fontSize = subtitleFontSize(style, area);
-    final margin = subtitleFrameHeight(area) * _kEdgeMargin;
+    final fontSize = subtitleFontSize(widget.settings, area);
+    final frame = subtitleFrameHeight(area);
+    final margin = frame * _kEdgeMargin;
     final side = area.width * _kSideMargin;
+    // The viewer's lift, a share of the frame as libVLC's is of the picture.
+    // Bottom lines only: a line placed at the top or the middle stays there.
+    final rest = margin + widget.settings.subtitleRaise.clamp(0.0, 0.5) * frame;
 
     List<Widget> band(SubtitlePlacement placement) => [
       for (final cue in _shown)
@@ -174,7 +179,9 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
-            bottom: math.max(margin, widget.bottomInset + margin / 2),
+            // The higher of the two, never their sum: a lift already clear
+            // of the controls stays where it is when they come up.
+            bottom: math.max(rest, widget.bottomInset + margin / 2),
             left: side,
             right: side,
             child: _column(bottom),
@@ -189,13 +196,15 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
   /// One cue: the text over its outline, in a box when the viewer asked for
   /// one - the preview's drawing, at the player's size.
   Widget _cue(SubtitleCue cue, VlcSubtitleStyle style, double fontSize) {
-    final outline = (style.outlineThickness ?? 0).toDouble();
+    final outline = subtitleOutlineWidth(widget.settings.subtitleOutline);
+    final bold = widget.settings.subtitleBold;
     final direction = Bidi.detectRtlDirectionality(cue.text)
         ? TextDirection.rtl
         : TextDirection.ltr;
     final base = TextStyle(
       fontSize: fontSize,
-      fontWeight: FontWeight.w600,
+      fontFamily: style.fontFamily,
+      fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
       height: 1.2,
     );
 
@@ -208,7 +217,10 @@ class _SideCarSubtitleViewState extends State<SideCarSubtitleView> {
               text: span.text,
               style: TextStyle(
                 fontStyle: span.italic ? FontStyle.italic : null,
-                fontWeight: span.bold ? FontWeight.w800 : null,
+                // Bold in the file stays bolder than the line around it.
+                fontWeight: span.bold
+                    ? (bold ? FontWeight.w900 : FontWeight.w800)
+                    : null,
               ),
             ),
         ],

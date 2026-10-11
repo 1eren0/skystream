@@ -34,6 +34,21 @@ String _srt(String text, {int from = 0, int to = 36000}) {
   return '1\n${at(from)} --> ${at(to)}\n$text\n';
 }
 
+/// Привет as Windows-1251 writes it - the bytes of a Russian subtitle file
+/// that is not Unicode. Read as Western, Auto's code page, it is Ïðèâåò.
+const List<int> _privet = <int>[0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2];
+
+/// A SubRip file of one line, [line], on screen for the first ten hours.
+List<int> _srtBytes(List<int> line) => <int>[
+  ...ascii.encode('1\n00:00:00,000 --> 10:00:00,000\n'),
+  ...line,
+  0x0A,
+];
+
+/// The line [subtitles] has on screen five seconds in.
+String _line(SideCarSubtitles subtitles) =>
+    subtitles.timeline.at(const Duration(seconds: 5)).single.text;
+
 /// Serves [files] by URL, and keeps every request.
 class _Files {
   _Files(this.files);
@@ -115,6 +130,92 @@ void main() {
       expect(subtitles.tracks, tracks);
       expect(subtitles.active, isNull);
       expect(files.requests, isEmpty, reason: 'fetched when shown, not listed');
+    });
+
+    test('reads a file in the code page set when it is read', () async {
+      final subtitles = SideCarSubtitles(
+        fetch: (url, headers) async => _srtBytes(_privet),
+        encoding: 'Windows-1251',
+      );
+      addTearDown(subtitles.dispose);
+      final [track] = subtitles.replaceSourceTracks([
+        _source('https://x/ru.srt'),
+      ]);
+
+      await subtitles.select(track);
+      expect(_line(subtitles), 'Привет');
+    });
+
+    test('reads its files again when the code page changes, from the bytes '
+        'it kept', () async {
+      final fetched = <Uri>[];
+      final subtitles = SideCarSubtitles(
+        fetch: (url, headers) async {
+          fetched.add(url);
+          return _srtBytes(_privet);
+        },
+      );
+      addTearDown(subtitles.dispose);
+      final [track] = subtitles.replaceSourceTracks([
+        _source('https://x/ru.srt'),
+      ]);
+      await subtitles.select(track);
+      expect(_line(subtitles), 'Ïðèâåò', reason: 'Auto reads it as Western');
+
+      var told = 0;
+      subtitles.addListener(() => told++);
+      subtitles.encoding = 'Windows-1251';
+      await pumpEventQueue();
+
+      expect(_line(subtitles), 'Привет', reason: 'the line on screen');
+      expect(told, greaterThan(0), reason: 'the view is told to draw it');
+      expect(fetched, hasLength(1), reason: 'the bytes kept, not the network');
+    });
+
+    test('reads a playlist\'s segments again too', () async {
+      final fetched = <Uri>[];
+      final subtitles = SideCarSubtitles(
+        fetch: (url, headers) async {
+          fetched.add(url);
+          return url.path.endsWith('.m3u8')
+              ? ascii.encode('#EXTM3U\n#EXTINF:10,\n0.vtt\n#EXT-X-ENDLIST\n')
+              : <int>[
+                  ...ascii.encode('WEBVTT\n\n00:00:00.000 --> 10:00:00.000\n'),
+                  ..._privet,
+                  0x0A,
+                ];
+        },
+      );
+      addTearDown(subtitles.dispose);
+      final [track] = subtitles.replaceSourceTracks([
+        _source('https://x/ru.m3u8'),
+      ]);
+      await subtitles.select(track);
+      expect(_line(subtitles), 'Ïðèâåò');
+
+      subtitles.encoding = 'Windows-1251';
+      await pumpEventQueue();
+
+      expect(_line(subtitles), 'Привет');
+      expect(fetched, hasLength(2), reason: 'the playlist and its segment');
+    });
+
+    test('a file on its way when the code page changes is read in the new '
+        'one', () async {
+      final arrival = Completer<List<int>?>();
+      final subtitles = SideCarSubtitles(fetch: (_, _) => arrival.future);
+      addTearDown(subtitles.dispose);
+      final [track] = subtitles.replaceSourceTracks([
+        _source('https://x/ru.srt'),
+      ]);
+
+      final shown = subtitles.select(track);
+      subtitles.encoding = 'Windows-1251';
+      arrival.complete(_srtBytes(_privet));
+      expect(await shown, isTrue);
+      await pumpEventQueue();
+
+      expect(_line(subtitles), 'Привет');
     });
 
     test(
@@ -384,6 +485,19 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets('the delay tells a screen reader what a step would make it', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpTab(tester);
+
+      final delay = tester.getSemantics(find.byType(PanelStepperRow));
+      expect(delay.value, '+0ms');
+      expect(delay.increasedValue, '+100ms');
+      expect(delay.decreasedValue, '-100ms');
+      semantics.dispose();
+    });
+
     testWidgets('lists files after the video\'s own tracks', (tester) async {
       subtitles.replaceSourceTracks([
         _source('https://x/en.srt', label: 'English'),
@@ -537,7 +651,12 @@ void main() {
           'subtitleDelay': delayMs * 1000,
         });
 
-    Future<void> pumpView(WidgetTester tester, {double bottomInset = 0}) async {
+    Future<void> pumpView(
+      WidgetTester tester, {
+      double bottomInset = 0,
+      PlayerSettings settings = const PlayerSettings(),
+      SideCarSubtitles? files,
+    }) async {
       tester.view.physicalSize = const Size(1280, 720);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -546,8 +665,8 @@ void main() {
           home: Scaffold(
             body: SideCarSubtitleView(
               controller: controller,
-              subtitles: subtitles,
-              settings: const PlayerSettings(),
+              subtitles: files ?? subtitles,
+              settings: settings,
               bottomInset: bottomInset,
             ),
           ),
@@ -555,6 +674,16 @@ void main() {
       );
       await tester.pump();
     }
+
+    /// The layer under the text that draws its outline, or null when none is
+    /// drawn: two copies of a line means the first is the stroke.
+    TextStyle? stroke(WidgetTester tester, String line) {
+      final copies = tester.widgetList<Text>(find.text(line)).toList();
+      return copies.length < 2 ? null : copies.first.textSpan!.style;
+    }
+
+    TextStyle fill(WidgetTester tester, String line) =>
+        tester.widget<Text>(find.text(line).last).textSpan!.style!;
 
     testWidgets('draws the line due now, and nothing between lines', (
       tester,
@@ -797,7 +926,7 @@ void main() {
 
       final text = tester.widget<Text>(find.text('First').last);
       final expected = subtitleFontSize(
-        subtitleStyleFrom(const PlayerSettings()),
+        const PlayerSettings(),
         const Size(1280, 720),
       );
       expect(text.textSpan!.style!.fontSize, expected);
@@ -817,6 +946,153 @@ void main() {
       await at(11000);
       await tester.pump();
       expect(tester.getTopLeft(find.text('Up top').last).dy, lessThan(100));
+    });
+
+    testWidgets('every size step from 10 to 80 draws a different size', (
+      tester,
+    ) async {
+      await at(6000);
+      final drawn = <double>[];
+      for (var size = 10; size <= 80; size++) {
+        await pumpView(
+          tester,
+          settings: PlayerSettings(subtitleSize: size.toDouble()),
+        );
+        drawn.add(fill(tester, 'First').fontSize!);
+      }
+      for (var i = 1; i < drawn.length; i++) {
+        expect(drawn[i], greaterThan(drawn[i - 1]), reason: 'size ${10 + i}');
+      }
+    });
+
+    testWidgets('outlines the letters as heavily as the viewer chose', (
+      tester,
+    ) async {
+      await at(6000);
+      const widths = <SubtitleOutline, double>{
+        SubtitleOutline.thin: 2,
+        SubtitleOutline.normal: 3.5,
+        SubtitleOutline.thick: 5,
+      };
+      for (final MapEntry(key: outline, value: width) in widths.entries) {
+        await pumpView(
+          tester,
+          settings: PlayerSettings(subtitleOutline: outline),
+        );
+        expect(
+          stroke(tester, 'First')?.foreground?.strokeWidth,
+          width,
+          reason: '$outline',
+        );
+      }
+
+      await pumpView(
+        tester,
+        settings: const PlayerSettings(subtitleOutline: SubtitleOutline.none),
+      );
+      expect(stroke(tester, 'First'), isNull, reason: 'none draws no stroke');
+      expect(find.text('First'), findsOneWidget);
+    });
+
+    testWidgets('lifts bottom lines by the share of the picture asked for, '
+        'and the controls still lift them further', (tester) async {
+      await at(6000);
+      await pumpView(tester);
+      final low = tester.getBottomLeft(find.text('First').last).dy;
+
+      // A tenth of the 720 px frame.
+      await pumpView(
+        tester,
+        settings: const PlayerSettings(subtitleRaise: 0.1),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        tester.getBottomLeft(find.text('First').last).dy,
+        closeTo(low - 72, 0.01),
+      );
+
+      // The bars' 108 px and half a margin beat the lift's: the larger of
+      // the two, never their sum.
+      await pumpView(
+        tester,
+        bottomInset: 108,
+        settings: const PlayerSettings(subtitleRaise: 0.1),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      const margin = 720 * 0.06;
+      expect(
+        tester.getBottomLeft(find.text('First').last).dy,
+        closeTo(low - (108 + margin / 2 - margin), 0.01),
+      );
+    });
+
+    testWidgets('a lift leaves a line at the top where it is', (tester) async {
+      await at(11000);
+      await pumpView(tester);
+      final top = tester.getTopLeft(find.text('Up top').last).dy;
+
+      await pumpView(
+        tester,
+        settings: const PlayerSettings(subtitleRaise: 0.2),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getTopLeft(find.text('Up top').last).dy, top);
+    });
+
+    testWidgets('draws bold, in the font and at the opacity chosen', (
+      tester,
+    ) async {
+      await at(6000);
+      await pumpView(tester);
+      expect(fill(tester, 'First').fontWeight, FontWeight.w600);
+      expect(fill(tester, 'First').fontFamily, isNull);
+      expect(fill(tester, 'First').color, const Color(0xFFFFFFFF));
+
+      await pumpView(
+        tester,
+        settings: const PlayerSettings(
+          subtitleBold: true,
+          subtitleFont: SubtitleFont.monospace,
+          subtitleTextOpacity: 0.5,
+        ),
+      );
+      final style = fill(tester, 'First');
+      expect(style.fontWeight, FontWeight.w800);
+      expect(style.fontFamily, subtitleFontFamily(SubtitleFont.monospace));
+      expect(style.color?.toARGB32(), 0x80FFFFFF);
+      expect(
+        stroke(tester, 'First')?.fontWeight,
+        FontWeight.w800,
+        reason: 'the outline is drawn round the same letters',
+      );
+    });
+
+    testWidgets('a bold line in a bold style is bolder still', (tester) async {
+      final marked = SideCarSubtitles(
+        fetch: _Files({'https://x/b.srt': _srt('<b>Loud</b> quiet')}).fetch,
+      );
+      addTearDown(marked.dispose);
+      final [track] = marked.replaceSourceTracks([_source('https://x/b.srt')]);
+      await marked.select(track);
+      await at(6000);
+
+      FontWeight? loud() =>
+          (tester.widget<Text>(find.text('Loud quiet').last).textSpan!
+                  as TextSpan)
+              .children!
+              .first
+              .style!
+              .fontWeight;
+
+      await pumpView(tester, files: marked);
+      expect(loud(), FontWeight.w800);
+
+      await pumpView(
+        tester,
+        files: marked,
+        settings: const PlayerSettings(subtitleBold: true),
+      );
+      expect(loud(), FontWeight.w900);
     });
   });
 

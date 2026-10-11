@@ -20,6 +20,7 @@ fi
 command -v swift >/dev/null
 command -v afconvert >/dev/null
 command -v python3 >/dev/null
+command -v ffmpeg >/dev/null
 
 mkdir -p "$output_dir/hls"
 
@@ -179,5 +180,26 @@ run_vlc -I dummy --play-and-exit "$tmp_dir/tone.wav" \
 run_vlc -I dummy --play-and-exit "$tmp_dir/tone.wav" \
   --sout "#transcode{acodec=vorb,ab=64,channels=1,samplerate=44100}:standard{access=file,mux=mux_ogg,dst=$output_dir/audio.ogg}" \
   vlc://quit >/dev/null 2>&1
+
+# A text track inside the video, on a picture big enough to read its lines:
+# grey 640x360, the same line every half second, so a change of look shows
+# within one line.
+python3 - <<'PY' "$tmp_dir/lines.srt"
+import sys
+
+def stamp(ms):
+    return "%02d:%02d:%02d,%03d" % (ms // 3600000, ms // 60000 % 60,
+                                    ms // 1000 % 60, ms % 1000)
+
+with open(sys.argv[1], "w") as srt:
+    for line in range(60):
+        start, end = line * 500, (line + 1) * 500
+        srt.write(f"{line + 1}\n{stamp(start)} --> {stamp(end)}\nSUBTITLE LOOK\n\n")
+PY
+ffmpeg -v error -y -f lavfi -i "color=c=0x808080:s=640x360:r=10:d=30" \
+  -i "$tmp_dir/lines.srt" -map 0:v -map 1:s \
+  -c:v libx264 -profile:v baseline -preset veryslow -tune stillimage -crf 30 \
+  -pix_fmt yuv420p -c:s srt -metadata:s:s:0 language=eng \
+  "$output_dir/video_subtitles.mkv"
 
 find "$output_dir" -type f -maxdepth 2 -print | sort

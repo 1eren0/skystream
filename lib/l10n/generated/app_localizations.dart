@@ -3007,10 +3007,10 @@ abstract class AppLocalizations {
   /// **'Seeds / Peers'**
   String get seedsPeers;
 
-  /// Why the subtitle appearance settings do not alter a video that is already playing.
+  /// Under the subtitle preview in Subtitle Settings. A change takes effect at once, and the same settings are on the player's Subtitle style page (subtitleStyle), opened from its Subtitles tab, for changing them while watching.
   ///
   /// In en, this message translates to:
-  /// **'The engine draws subtitles, so it is handed these when playback starts — a change applies to the next video.'**
+  /// **'Changes show at once. While a video plays, Subtitle style in the player\'s Subtitles tab changes them too.'**
   String get subtitleAppearanceNote;
 
   /// The subtitle font size row, and the title of the dialog it opens.
@@ -3025,7 +3025,7 @@ abstract class AppLocalizations {
   /// **'Text colour'**
   String get subtitleTextColour;
 
-  /// Puts size, colour and background back to what a fresh install uses.
+  /// Puts every subtitle appearance setting - size, text colour, background, outline, position, bold, font, text opacity and encoding - back to what a fresh install uses.
   ///
   /// In en, this message translates to:
   /// **'Reset subtitle appearance'**
@@ -3108,6 +3108,210 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dark grey'**
   String get colorDarkGrey;
+
+  /// The row in the player's Subtitles tab that opens a page of every subtitle look setting, and that page's title. Style here is how subtitles look: size, colours, outline, position, font.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitle style'**
+  String get subtitleStyle;
+
+  /// Second line of the Subtitle style row in the player: the text size and the text colour's name, for example "22 · White". {color} is one of the color* strings.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} · {color}'**
+  String subtitleStyleSummary(int size, String color);
+
+  /// How see-through the box behind subtitle text is. A row of the player's Subtitle style page, shown only while the box is on.
+  ///
+  /// In en, this message translates to:
+  /// **'Background opacity'**
+  String get subtitleBackgroundOpacity;
+
+  /// How thick the dark edge drawn around each subtitle letter is. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Outline'**
+  String get subtitleOutline;
+
+  /// Outline choice: no edge around the letters.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get subtitleOutlineNone;
+
+  /// Outline choice: a thin edge around the letters. What a fresh install uses.
+  ///
+  /// In en, this message translates to:
+  /// **'Thin'**
+  String get subtitleOutlineThin;
+
+  /// Outline choice: a medium edge around the letters.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal'**
+  String get subtitleOutlineNormal;
+
+  /// Outline choice: a thick edge around the letters.
+  ///
+  /// In en, this message translates to:
+  /// **'Thick'**
+  String get subtitleOutlineThick;
+
+  /// How high subtitles sit above the bottom of the picture. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Position'**
+  String get subtitlePosition;
+
+  /// Position choice: subtitles in their usual place at the bottom of the picture, not lifted.
+  ///
+  /// In en, this message translates to:
+  /// **'Bottom'**
+  String get subtitlePositionBottom;
+
+  /// Position choice: subtitles lifted from the bottom by {percent} percent of the picture's height, for example "+10%".
+  ///
+  /// In en, this message translates to:
+  /// **'+{percent}%'**
+  String subtitlePositionRaised(int percent);
+
+  /// Whether subtitle letters are bold. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog; its choices are the existing Off and On.
+  ///
+  /// In en, this message translates to:
+  /// **'Bold'**
+  String get subtitleBold;
+
+  /// The typeface subtitles are drawn in. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Font'**
+  String get subtitleFont;
+
+  /// Font choice: the device's own typeface for subtitles. What a fresh install uses.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get subtitleFontDefault;
+
+  /// Font choice: a typeface with serifs, such as Times New Roman.
+  ///
+  /// In en, this message translates to:
+  /// **'Serif'**
+  String get subtitleFontSerif;
+
+  /// Font choice: a typeface whose letters are all the same width, such as Courier.
+  ///
+  /// In en, this message translates to:
+  /// **'Monospace'**
+  String get subtitleFontMonospace;
+
+  /// How see-through subtitle letters are. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Text opacity'**
+  String get subtitleTextOpacity;
+
+  /// An opacity as a percentage, for example "75%": the value of the opacity rows and the choices in their dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}%'**
+  String subtitlePercent(int percent);
+
+  /// The character set subtitle files that are not Unicode are read in. Only old files need it: a wrong one shows letters as gibberish. A row of the player's Subtitle style page and of Subtitle Settings, and the title of its dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Encoding'**
+  String get subtitleEncoding;
+
+  /// Encoding choice and the default: Unicode files are read as Unicode, and any other file as Western.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get subtitleEncodingAuto;
+
+  /// Encoding choice: the Windows-1250 code page, for Polish, Czech, Slovak, Hungarian, Croatian, Romanian and the like.
+  ///
+  /// In en, this message translates to:
+  /// **'Central European'**
+  String get subtitleEncodingCentralEuropean;
+
+  /// Encoding choice: the Windows-1251 code page, for Russian, Ukrainian, Bulgarian, Serbian and the like.
+  ///
+  /// In en, this message translates to:
+  /// **'Cyrillic'**
+  String get subtitleEncodingCyrillic;
+
+  /// Encoding choice: the Windows-1252 code page, for English, French, German, Spanish and the like.
+  ///
+  /// In en, this message translates to:
+  /// **'Western'**
+  String get subtitleEncodingWestern;
+
+  /// Encoding choice: the Windows-1253 code page.
+  ///
+  /// In en, this message translates to:
+  /// **'Greek'**
+  String get subtitleEncodingGreek;
+
+  /// Encoding choice: the Windows-1254 code page.
+  ///
+  /// In en, this message translates to:
+  /// **'Turkish'**
+  String get subtitleEncodingTurkish;
+
+  /// Encoding choice: the Windows-1255 code page.
+  ///
+  /// In en, this message translates to:
+  /// **'Hebrew'**
+  String get subtitleEncodingHebrew;
+
+  /// Encoding choice: the Windows-1256 code page, for Arabic, Persian and Urdu.
+  ///
+  /// In en, this message translates to:
+  /// **'Arabic'**
+  String get subtitleEncodingArabic;
+
+  /// Encoding choice: the Windows-1257 code page, for Estonian, Latvian and Lithuanian.
+  ///
+  /// In en, this message translates to:
+  /// **'Baltic'**
+  String get subtitleEncodingBaltic;
+
+  /// Encoding choice: the Windows-1258 code page.
+  ///
+  /// In en, this message translates to:
+  /// **'Vietnamese'**
+  String get subtitleEncodingVietnamese;
+
+  /// Heading over the subtitle settings that reach subtitles inside a video only when the player next opens: bold, font, text opacity and encoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Next time the player opens'**
+  String get subtitleNextTime;
+
+  /// Note under subtitleNextTime, and above the same four rows in Subtitle Settings. Subtitle files are the ones the app draws itself; subtitles inside the video are drawn by the video engine, which takes these four only when it starts.
+  ///
+  /// In en, this message translates to:
+  /// **'These change subtitle files at once, and subtitles inside the video the next time the player opens.'**
+  String get subtitleNextTimeNote;
+
+  /// Last row of the player's Subtitle style page: puts every subtitle look setting back to what a fresh install uses.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset subtitle style'**
+  String get resetSubtitleStyle;
+
+  /// What a screen reader says for the minus button beside a value stepped with Left/Right in the player's side panel - a subtitle size, a delay, a colour.
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease'**
+  String get stepperDecrease;
+
+  /// What a screen reader says for the plus button beside a value stepped with Left/Right in the player's side panel - a subtitle size, a delay, a colour.
+  ///
+  /// In en, this message translates to:
+  /// **'Increase'**
+  String get stepperIncrease;
 
   /// Marks the source row the player is actually on, in the side panel's Sources tab.
   ///

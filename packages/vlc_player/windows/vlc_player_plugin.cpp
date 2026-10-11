@@ -404,6 +404,11 @@ class WindowsVlcPlayer
     });
   }
 
+  std::string SetSubtitleLook(const VlcSubtitleLookValues &look,
+                              bool *applied) {
+    return core_->SetSubtitleLook(look, applied);
+  }
+
   std::vector<uint8_t> TakeSnapshot(uint32_t width,
                                     uint32_t height,
                                     std::string *error) {
@@ -876,6 +881,35 @@ void VlcPlayerPlugin::HandleMethodCall(
       return;
     }
     error = player->SetSubtitleDelay(delay);
+  } else if (method_call.method_name() == "setSubtitleLook") {
+    VlcSubtitleLookValues look;
+    int64_t text_scale = 0;
+    int64_t color = 0;
+    int64_t background_color = 0;
+    int64_t background_opacity = 0;
+    int64_t outline_thickness = 0;
+    if (!ReadInt64(*arguments, "textScale", &text_scale) ||
+        !ReadInt64(*arguments, "color", &color) ||
+        !ReadInt64(*arguments, "backgroundColor", &background_color) ||
+        !ReadInt64(*arguments, "backgroundOpacity", &background_opacity) ||
+        !ReadInt64(*arguments, "outlineThickness", &outline_thickness) ||
+        !ReadDouble(*arguments, "raise", &look.raise)) {
+      result->Error("invalid_args", "Every subtitle look value is required.");
+      return;
+    }
+    look.text_scale = static_cast<int>(text_scale);
+    look.color = static_cast<int>(color);
+    look.background_color = static_cast<int>(background_color);
+    look.background_opacity = static_cast<int>(background_opacity);
+    look.outline_thickness = static_cast<int>(outline_thickness);
+    bool applied = false;
+    const std::string look_error = player->SetSubtitleLook(look, &applied);
+    if (!look_error.empty()) {
+      result->Error("vlc_error", look_error);
+      return;
+    }
+    result->Success(EncodableValue(applied));
+    return;
   } else if (method_call.method_name() == "takeSnapshot") {
     int64_t width = 0;
     int64_t height = 0;

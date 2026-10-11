@@ -182,6 +182,23 @@ public class VlcPlayerPlugin: NSObject, FlutterPlugin {
       }
       player.setAudioDelay(delay)
       result(nil)
+    case "setSubtitleLook":
+      guard let textScale = Self.intValue(arguments["textScale"]),
+            let color = Self.intValue(arguments["color"]),
+            let backgroundColor = Self.intValue(arguments["backgroundColor"]),
+            let backgroundOpacity = Self.intValue(arguments["backgroundOpacity"]),
+            let outlineThickness = Self.intValue(arguments["outlineThickness"]),
+            let raise = (arguments["raise"] as? NSNumber)?.doubleValue else {
+        result(FlutterError(code: "invalid_args", message: "Every subtitle look value is required.", details: nil))
+        return
+      }
+      result(player.setSubtitleLook(
+        textScale: textScale,
+        color: color,
+        backgroundColor: backgroundColor,
+        backgroundOpacity: backgroundOpacity,
+        outlineThickness: outlineThickness,
+        raise: raise))
     case "setSubtitleDelay":
       guard let delay = Self.intValue(arguments["delay"]) else {
         result(FlutterError(code: "invalid_args", message: "A subtitle delay value is required.", details: nil))
@@ -553,6 +570,35 @@ final class VlcPlayerPlatformView: NSObject, VLCMediaPlayerDelegate {
   func setAudioDelay(_ microseconds: Int) {
     mediaPlayer.currentAudioPlaybackDelay = microseconds
     sendSnapshot()
+  }
+
+  /// Restyles the subtitle lines libVLC draws, from their next line; whether
+  /// this libVLC could. The variables stay on the player, for every media it
+  /// is given after.
+  ///
+  /// [raise] is a share of the picture's height, and libVLC takes pixels of
+  /// what it lays the lines out on: for the texture, the picture itself,
+  /// blended into a buffer of its size. Dart sends the look again whenever the
+  /// picture changes size. A drawable lays them out on the picture on screen,
+  /// where the raise comes out smaller than asked when that is the larger.
+  func setSubtitleLook(
+    textScale: Int,
+    color: Int,
+    backgroundColor: Int,
+    backgroundOpacity: Int,
+    outlineThickness: Int,
+    raise: Double
+  ) -> Bool {
+    let height = Double(mediaPlayer.videoSize.height)
+    let margin = raise > 0 && height > 0 ? Int((min(raise, 0.5) * height).rounded()) : 0
+    return VlcTextureRenderer.applySubtitleLook(
+      to: mediaPlayer,
+      textScale: textScale,
+      color: color,
+      backgroundColor: backgroundColor,
+      backgroundOpacity: backgroundOpacity,
+      outlineThickness: outlineThickness,
+      margin: margin)
   }
 
   func setSubtitleDelay(_ microseconds: Int) {

@@ -45,6 +45,12 @@ class VlcPlayerCore {
   std::string SetPlaybackSpeed(double speed);
   std::string SetAudioDelay(int64_t microseconds);
   std::string SetSubtitleDelay(int64_t microseconds);
+  // Restyles the subtitle lines libVLC draws, from their next line - see
+  // src/native/vlc_subtitle_look.h - with the raise worked out against the
+  // frame sink's picture as it is now: the host sends the look again when
+  // that picture changes size. *applied says whether this libVLC could.
+  std::string SetSubtitleLook(const VlcSubtitleLookValues& look,
+                              bool* applied);
   std::vector<uint8_t> TakeSnapshot(uint32_t width,
                                     uint32_t height,
                                     std::string* error);
@@ -77,6 +83,11 @@ class VlcPlayerCore {
       const std::vector<VlcTrackDescription>& audio,
       const std::vector<VlcTrackDescription>& subtitles);
 
+  // libVLC's pixels ("sub-margin") for a raise of [raise], a share of a
+  // picture [height] high: the lines are laid out on the frame sink's buffer,
+  // which is the picture's own size. Held to half the picture.
+  static int SubtitleMargin(double raise, unsigned height);
+
 #ifdef VLC_PLAYER_TESTING
   VlcPixelBufferSink* FrameSinkForTesting();
   void ResizeVideoBufferForTesting(uint32_t width,
@@ -87,10 +98,19 @@ class VlcPlayerCore {
   size_t FrameBufferSizeForTesting() const;
   uint64_t RenderGenerationForTesting() const;
   uint64_t TextureGenerationForTesting() const;
+  int SubtitleMarginForTesting(double raise) const;
 #endif  // VLC_PLAYER_TESTING
 
  private:
   std::string ActiveError() const;
+
+  // The height of the picture libVLC lays subtitle lines out on: the frame
+  // sink's, which is the size the host keys a look's resend on. The media's
+  // declared size only before the sink has one - libVLC sizes the sink first
+  // and updates the declared size later (VLC 3.0 decoder.c vout_update_format,
+  // es_out.c EsOutSend), so after an adaptive stream's rendition change or an
+  // MPEG-TS's first frame the two disagree for a moment.
+  unsigned SubtitleLayoutHeight() const;
 
   static std::string StateName(libvlc_state_t state);
   static bool IsReadyState(const std::string& state);

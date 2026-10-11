@@ -29,6 +29,7 @@
 - **New player controls** – Frosted controls, and one Options button for sources, audio, subtitles and episodes. The volume and episode buttons can be hidden in Player Controls (PR #121 by @likhithkrishna1103-tech).
 - **Held keys** – Holding left or right on a keyboard or a TV remote, or J/L on a keyboard, keeps seeking (PR #121 by @likhithkrishna1103-tech).
 - **Audio language** – Choose the language videos start in, in Player settings. A video with an audio track in that language starts on it, including after a source change and on the next episode; one without it plays its own default. A track you pick from Audio in the player stays for the rest of that video (PR #130 by @1eren0).
+- **Subtitle style in the player** – A Subtitle style page in the player's Subtitles tab sets the size, colours, background, outline, position, bold, font, text opacity and encoding, on every device including TV; Settings has the same choices. Subtitle files change at once. Subtitles inside the video change from their next line, and take bold, font, text opacity and encoding the next time the player opens (PR #133 by @1eren0).
 
 #### 🖥️ Interface
 - **Navigation bar** – A new frosted navigation bar on phones (PR #121 by @likhithkrishna1103-tech).

@@ -1625,13 +1625,13 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get subtitleAppearanceNote =>
-      'The engine draws subtitles, so it is handed these when playback starts — a change applies to the next video.';
+      'Changes show at once. While a video plays, Subtitle style in the player\'s Subtitles tab changes them too.';
 
   @override
-  String get textSize => 'Text size';
+  String get textSize => 'टेक्स्ट का आकार';
 
   @override
-  String get subtitleTextColour => 'Text colour';
+  String get subtitleTextColour => 'टेक्स्ट का रंग';
 
   @override
   String get resetSubtitleAppearance => 'Reset subtitle appearance';
@@ -1656,28 +1656,137 @@ class AppLocalizationsHi extends AppLocalizations {
   }
 
   @override
-  String get colorWhite => 'White';
+  String get colorWhite => 'सफ़ेद';
 
   @override
-  String get colorYellow => 'Yellow';
+  String get colorYellow => 'पीला';
 
   @override
-  String get colorCyan => 'Cyan';
+  String get colorCyan => 'सियान';
 
   @override
-  String get colorGreen => 'Green';
+  String get colorGreen => 'हरा';
 
   @override
-  String get colorMagenta => 'Magenta';
+  String get colorMagenta => 'मैजेंटा';
 
   @override
-  String get colorRed => 'Red';
+  String get colorRed => 'लाल';
 
   @override
-  String get colorBlack => 'Black';
+  String get colorBlack => 'काला';
 
   @override
-  String get colorDarkGrey => 'Dark grey';
+  String get colorDarkGrey => 'गहरा स्लेटी';
+
+  @override
+  String get subtitleStyle => 'उपशीर्षक शैली';
+
+  @override
+  String subtitleStyleSummary(int size, String color) {
+    return '$size · $color';
+  }
+
+  @override
+  String get subtitleBackgroundOpacity => 'पृष्ठभूमि की अपारदर्शिता';
+
+  @override
+  String get subtitleOutline => 'आउटलाइन';
+
+  @override
+  String get subtitleOutlineNone => 'कोई नहीं';
+
+  @override
+  String get subtitleOutlineThin => 'पतली';
+
+  @override
+  String get subtitleOutlineNormal => 'सामान्य';
+
+  @override
+  String get subtitleOutlineThick => 'मोटी';
+
+  @override
+  String get subtitlePosition => 'स्थिति';
+
+  @override
+  String get subtitlePositionBottom => 'नीचे';
+
+  @override
+  String subtitlePositionRaised(int percent) {
+    return '+$percent%';
+  }
+
+  @override
+  String get subtitleBold => 'बोल्ड';
+
+  @override
+  String get subtitleFont => 'फ़ॉन्ट';
+
+  @override
+  String get subtitleFontDefault => 'डिफ़ॉल्ट';
+
+  @override
+  String get subtitleFontSerif => 'सेरिफ़';
+
+  @override
+  String get subtitleFontMonospace => 'मोनोस्पेस';
+
+  @override
+  String get subtitleTextOpacity => 'टेक्स्ट की अपारदर्शिता';
+
+  @override
+  String subtitlePercent(int percent) {
+    return '$percent%';
+  }
+
+  @override
+  String get subtitleEncoding => 'एन्कोडिंग';
+
+  @override
+  String get subtitleEncodingAuto => 'स्वतः';
+
+  @override
+  String get subtitleEncodingCentralEuropean => 'मध्य यूरोपीय';
+
+  @override
+  String get subtitleEncodingCyrillic => 'सिरिलिक';
+
+  @override
+  String get subtitleEncodingWestern => 'पश्चिमी';
+
+  @override
+  String get subtitleEncodingGreek => 'यूनानी';
+
+  @override
+  String get subtitleEncodingTurkish => 'तुर्की';
+
+  @override
+  String get subtitleEncodingHebrew => 'हिब्रू';
+
+  @override
+  String get subtitleEncodingArabic => 'अरबी';
+
+  @override
+  String get subtitleEncodingBaltic => 'बाल्टिक';
+
+  @override
+  String get subtitleEncodingVietnamese => 'वियतनामी';
+
+  @override
+  String get subtitleNextTime => 'अगली बार प्लेयर खुलने पर';
+
+  @override
+  String get subtitleNextTimeNote =>
+      'ये उपशीर्षक फ़ाइलों पर तुरंत लागू होते हैं, और वीडियो के अंदर के उपशीर्षकों पर अगली बार प्लेयर खुलने पर।';
+
+  @override
+  String get resetSubtitleStyle => 'उपशीर्षक शैली रीसेट करें';
+
+  @override
+  String get stepperDecrease => 'घटाएँ';
+
+  @override
+  String get stepperIncrease => 'बढ़ाएँ';
 
   @override
   String get playerNowPlaying => 'अभी चल रहा है';

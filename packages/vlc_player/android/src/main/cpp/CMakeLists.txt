@@ -1,9 +1,17 @@
 cmake_minimum_required(VERSION 3.18.1)
 
-# The one libVLC call libvlc-android does not expose in Java - see
-# vlc_player_geometry.c. Links nothing of libVLC's: the symbol is resolved at
-# run time from the libvlc.so the AAR ships and has already loaded.
+# The libVLC calls libvlc-android does not expose in Java - see
+# vlc_player_geometry.c and vlc_player_subtitles.c. Links nothing of libVLC's:
+# the symbols are resolved at run time from the libvlc.so the AAR ships and
+# has already loaded.
 project(vlc_player_geometry C)
 
-add_library(vlc_player_geometry SHARED vlc_player_geometry.c)
+# Shared with the other platforms.
+set(VLC_PLAYER_NATIVE ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/native)
+
+add_library(vlc_player_geometry SHARED
+    vlc_player_geometry.c
+    vlc_player_subtitles.c
+    ${VLC_PLAYER_NATIVE}/vlc_subtitle_look.c)
+target_include_directories(vlc_player_geometry PRIVATE ${VLC_PLAYER_NATIVE})
 target_link_libraries(vlc_player_geometry dl)

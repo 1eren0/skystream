@@ -664,4 +664,238 @@ void main() {
       );
     });
   });
+
+  /// What the player's Subtitle style page and Settings write: each field is
+  /// stored on its own, survives the next launch, reads back as its default
+  /// when the box holds something this build does not know, and goes back to
+  /// that default with Reset.
+  ///
+  /// On a real box, like the groups above.
+  group('the subtitle style', () {
+    late Directory dir;
+    late StorageService storage;
+
+    setUp(() async {
+      dir = Directory.systemTemp.createTempSync('player_settings_style');
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (MethodCall call) async => dir.path,
+      );
+      storage = StorageService();
+      await storage.init();
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        null,
+      );
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    });
+
+    ProviderContainer boot() {
+      final ProviderContainer container = ProviderContainer(
+        overrides: [storageServiceProvider.overrideWithValue(storage)],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    Future<PlayerSettingsNotifier> notifierOf(
+      ProviderContainer container,
+    ) async {
+      await container.read(playerSettingsProvider.future);
+      return container.read(playerSettingsProvider.notifier);
+    }
+
+    test('is the look every install already had on a fresh one', () async {
+      final PlayerSettings settings = await boot().read(
+        playerSettingsProvider.future,
+      );
+      expect(settings.subtitleOutline, SubtitleOutline.thin);
+      expect(settings.subtitleRaise, 0.0);
+      expect(settings.subtitleBold, isFalse);
+      expect(settings.subtitleFont, SubtitleFont.standard);
+      expect(settings.subtitleTextOpacity, 1.0);
+      expect(settings.subtitleEncoding, isEmpty);
+    });
+
+    test('size is saved on its own, held to 10..80, and survives the next '
+        'launch', () async {
+      await storage.setPlayerSetting('player_sub_color', 0xFFFFEB3B);
+      await storage.setPlayerSetting('player_sub_bg', 0xFF303030);
+
+      final ProviderContainer first = boot();
+      await (await notifierOf(first)).setSubtitleSize(44);
+
+      final PlayerSettings current = first
+          .read(playerSettingsProvider)
+          .requireValue;
+      expect(current.subtitleSize, 44);
+      expect(current.subtitleColor, 0xFFFFEB3B);
+      expect(current.subtitleBackgroundColor, 0xFF303030);
+      expect(storage.getPlayerSetting<num>('player_sub_size'), 44.0);
+
+      final ProviderContainer second = boot();
+      final PlayerSettings restored = await second.read(
+        playerSettingsProvider.future,
+      );
+      expect(restored.subtitleSize, 44);
+      expect(restored.subtitleColor, 0xFFFFEB3B);
+
+      await (await notifierOf(second)).setSubtitleSize(900);
+      expect(storage.getPlayerSetting<num>('player_sub_size'), 80.0);
+    });
+
+    test('each choice is stored and survives the next launch', () async {
+      final ProviderContainer first = boot();
+      final PlayerSettingsNotifier notifier = await notifierOf(first);
+      await notifier.setSubtitleColor(0xFFFFEB3B);
+      await notifier.setSubtitleBackground(0xFF303030, 0.8);
+      await notifier.setSubtitleOutline(SubtitleOutline.thick);
+      await notifier.setSubtitleRaise(0.1);
+      await notifier.setSubtitleBold(true);
+      await notifier.setSubtitleFont(SubtitleFont.serif);
+      await notifier.setSubtitleTextOpacity(0.5);
+      await notifier.setSubtitleEncoding('Windows-1251');
+
+      void expectChosen(PlayerSettings settings) {
+        expect(settings.subtitleSize, 22, reason: 'nothing set the size');
+        expect(settings.subtitleColor, 0xFFFFEB3B);
+        expect(settings.subtitleBackgroundColor, 0xFF303030);
+        expect(settings.subtitleBackgroundOpacity, 0.8);
+        expect(settings.subtitleOutline, SubtitleOutline.thick);
+        expect(settings.subtitleRaise, 0.1);
+        expect(settings.subtitleBold, isTrue);
+        expect(settings.subtitleFont, SubtitleFont.serif);
+        expect(settings.subtitleTextOpacity, 0.5);
+        expect(settings.subtitleEncoding, 'Windows-1251');
+      }
+
+      expectChosen(first.read(playerSettingsProvider).requireValue);
+      expect(storage.getPlayerSetting<int>('player_sub_color'), 0xFFFFEB3B);
+      expect(storage.getPlayerSetting<int>('player_sub_bg'), 0xFF303030);
+      expect(storage.getPlayerSetting<num>('player_sub_bg_opacity'), 0.8);
+      expect(storage.getPlayerSetting<String>('player_sub_outline'), 'thick');
+      expect(storage.getPlayerSetting<num>('player_sub_raise'), 0.1);
+      expect(storage.getPlayerSetting<bool>('player_sub_bold'), isTrue);
+      expect(storage.getPlayerSetting<String>('player_sub_font'), 'serif');
+      expect(storage.getPlayerSetting<num>('player_sub_text_opacity'), 0.5);
+      expect(
+        storage.getPlayerSetting<String>('player_sub_encoding'),
+        'Windows-1251',
+      );
+      expect(
+        storage.getPlayerSetting<Object>('player_sub_size'),
+        isNull,
+        reason: 'a colour is not a reason to write the size',
+      );
+
+      expectChosen(await boot().read(playerSettingsProvider.future));
+    });
+
+    test('a value this build does not know reads as the default', () async {
+      await storage.setPlayerSetting('player_sub_outline', 'hairline');
+      await storage.setPlayerSetting('player_sub_font', 'comic');
+      await storage.setPlayerSetting('player_sub_encoding', 'KOI8-R');
+
+      final PlayerSettings settings = await boot().read(
+        playerSettingsProvider.future,
+      );
+      expect(settings.subtitleOutline, SubtitleOutline.thin);
+      expect(settings.subtitleFont, SubtitleFont.standard);
+      expect(settings.subtitleEncoding, isEmpty);
+    });
+
+    test('the lift, the text opacity and the encoding are held to what the '
+        'player offers', () async {
+      final PlayerSettingsNotifier notifier = await notifierOf(boot());
+
+      await notifier.setSubtitleRaise(0.9);
+      expect(storage.getPlayerSetting<num>('player_sub_raise'), 0.2);
+      await notifier.setSubtitleRaise(-1);
+      expect(storage.getPlayerSetting<num>('player_sub_raise'), 0.0);
+
+      // Text nobody can see is not a style.
+      await notifier.setSubtitleTextOpacity(0);
+      expect(storage.getPlayerSetting<num>('player_sub_text_opacity'), 0.25);
+
+      await notifier.setSubtitleEncoding('KOI8-R');
+      expect(storage.getPlayerSetting<String>('player_sub_encoding'), '');
+    });
+
+    test('Reset puts every subtitle setting back, and nothing else', () async {
+      final ProviderContainer container = boot();
+      final PlayerSettingsNotifier notifier = await notifierOf(container);
+      await notifier.setSeekDuration(30);
+      await notifier.setSubtitleSize(40);
+      await notifier.setSubtitleColor(0xFFFFEB3B);
+      await notifier.setSubtitleBackground(0xFFFFFFFF, 0.9);
+      await notifier.setSubtitleOutline(SubtitleOutline.none);
+      await notifier.setSubtitleRaise(0.2);
+      await notifier.setSubtitleBold(true);
+      await notifier.setSubtitleFont(SubtitleFont.monospace);
+      await notifier.setSubtitleTextOpacity(0.25);
+      await notifier.setSubtitleEncoding('Windows-1256');
+
+      await notifier.resetSubtitleSettings();
+
+      void expectDefaults(PlayerSettings settings) {
+        expect(settings.subtitleSize, 22);
+        expect(settings.subtitleColor, 0xFFFFFFFF);
+        expect(settings.subtitleBackgroundColor, 0x00000000);
+        expect(settings.subtitleBackgroundOpacity, 0.5);
+        expect(settings.subtitleOutline, SubtitleOutline.thin);
+        expect(settings.subtitleRaise, 0.0);
+        expect(settings.subtitleBold, isFalse);
+        expect(settings.subtitleFont, SubtitleFont.standard);
+        expect(settings.subtitleTextOpacity, 1.0);
+        expect(settings.subtitleEncoding, isEmpty);
+        expect(settings.seekDuration, 30, reason: 'not a subtitle setting');
+      }
+
+      expectDefaults(container.read(playerSettingsProvider).requireValue);
+      expectDefaults(await boot().read(playerSettingsProvider.future));
+      expect(
+        storage.getPlayerSetting<Object>('player_sub_pos'),
+        isNull,
+        reason: 'nothing reads it, so nothing writes it',
+      );
+    });
+
+    test('copyWith carries every field', () {
+      const PlayerSettings chosen = PlayerSettings(
+        subtitleOutline: SubtitleOutline.thick,
+        subtitleRaise: 0.15,
+        subtitleBold: true,
+        subtitleFont: SubtitleFont.monospace,
+        subtitleTextOpacity: 0.75,
+        subtitleEncoding: 'Windows-1253',
+      );
+      final PlayerSettings kept = chosen.copyWith(subtitleSize: 30);
+      expect(kept.subtitleOutline, SubtitleOutline.thick);
+      expect(kept.subtitleRaise, 0.15);
+      expect(kept.subtitleBold, isTrue);
+      expect(kept.subtitleFont, SubtitleFont.monospace);
+      expect(kept.subtitleTextOpacity, 0.75);
+      expect(kept.subtitleEncoding, 'Windows-1253');
+
+      final PlayerSettings changed = chosen.copyWith(
+        subtitleOutline: SubtitleOutline.none,
+        subtitleRaise: 0.0,
+        subtitleBold: false,
+        subtitleFont: SubtitleFont.serif,
+        subtitleTextOpacity: 1.0,
+        subtitleEncoding: '',
+      );
+      expect(changed.subtitleOutline, SubtitleOutline.none);
+      expect(changed.subtitleRaise, 0.0);
+      expect(changed.subtitleBold, isFalse);
+      expect(changed.subtitleFont, SubtitleFont.serif);
+      expect(changed.subtitleTextOpacity, 1.0);
+      expect(changed.subtitleEncoding, isEmpty);
+    });
+  });
 }

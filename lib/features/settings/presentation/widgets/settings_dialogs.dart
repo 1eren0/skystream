@@ -31,6 +31,7 @@ import 'package:skystream/l10n/generated/app_localizations.dart';
 
 import '../../../../core/services/notification_service.dart';
 import '../cache_provider.dart';
+import 'settings_widgets.dart';
 
 /// Returns a localized label for a player gesture.
 String getGestureLabel(PlayerGesture gesture, AppLocalizations l10n) {
@@ -92,50 +93,6 @@ String getHomeScreenLabel(String route, AppLocalizations l10n) {
   }
 }
 
-/// Scrolls its child into view once, on the frame after the picker is laid
-/// out.
-///
-/// [ListTile.autofocus] gives the current value the focus but does not move a
-/// [Scrollable]. In a picker taller than its dialog — the language list is
-/// thirty-odd rows — that would focus the right row off screen and still open
-/// the list on row one, which is the bug this is here to close. A no-op when
-/// the list already fits, since there is then nothing to scroll.
-class _ScrollIntoView extends StatefulWidget {
-  const _ScrollIntoView({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_ScrollIntoView> createState() => _ScrollIntoViewState();
-}
-
-class _ScrollIntoViewState extends State<_ScrollIntoView> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || Scrollable.maybeOf(context) == null) return;
-      // Duration.zero jumps rather than animating: the picker should already
-      // be showing the current value on the first frame the viewer sees.
-      unawaited(
-        Scrollable.ensureVisible(
-          context,
-          alignment: 0.5,
-          duration: Duration.zero,
-        ),
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
-/// Wraps the one option row that matches the current value so it is scrolled
-/// into view. Pair with `autofocus: isCurrent` on the row itself.
-Widget _currentOption({required bool isCurrent, required Widget child}) =>
-    isCurrent ? _ScrollIntoView(child: child) : child;
-
 /// Shows a dialog to pick the default home screen.
 void showDefaultHomeScreenDialog(
   BuildContext context,
@@ -167,7 +124,7 @@ void showDefaultHomeScreenDialog(
             mainAxisSize: MainAxisSize.min,
             children: options.map((opt) {
               final bool isCurrent = opt['route'] == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -229,7 +186,7 @@ void showTitlePositionDialog(
             mainAxisSize: MainAxisSize.min,
             children: options.map((opt) {
               final bool isCurrent = opt['value'] == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -581,7 +538,7 @@ Widget _buildThemeOption(
   VoidCallback onSelect,
 ) {
   final bool isCurrent = value == current;
-  return _currentOption(
+  return currentOption(
     isCurrent: isCurrent,
     child: ListTile(
       autofocus: isCurrent,
@@ -668,7 +625,7 @@ void showGestureDialog(
             children: PlayerGesture.values.map((g) {
               final String label = getGestureLabel(g, l10n);
               final bool isCurrent = g == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -723,7 +680,7 @@ void showNetworkBufferDialog(BuildContext context, WidgetRef ref, int current) {
             mainAxisSize: MainAxisSize.min,
             children: options.map((mb) {
               final bool isCurrent = mb == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -766,7 +723,7 @@ void showDurationDialog(BuildContext context, WidgetRef ref, int current) {
             mainAxisSize: MainAxisSize.min,
             children: options.map((sec) {
               final bool isCurrent = sec == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -813,7 +770,7 @@ void showResizeDialog(BuildContext context, WidgetRef ref, String current) {
             mainAxisSize: MainAxisSize.min,
             children: options.map((e) {
               final bool isCurrent = e['value'] == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -875,7 +832,7 @@ void showSubtitleDefaultDialog(
             mainAxisSize: MainAxisSize.min,
             children: options.map((opt) {
               final bool isCurrent = opt.value == current;
-              return _currentOption(
+              return currentOption(
                 isCurrent: isCurrent,
                 child: ListTile(
                   autofocus: isCurrent,
@@ -937,7 +894,7 @@ void showPreferredAudioLanguageDialog(
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final option in options)
-                _currentOption(
+                currentOption(
                   isCurrent: option.code == current,
                   child: ListTile(
                     autofocus: option.code == current,
@@ -953,73 +910,6 @@ void showPreferredAudioLanguageDialog(
           ),
         ),
       ),
-    ),
-  );
-}
-
-/// Shows a dialog for subtitle size + background settings.
-void showSubtitleDialog(
-  BuildContext context,
-  WidgetRef ref,
-  PlayerSettings settings,
-) {
-  final l10n = AppLocalizations.of(context)!;
-  double size = settings.subtitleSize;
-  bool showBackground = settings.subtitleBackgroundColor != 0;
-
-  showDialog<void>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (context, setState) {
-        return AlertDialog(
-          surfaceTintColor: Colors.transparent,
-          title: Text(l10n.subtitleSettings),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(l10n.size(size.toInt())),
-                CustomSlider(
-                  value: size,
-                  min: 10,
-                  max: 80,
-                  divisions: 70,
-                  step: 1.0,
-                  onChanged: (v) => setState(() => size = v),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: Text(l10n.background),
-                  value: showBackground,
-                  onChanged: (v) => setState(() => showBackground = v),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop<void>(ctx),
-              child: Text(
-                l10n.cancel,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            CustomButton(
-              isPrimary: true,
-              onPressed: () {
-                final bg = showBackground ? 0x99000000 : 0x00000000;
-                ref
-                    .read(playerSettingsProvider.notifier)
-                    .setSubtitleSettings(size, settings.subtitleColor, bg);
-                Navigator.pop<void>(ctx);
-              },
-              child: Text(l10n.save),
-            ),
-          ],
-        );
-      },
     ),
   );
 }
@@ -1064,7 +954,7 @@ void showDefaultPlayerDialog(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _currentOption(
+              currentOption(
                 isCurrent: currentPlayerId == null,
                 child: ListTile(
                   autofocus: currentPlayerId == null,
@@ -1083,7 +973,7 @@ void showDefaultPlayerDialog(
               const Divider(),
               ...platformPlayers.map((player) {
                 final bool isCurrent = player.id == currentPlayerId;
-                return _currentOption(
+                return currentOption(
                   isCurrent: isCurrent,
                   child: ListTile(
                     autofocus: isCurrent,
@@ -1100,7 +990,7 @@ void showDefaultPlayerDialog(
                 );
               }),
               if (unavailable != null)
-                _currentOption(
+                currentOption(
                   isCurrent: true,
                   child: ListTile(
                     autofocus: true,
@@ -1196,7 +1086,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.cloudflare,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.cloudflare,
@@ -1208,7 +1098,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.cloudflare),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.google,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.google,
@@ -1218,7 +1108,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.google),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.adguard,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.adguard,
@@ -1228,7 +1118,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.adguard),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.dnsWatch,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.dnsWatch,
@@ -1240,7 +1130,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.dnsWatch),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.quad9,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.quad9,
@@ -1250,7 +1140,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.quad9),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.dnsSb,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.dnsSb,
@@ -1260,7 +1150,7 @@ class _DohProviderDialogState extends ConsumerState<_DohProviderDialog> {
                   onTap: () => _saveAndClose(DohProvider.dnsSb),
                 ),
               ),
-              _currentOption(
+              currentOption(
                 isCurrent: _currentProvider == DohProvider.canadianShield,
                 child: ListTile(
                   autofocus: _currentProvider == DohProvider.canadianShield,
@@ -1567,7 +1457,7 @@ void showLanguageDialog(
                 children: options.map((opt) {
                   final locale = opt['locale'] as Locale;
                   final bool isCurrent = locale == currentLocale;
-                  return _currentOption(
+                  return currentOption(
                     isCurrent: isCurrent,
                     child: ListTile(
                       autofocus: isCurrent,
@@ -1763,7 +1653,7 @@ void showQualityDialog(
                 mainAxisSize: MainAxisSize.min,
                 children: options.map((q) {
                   final bool isCurrent = q == current;
-                  return _currentOption(
+                  return currentOption(
                     isCurrent: isCurrent,
                     child: ListTile(
                       autofocus: isCurrent,
@@ -1863,7 +1753,7 @@ void showQualityFilterModeDialog(
                 mainAxisSize: MainAxisSize.min,
                 children: options.map((opt) {
                   final bool isCurrent = opt.mode == current;
-                  return _currentOption(
+                  return currentOption(
                     isCurrent: isCurrent,
                     child: ListTile(
                       autofocus: isCurrent,

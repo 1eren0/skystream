@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart' show Override;
 import 'package:skystream/core/domain/entity/multimedia_item.dart';
+import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/features/player/domain/entity/subtitle_model.dart';
 import 'package:skystream/features/player/domain/stream_resolver.dart';
 import 'package:skystream/features/player/domain/subtitle_search_target.dart';
@@ -19,6 +20,7 @@ import 'package:skystream/features/player/presentation/vlc/panel/player_panel_ro
 import 'package:skystream/features/player/presentation/vlc/panel/player_panel_shell.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_sources_tab.dart';
 import 'package:skystream/features/player/presentation/vlc/panel/player_subtitle_search_page.dart';
+import 'package:skystream/features/player/presentation/vlc/panel/player_subtitle_style_page.dart';
 import 'package:skystream/features/player/presentation/vlc/torrent_file_sheet.dart';
 import 'package:skystream/features/player/presentation/widgets/hotstar_player_style.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
@@ -26,6 +28,7 @@ import 'package:skystream/l10n/generated/app_localizations.dart';
 import 'package:vlc_player/vlc_player.dart';
 
 import 'fake_vlc_engine.dart';
+import 'vlc_screen_harness.dart' show MemorySettings, subtitleStyleBindingFor;
 
 /// The panel is the one thing on this screen a viewer *navigates* rather than
 /// glances at, so what is pinned here is navigation: focus enters it, focus
@@ -523,6 +526,8 @@ void main() {
   /// [settle] false stops after the first frame of the route, with the track
   /// lists still loading. [overrides] wraps the host in a ProviderScope - only
   /// the Search online page reads providers; the panel itself has no scope.
+  /// [subtitleStyle] is what the screen hands the Subtitles tab for its
+  /// Subtitle style row, which is absent without it.
   Future<
     ({
       FocusNode opener,
@@ -554,6 +559,7 @@ void main() {
     bool primed = true,
     bool settle = true,
     List<Override>? overrides,
+    SubtitleStyleBinding? subtitleStyle,
     Locale locale = const Locale('en'),
     TextScaler textScaler = TextScaler.noScaling,
   }) async {
@@ -620,6 +626,7 @@ void main() {
           onPickEpisode: onPickEpisode ?? (_) {},
           onPickFile: onPickFile ?? (_) {},
           episodeProgress: episodeProgress,
+          subtitleStyle: subtitleStyle,
         ),
       ),
     );
@@ -1376,6 +1383,106 @@ void main() {
         _phone.width * 0.8,
         reason: 'and the picture is still visible beside it',
       );
+    });
+  });
+
+  group('subtitle style in the panel', () {
+    /// The real notifier over a store in memory, bound the way the screen
+    /// binds it.
+    SubtitleStyleBinding styleOf(PlayerSettings settings) {
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(MemorySettings()),
+          playerSettingsProvider.overrideWithBuild((_, _) => settings),
+        ],
+      );
+      addTearDown(container.dispose);
+      return subtitleStyleBindingFor(container);
+    }
+
+    testWidgets('a phone\'s Subtitles tab offers it, saying what it is set '
+        'to', (tester) async {
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await pumpPanel(
+        tester,
+        size: _phone,
+        isTv: false,
+        focusOnOpen: false,
+        tab: PlayerPanelTab.subtitles,
+        subtitleStyle: styleOf(
+          const PlayerSettings(subtitleSize: 36, subtitleColor: 0xFFFFEB3B),
+        ),
+      );
+
+      final row = find.widgetWithText(PanelRow, l10n.subtitleStyle);
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('36 · Yellow')),
+        findsOneWidget,
+      );
+      expect(
+        _rowTop(tester, l10n.subtitleStyle),
+        greaterThan(tester.getTopLeft(find.text(l10n.subtitleDelay)).dy),
+        reason: 'after the delay, last of the options',
+      );
+    });
+
+    testWidgets('a tap opens the page in the panel\'s place', (tester) async {
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await pumpPanel(
+        tester,
+        size: _phone,
+        isTv: false,
+        focusOnOpen: false,
+        tab: PlayerPanelTab.subtitles,
+        subtitleStyle: styleOf(const PlayerSettings()),
+      );
+
+      await tester.tap(find.widgetWithText(PanelRow, l10n.subtitleStyle));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SubtitleStylePage), findsOneWidget);
+      expect(find.text(l10n.subtitleStyle), findsOneWidget, reason: 'title');
+      expect(find.widgetWithText(PanelRow, l10n.off), findsNothing);
+    });
+
+    testWidgets('on a television Select opens it on its first row, and Back '
+        'comes back to the row that opened it', (tester) async {
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await pumpPanel(
+        tester,
+        tab: PlayerPanelTab.subtitles,
+        subtitleStyle: styleOf(const PlayerSettings()),
+      );
+      for (var i = 0; i < 10 && _focusedRow() != l10n.subtitleStyle; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(_focusedRow(), l10n.subtitleStyle, reason: 'a stop of its own');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(SubtitleStylePage), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<PanelStepperRow>()
+            ?.label,
+        l10n.textSize,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(SubtitleStylePage), findsNothing);
+      expect(find.byType(PlayerPanel), findsOneWidget, reason: 'one step');
+      expect(_focusedRow(), l10n.subtitleStyle);
+    });
+
+    testWidgets('without one there is no row for it', (tester) async {
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await pumpPanel(tester, tab: PlayerPanelTab.subtitles);
+
+      expect(find.widgetWithText(PanelRow, l10n.subtitleStyle), findsNothing);
+      expect(find.byType(PanelStepperRow), findsOneWidget, reason: 'delay');
     });
   });
 

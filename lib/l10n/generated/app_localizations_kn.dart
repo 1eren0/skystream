@@ -1636,13 +1636,13 @@ class AppLocalizationsKn extends AppLocalizations {
 
   @override
   String get subtitleAppearanceNote =>
-      'The engine draws subtitles, so it is handed these when playback starts — a change applies to the next video.';
+      'Changes show at once. While a video plays, Subtitle style in the player\'s Subtitles tab changes them too.';
 
   @override
-  String get textSize => 'Text size';
+  String get textSize => 'ಪಠ್ಯದ ಗಾತ್ರ';
 
   @override
-  String get subtitleTextColour => 'Text colour';
+  String get subtitleTextColour => 'ಪಠ್ಯದ ಬಣ್ಣ';
 
   @override
   String get resetSubtitleAppearance => 'Reset subtitle appearance';
@@ -1667,28 +1667,137 @@ class AppLocalizationsKn extends AppLocalizations {
   }
 
   @override
-  String get colorWhite => 'White';
+  String get colorWhite => 'ಬಿಳಿ';
 
   @override
-  String get colorYellow => 'Yellow';
+  String get colorYellow => 'ಹಳದಿ';
 
   @override
-  String get colorCyan => 'Cyan';
+  String get colorCyan => 'ಸಯಾನ್';
 
   @override
-  String get colorGreen => 'Green';
+  String get colorGreen => 'ಹಸಿರು';
 
   @override
-  String get colorMagenta => 'Magenta';
+  String get colorMagenta => 'ಮೆಜೆಂಟಾ';
 
   @override
-  String get colorRed => 'Red';
+  String get colorRed => 'ಕೆಂಪು';
 
   @override
-  String get colorBlack => 'Black';
+  String get colorBlack => 'ಕಪ್ಪು';
 
   @override
-  String get colorDarkGrey => 'Dark grey';
+  String get colorDarkGrey => 'ಗಾಢ ಬೂದು';
+
+  @override
+  String get subtitleStyle => 'ಉಪಶೀರ್ಷಿಕೆ ಶೈಲಿ';
+
+  @override
+  String subtitleStyleSummary(int size, String color) {
+    return '$size · $color';
+  }
+
+  @override
+  String get subtitleBackgroundOpacity => 'ಹಿನ್ನೆಲೆಯ ಅಪಾರದರ್ಶಕತೆ';
+
+  @override
+  String get subtitleOutline => 'ಔಟ್‌ಲೈನ್';
+
+  @override
+  String get subtitleOutlineNone => 'ಯಾವುದೂ ಇಲ್ಲ';
+
+  @override
+  String get subtitleOutlineThin => 'ತೆಳು';
+
+  @override
+  String get subtitleOutlineNormal => 'ಸಾಮಾನ್ಯ';
+
+  @override
+  String get subtitleOutlineThick => 'ದಪ್ಪ';
+
+  @override
+  String get subtitlePosition => 'ಸ್ಥಾನ';
+
+  @override
+  String get subtitlePositionBottom => 'ಕೆಳಗೆ';
+
+  @override
+  String subtitlePositionRaised(int percent) {
+    return '+$percent%';
+  }
+
+  @override
+  String get subtitleBold => 'ಬೋಲ್ಡ್';
+
+  @override
+  String get subtitleFont => 'ಫಾಂಟ್';
+
+  @override
+  String get subtitleFontDefault => 'ಡೀಫಾಲ್ಟ್';
+
+  @override
+  String get subtitleFontSerif => 'ಸೆರಿಫ್';
+
+  @override
+  String get subtitleFontMonospace => 'ಮೊನೊಸ್ಪೇಸ್';
+
+  @override
+  String get subtitleTextOpacity => 'ಪಠ್ಯದ ಅಪಾರದರ್ಶಕತೆ';
+
+  @override
+  String subtitlePercent(int percent) {
+    return '$percent%';
+  }
+
+  @override
+  String get subtitleEncoding => 'ಎನ್‌ಕೋಡಿಂಗ್';
+
+  @override
+  String get subtitleEncodingAuto => 'ಸ್ವಯಂ';
+
+  @override
+  String get subtitleEncodingCentralEuropean => 'ಮಧ್ಯ ಯುರೋಪಿಯನ್';
+
+  @override
+  String get subtitleEncodingCyrillic => 'ಸಿರಿಲಿಕ್';
+
+  @override
+  String get subtitleEncodingWestern => 'ಪಾಶ್ಚಾತ್ಯ';
+
+  @override
+  String get subtitleEncodingGreek => 'ಗ್ರೀಕ್';
+
+  @override
+  String get subtitleEncodingTurkish => 'ಟರ್ಕಿಶ್';
+
+  @override
+  String get subtitleEncodingHebrew => 'ಹೀಬ್ರೂ';
+
+  @override
+  String get subtitleEncodingArabic => 'ಅರೇಬಿಕ್';
+
+  @override
+  String get subtitleEncodingBaltic => 'ಬಾಲ್ಟಿಕ್';
+
+  @override
+  String get subtitleEncodingVietnamese => 'ವಿಯೆಟ್ನಾಮೀಸ್';
+
+  @override
+  String get subtitleNextTime => 'ಮುಂದಿನ ಬಾರಿ ಪ್ಲೇಯರ್ ತೆರೆದಾಗ';
+
+  @override
+  String get subtitleNextTimeNote =>
+      'ಇವು ಉಪಶೀರ್ಷಿಕೆ ಫೈಲ್‌ಗಳಿಗೆ ತಕ್ಷಣ ಅನ್ವಯಿಸುತ್ತವೆ, ಮತ್ತು ವೀಡಿಯೊದೊಳಗಿನ ಉಪಶೀರ್ಷಿಕೆಗಳಿಗೆ ಮುಂದಿನ ಬಾರಿ ಪ್ಲೇಯರ್ ತೆರೆದಾಗ.';
+
+  @override
+  String get resetSubtitleStyle => 'ಉಪಶೀರ್ಷಿಕೆ ಶೈಲಿಯನ್ನು ಮರುಹೊಂದಿಸಿ';
+
+  @override
+  String get stepperDecrease => 'ಕಡಿಮೆ ಮಾಡಿ';
+
+  @override
+  String get stepperIncrease => 'ಹೆಚ್ಚಿಸಿ';
 
   @override
   String get playerNowPlaying => 'ಈಗ ಪ್ಲೇ ಆಗುತ್ತಿದೆ';

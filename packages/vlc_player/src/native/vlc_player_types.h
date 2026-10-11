@@ -34,6 +34,18 @@ struct VlcMediaInfo {
   std::vector<VlcMediaTrackInfo> subtitle_tracks;
 };
 
+// A subtitle look as Dart's VlcSubtitleLook sends it; see
+// src/native/vlc_subtitle_look.h for the rest of the values.
+struct VlcSubtitleLookValues {
+  int text_scale = 100;
+  int color = 0xFFFFFF;
+  int background_color = 0x000000;
+  int background_opacity = 0;
+  int outline_thickness = 2;
+  // A share of the picture's height.
+  double raise = 0;
+};
+
 struct VlcMediaStats {
   bool available = false;
   int64_t read_bytes = 0;

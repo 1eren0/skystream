@@ -19,6 +19,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'subtitle_code_pages.dart';
+
 /// Where on the screen a cue sits.
 enum SubtitlePlacement { bottom, middle, top }
 
@@ -171,10 +173,19 @@ List<SubtitleCue>? parseSubtitles(String text) {
   return null;
 }
 
+/// The code page a file that is not Unicode is read in when the viewer has
+/// chosen none: the usual legacy encoding of Western subtitle files.
+const String _kAutoCodePage = 'Windows-1252';
+
 /// The text of a subtitle file's [bytes]: UTF-8 or UTF-16 when a byte order
-/// mark says so, UTF-8 when the bytes are valid UTF-8, and Windows-1252 -
-/// the usual legacy encoding of Western subtitle files - otherwise.
-String decodeSubtitleBytes(List<int> bytes) {
+/// mark says so, UTF-8 when the bytes are valid UTF-8, and otherwise the code
+/// page [encoding] names - libVLC's name for it, a key of [subtitleCodePages]
+/// - or Windows-1252 for Auto (empty) and for a name not known here.
+///
+/// A byte order mark and valid UTF-8 win over [encoding]: a Unicode file read
+/// as a code page is garbage, and a chosen code page is for the files that
+/// are not Unicode.
+String decodeSubtitleBytes(List<int> bytes, {String encoding = ''}) {
   if (bytes.length >= 3 &&
       bytes[0] == 0xEF &&
       bytes[1] == 0xBB &&
@@ -190,9 +201,10 @@ String decodeSubtitleBytes(List<int> bytes) {
   try {
     return utf8.decode(bytes);
   } on FormatException {
+    final page =
+        subtitleCodePages[encoding] ?? subtitleCodePages[_kAutoCodePage]!;
     return String.fromCharCodes([
-      for (final byte in bytes)
-        byte >= 0x80 && byte < 0xA0 ? _cp1252[byte - 0x80] : byte,
+      for (final byte in bytes) byte < 0x80 ? byte : page[(byte & 0xFF) - 0x80],
     ]);
   }
 }
@@ -287,12 +299,16 @@ SubtitleLoad _failed(SubtitleLoadFailure failure) =>
 /// nearest [from] first, so a video resumed an hour in does not wait for the
 /// hour before it. [cancelled] is asked between fetches and stops them once
 /// it says so.
+///
+/// A file that is not Unicode is read in the code page [encoding] names - see
+/// [decodeSubtitleBytes].
 Future<SubtitleLoad> loadSubtitleCues(
   Uri url,
   SubtitleFetcher fetch, {
   Duration from = Duration.zero,
   void Function(List<SubtitleCue> cues)? onProgress,
   bool Function()? cancelled,
+  String encoding = '',
 }) async {
   bool stopped() => cancelled?.call() ?? false;
 
@@ -300,7 +316,7 @@ Future<SubtitleLoad> loadSubtitleCues(
   if (bytes == null || stopped()) {
     return _failed(SubtitleLoadFailure.unavailable);
   }
-  final text = decodeSubtitleBytes(bytes);
+  final text = decodeSubtitleBytes(bytes, encoding: encoding);
   if (!text.trimLeft().startsWith('#EXTM3U')) {
     final cues = parseSubtitles(text);
     if (cues == null || cues.isEmpty) {
@@ -320,7 +336,7 @@ Future<SubtitleLoad> loadSubtitleCues(
     final segment = await _fetchQuietly(fetch, segments[index].url);
     if (segment == null || stopped()) return;
     fetched++;
-    join.add(decodeSubtitleBytes(segment));
+    join.add(decodeSubtitleBytes(segment, encoding: encoding));
   }
 
   // The first segment's timestamp map is the clock every other segment is
@@ -981,13 +997,3 @@ String _utf16(List<int> bytes, {required bool bigEndian}) {
   }
   return String.fromCharCodes(units);
 }
-
-/// Windows-1252's characters for 0x80-0x9F, where it parts from Latin-1.
-/// The five bytes it leaves undefined map to the control codes Latin-1 has
-/// there.
-const List<int> _cp1252 = [
-  0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, //
-  0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F, //
-  0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, //
-  0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178, //
-];

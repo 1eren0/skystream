@@ -6,7 +6,8 @@ cmake_minimum_required(VERSION 3.14)
 
 # Project-level configuration.
 set(PROJECT_NAME "vlc_player")
-project(${PROJECT_NAME} LANGUAGES CXX)
+# C for src/native/vlc_subtitle_look.c, shared with Android's C shim.
+project(${PROJECT_NAME} LANGUAGES C CXX)
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -24,6 +25,8 @@ list(APPEND PLUGIN_SOURCES
   "../src/native/vlc_player_core.cc"
   "../src/native/vlc_player_core.h"
   "../src/native/vlc_player_types.h"
+  "../src/native/vlc_subtitle_look.c"
+  "../src/native/vlc_subtitle_look.h"
   "../src/native/vlc_video_output.cc"
   "../src/native/vlc_video_output.h"
   "vlc_player_plugin.cpp"
