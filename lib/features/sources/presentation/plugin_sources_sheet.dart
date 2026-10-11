@@ -1391,6 +1391,7 @@ class _SourceRowState extends State<_SourceRow> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final row = widget.row;
+    final languageTag = sourceAudioLanguageTag(row.nuvio.language);
     final probe = widget.probe;
     final probing = widget.probing;
     final isBest = widget.isBest;
@@ -1450,6 +1451,12 @@ class _SourceRowState extends State<_SourceRow> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         QualityBadge(resolution: resolution),
+                        if (languageTag != null)
+                          SourceTag(
+                            text: languageTag,
+                            container: cs.surfaceContainerHighest,
+                            onContainer: cs.onSurfaceVariant,
+                          ),
                         if (row.isHdr)
                           SourceTag(
                             text: 'HDR',
