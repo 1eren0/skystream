@@ -1780,6 +1780,16 @@ class AppLocalizationsRu extends AppLocalizations {
       'A video starts with no subtitle. You can still turn one on from the Subtitles menu in the player.';
 
   @override
+  String get audioLanguage => 'Audio language';
+
+  @override
+  String get audioLanguageAuto => 'Auto';
+
+  @override
+  String get audioLanguageAutoDetail =>
+      'A video starts with the audio its source selects.';
+
+  @override
   String get networkBuffer => 'Network buffer';
 
   @override

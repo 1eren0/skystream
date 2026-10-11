@@ -106,6 +106,93 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a reopen follows the subtitle\'s language, not its number', (
+    tester,
+  ) async {
+    // What the engine actually reports: no language field, the language in
+    // libVLC's name for the track.
+    engine.audio = const <Map<String, Object?>>[
+      <String, Object?>{'id': 1, 'name': 'Track 1 - [English]'},
+    ];
+    engine.activeAudioId = 1;
+    engine.subtitle = const <Map<String, Object?>>[
+      <String, Object?>{'id': 3, 'name': 'Track 3 - [English]'},
+      <String, Object?>{'id': 4, 'name': 'Track 4 - [Hindi]'},
+    ];
+    engine.activeSubtitleId = 3;
+
+    await pumpPlayer(tester);
+    await sendEvent(tester, engine.event());
+    await settle(tester);
+
+    // The copy that comes back lists them the other way round, with nothing
+    // on - and id 3 is Hindi now.
+    engine.subtitle = const <Map<String, Object?>>[
+      <String, Object?>{'id': 3, 'name': 'Track 3 - [Hindi]'},
+      <String, Object?>{'id': 4, 'name': 'Track 4 - [English]'},
+    ];
+    engine.activeSubtitleId = -1;
+    final before = engine.callsTo('setSubtitleTrack').length;
+
+    await stallUntilReopen(tester);
+    await sendEvent(tester, engine.event());
+    await settle(tester);
+
+    final asked = engine
+        .callsTo('setSubtitleTrack')
+        .skip(before)
+        .map((c) => (c.arguments as Map<Object?, Object?>)['id'])
+        .toList();
+
+    expect(asked, <Object?>[4], reason: 'English is id 4 on this one');
+
+    await tester.pumpWidget(const SizedBox());
+  }, variant: texturePlatform);
+
+  testWidgets('a reopen follows the subtitle\'s language into a list that '
+      'fills in late', (tester) async {
+    engine.audio = const <Map<String, Object?>>[
+      <String, Object?>{'id': 1, 'name': 'Track 1 - [English]'},
+    ];
+    engine.activeAudioId = 1;
+    engine.subtitle = const <Map<String, Object?>>[
+      <String, Object?>{'id': 3, 'name': 'Track 3 - [English]'},
+      <String, Object?>{'id': 4, 'name': 'Track 4 - [Hindi]'},
+    ];
+    engine.activeSubtitleId = 3;
+
+    await pumpPlayer(tester);
+    await sendEvent(tester, engine.event());
+    await settle(tester);
+
+    // The copy that comes back lists its audio first and its subtitles a
+    // little later, the other way round.
+    engine.subtitle = const <Map<String, Object?>>[];
+    engine.activeSubtitleId = -1;
+    final before = engine.callsTo('setSubtitleTrack').length;
+
+    await stallUntilReopen(tester);
+    await sendEvent(tester, engine.event());
+    await settle(tester);
+    engine.subtitle = const <Map<String, Object?>>[
+      <String, Object?>{'id': 3, 'name': 'Track 3 - [Hindi]'},
+      <String, Object?>{'id': 4, 'name': 'Track 4 - [English]'},
+    ];
+    await engine.bumpTracks();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settle(tester);
+
+    final asked = engine
+        .callsTo('setSubtitleTrack')
+        .skip(before)
+        .map((c) => (c.arguments as Map<Object?, Object?>)['id'])
+        .toList();
+
+    expect(asked, <Object?>[4]);
+
+    await tester.pumpWidget(const SizedBox());
+  }, variant: texturePlatform);
+
   testWidgets('a reopen leaves the default alone when the language is gone', variant: texturePlatform, (
     tester,
   ) async {

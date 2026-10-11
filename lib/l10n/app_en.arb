@@ -1201,6 +1201,18 @@
   "@subtitleDefaultOffDetail": {
     "description": "Explanatory line under the 'Off' choice in the subtitleDefault dialog. The second sentence is load-bearing: Off is a default, not a lock, and the row must not read as 'subtitles are disabled'. The choice itself reuses the existing 'off' key."
   },
+  "audioLanguage": "Audio language",
+  "@audioLanguage": {
+    "description": "Player settings row: the language whose audio track a video starts on, when the video has one. A default for newly opened media only - it never stops the viewer choosing a track from the player's Audio menu. Also the title of the dialog the row opens, which lists Auto and then the languages by their English names."
+  },
+  "audioLanguageAuto": "Auto",
+  "@audioLanguageAuto": {
+    "description": "The first choice in the audioLanguage dialog, and the shipped default. 'Auto' means the app does not interfere: whatever audio track the source selects is what plays."
+  },
+  "audioLanguageAutoDetail": "A video starts with the audio its source selects.",
+  "@audioLanguageAutoDetail": {
+    "description": "Explanatory line under the 'Auto' choice in the audioLanguage dialog."
+  },
   "networkBuffer": "Network buffer",
   "@networkBuffer": {
     "description": "Title of the player setting controlling how much of a network stream is held in memory ahead of and behind playback."

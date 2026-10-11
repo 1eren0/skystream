@@ -33,6 +33,8 @@
 ///    encode.
 library;
 
+import 'dart:async';
+
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -124,6 +126,17 @@ class FakeVlcEngine {
 
   /// Every call the controller sent, arguments included.
   final List<MethodCall> calls = <MethodCall>[];
+
+  /// Replies held back by [holdNextReply], by method.
+  final Map<String, Completer<void>> _heldReplies = <String, Completer<void>>{};
+
+  /// Holds back the reply to the next call to [method] until the returned
+  /// completer completes. The call itself is recorded and acted on at once,
+  /// as the engine would: what is held is the answer on its way back over the
+  /// channel - a `setSource` the engine has taken and not yet acknowledged,
+  /// say. Only the next call is held; a refusal is held like an answer.
+  Completer<void> holdNextReply(String method) =>
+      _heldReplies[method] = Completer<void>();
 
   /// The event sink handed over when the controller subscribed, or null while
   /// nobody listens. [emit] does not need it - it goes through the messenger
@@ -240,6 +253,20 @@ class FakeVlcEngine {
 
   Future<Object?> _handle(MethodCall call) async {
     calls.add(call);
+    final held = _heldReplies.remove(call.method);
+    Object? answer;
+    PlatformException? refusal;
+    try {
+      answer = _answer(call);
+    } on PlatformException catch (error) {
+      refusal = error;
+    }
+    if (held != null) await held.future;
+    if (refusal != null) throw refusal;
+    return answer;
+  }
+
+  Object? _answer(MethodCall call) {
     if (refusedMethods.contains(call.method)) {
       throw PlatformException(
         code: 'refused',

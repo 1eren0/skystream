@@ -19,6 +19,7 @@ import '../../../../core/theme/theme_provider.dart';
 import '../../../../core/utils/app_utils.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../player/domain/network_buffer.dart';
+import '../../../player/domain/track_language.dart';
 import '../player_settings_provider.dart';
 import '../../../../core/utils/stream_quality_sorter.dart';
 import '../general_settings_provider.dart';
@@ -53,6 +54,13 @@ String subtitleDefaultLabel(SubtitleDefault value, AppLocalizations l10n) =>
       SubtitleDefault.auto => l10n.subtitleDefaultAuto,
       SubtitleDefault.off => l10n.off,
     };
+
+/// The audio language row's value: Auto, or the language by the English name
+/// the subtitle search's chips give it too.
+String preferredAudioLanguageLabel(String language, AppLocalizations l10n) =>
+    language.isEmpty
+    ? l10n.audioLanguageAuto
+    : languageNameForCode(language) ?? language;
 
 /// Returns a localized label for a resize mode string.
 String getResizeModeLabel(String mode, AppLocalizations l10n) {
@@ -883,6 +891,65 @@ void showSubtitleDefaultDialog(
                 ),
               );
             }).toList(),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Shows a dialog to pick the language a video starts in, when it has one.
+///
+/// Auto - the source's own choice, said in a line of its own - and then the
+/// languages the player offers everywhere, the subtitle search included
+/// ([playerLanguages]). Forty-one rows: the one in force is focused and
+/// scrolled into view, as in the app's own language picker.
+void showPreferredAudioLanguageDialog(
+  BuildContext context,
+  WidgetRef ref,
+  String current,
+) {
+  final l10n = AppLocalizations.of(context)!;
+  final options = <({String code, String? detail})>[
+    (code: '', detail: l10n.audioLanguageAutoDetail),
+    for (final code in playerLanguages.values) (code: code, detail: null),
+  ];
+  void choose(BuildContext ctx, String code) {
+    unawaited(
+      ref.read(playerSettingsProvider.notifier).setPreferredAudioLanguage(code),
+    );
+    Navigator.pop<void>(ctx);
+  }
+
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      surfaceTintColor: Colors.transparent,
+      title: Text(l10n.audioLanguage),
+      content: RadioGroup<String>(
+        groupValue: current,
+        onChanged: (val) {
+          if (val == null) return;
+          choose(ctx, val);
+        },
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in options)
+                _currentOption(
+                  isCurrent: option.code == current,
+                  child: ListTile(
+                    autofocus: option.code == current,
+                    title: Text(preferredAudioLanguageLabel(option.code, l10n)),
+                    subtitle: option.detail == null
+                        ? null
+                        : Text(option.detail!),
+                    leading: Radio<String>(value: option.code),
+                    onTap: () => choose(ctx, option.code),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

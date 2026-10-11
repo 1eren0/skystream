@@ -174,6 +174,39 @@ void main() {
       .firstWhere((SettingsTile tile) => tile.title == l10n.subtitleDefault)
       .subtitle!;
 
+  /// The audio language row, read the way [subtitleDefaultRow] is: "Auto"
+  /// is also what other rows say.
+  String audioLanguageRow(WidgetTester tester) => tester
+      .widgetList<SettingsTile>(find.byType(SettingsTile, skipOffstage: false))
+      .firstWhere((SettingsTile tile) => tile.title == l10n.audioLanguage)
+      .subtitle!;
+
+  testWidgets('the audio language row reads Auto on a fresh install', (
+    WidgetTester tester,
+  ) async {
+    await pumpPlayerSettings(
+      tester,
+      platform: TargetPlatform.android,
+      profile: const DeviceProfile(),
+    );
+
+    expect(audioLanguageRow(tester), l10n.audioLanguageAuto);
+  });
+
+  testWidgets('a television has the audio language row, reading the language '
+      'in force', (WidgetTester tester) async {
+    await pumpPlayerSettings(
+      tester,
+      platform: TargetPlatform.android,
+      profile: const DeviceProfile(isTv: true),
+      size: const Size(960, 540),
+      navigationMode: NavigationMode.directional,
+      settings: const PlayerSettings(preferredAudioLanguage: 'kn'),
+    );
+
+    expect(audioLanguageRow(tester), 'Kannada');
+  });
+
   testWidgets('the subtitle default row reads Auto on a fresh install', (
     WidgetTester tester,
   ) async {

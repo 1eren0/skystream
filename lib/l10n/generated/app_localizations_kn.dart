@@ -1780,6 +1780,16 @@ class AppLocalizationsKn extends AppLocalizations {
       'ವೀಡಿಯೊ ಯಾವುದೇ ಉಪಶೀರ್ಷಿಕೆ ಇಲ್ಲದೆ ಪ್ರಾರಂಭವಾಗುತ್ತದೆ. ಪ್ಲೇಯರ್‌ನ ಉಪಶೀರ್ಷಿಕೆ ಮೆನುವಿನಿಂದ ನೀವು ಅದನ್ನು ಈಗಲೂ ಆನ್ ಮಾಡಬಹುದು.';
 
   @override
+  String get audioLanguage => 'ಆಡಿಯೋ ಭಾಷೆ';
+
+  @override
+  String get audioLanguageAuto => 'ಸ್ವಯಂ';
+
+  @override
+  String get audioLanguageAutoDetail =>
+      'ವೀಡಿಯೊ ಅದರ ಮೂಲವು ಆಯ್ಕೆ ಮಾಡುವ ಆಡಿಯೋದೊಂದಿಗೆ ಪ್ರಾರಂಭವಾಗುತ್ತದೆ.';
+
+  @override
   String get networkBuffer => 'ನೆಟ್‌ವರ್ಕ್ ಬಫರ್';
 
   @override

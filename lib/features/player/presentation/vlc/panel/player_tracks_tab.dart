@@ -44,6 +44,7 @@ import '../../../../../l10n/generated/app_localizations.dart';
 import '../../../domain/side_car_subtitles.dart';
 import '../../../domain/subtitle_search_target.dart';
 import '../../../domain/track_language.dart';
+import '../../../domain/track_memory.dart';
 import '../player_value_selector.dart';
 import 'player_anchored_list.dart';
 import 'player_panel_labels.dart';
@@ -94,6 +95,7 @@ class PlayerTracksTab extends StatelessWidget {
     this.searchFocusNode,
     this.isTv = false,
     this.autofocus = false,
+    this.onAudioPicked,
     super.key,
   });
 
@@ -148,6 +150,20 @@ class PlayerTracksTab extends StatelessWidget {
 
   final bool isTv;
   final bool autofocus;
+
+  /// The audio track the viewer just picked from this tab, with the language
+  /// its media info gives - see [withTrackLanguage].
+  ///
+  /// The engine selects audio too - as media opens, on a reopen, for the audio
+  /// language setting - and a row tap is the one selection that is the
+  /// viewer's own, which the screen keeps for the rest of the content.
+  ///
+  /// Reported before the engine is asked, so that nothing the screen still
+  /// had due can be sent after it: a look of its own, already past its last
+  /// check when the viewer's set went out, would otherwise follow it to the
+  /// engine and win. A pick the engine refuses is reported all the same - it
+  /// is still what the viewer asked for.
+  final ValueChanged<VlcTrackDescription>? onAudioPicked;
 
   bool get _isAudio => kind == PlayerTrackKind.audio;
 
@@ -240,7 +256,13 @@ class PlayerTracksTab extends StatelessWidget {
             autofocus: autofocus && anchor == leading + index,
             onTap: () => unawaited(
               _setTrack(context, () async {
-                if (_isAudio) return controller.setAudioTrack(track.id);
+                if (_isAudio) {
+                  onAudioPicked?.call(
+                    withTrackLanguage(track, _infoFor(index)),
+                  );
+                  await controller.setAudioTrack(track.id);
+                  return;
+                }
                 await sideCars?.select(null);
                 await controller.setSubtitleTrack(track.id);
               }),
@@ -309,43 +331,11 @@ class PlayerTracksTab extends StatelessWidget {
   }) async {
     try {
       await call();
-      if (reseat) await _reseat();
+      if (reseat) await reseatAfterTrackSwitch(controller);
     } on VlcPlayerException catch (_) {
       // The panel can be closed, or the list already re-read under us, while
       // the call is in flight; a reload then belongs to nobody.
       if (context.mounted) onTracksChanged();
-    }
-  }
-
-  /// Re-issues the current position so the new track starts here, now.
-  ///
-  /// A stream selected mid-playback begins at the demuxer's read point, which
-  /// sits a whole caching interval ahead of the picture, so the new track is
-  /// silent until the clock catches up to it. Seeking flushes every stream and
-  /// refills them together, which is what makes the switch land immediately -
-  /// the same thing a viewer discovers by scrubbing a little after switching.
-  ///
-  /// The cost is honest and deliberate: a short rebuffer in place of a longer
-  /// wrong-sounding one. It is also cheap now that a read-ahead buffer sits
-  /// under the demuxer, because a seek back to where we already are is served
-  /// from memory rather than from the network.
-  ///
-  /// Refused where a seek means nothing - a live feed has nowhere to go, and
-  /// an unseekable source would simply fail the call.
-  ///
-  /// Here is the playback clock's position, not the engine's last word: that
-  /// is up to a throttle interval old, and VLCKit's does not move at all on a
-  /// seek made while paused, so re-seating there would undo the seek.
-  Future<void> _reseat() async {
-    final value = controller.value;
-    if (value.isLive || !value.isSeekable) return;
-    final position = controller.playbackClock.position;
-    if (position <= Duration.zero) return;
-    try {
-      await controller.seekTo(position);
-    } on Object {
-      // A refused seek costs the immediacy, not the track change, which has
-      // already happened.
     }
   }
 
@@ -517,6 +507,41 @@ class PlayerTracksTab extends StatelessWidget {
       // reason to refuse to open the search.
       return null;
     }
+  }
+}
+
+/// Re-issues [controller]'s current position after a track switch, so the new
+/// track starts here, now. Used by every switch: a row picked here, and the
+/// player screen's own - the audio language setting's, and a reopen's restore.
+///
+/// A stream selected mid-playback begins at the demuxer's read point, which
+/// sits a whole caching interval ahead of the picture, so the new track is
+/// silent until the clock catches up to it. Seeking flushes every stream and
+/// refills them together, which is what makes the switch land immediately -
+/// the same thing a viewer discovers by scrubbing a little after switching.
+///
+/// The cost is honest and deliberate: a short rebuffer in place of a longer
+/// wrong-sounding one. It is also cheap now that a read-ahead buffer sits
+/// under the demuxer, because a seek back to where we already are is served
+/// from memory rather than from the network.
+///
+/// Refused where a seek means nothing - a live feed has nowhere to go, and
+/// an unseekable source would simply fail the call - and before the media has
+/// a position to go back to.
+///
+/// Here is the playback clock's position, not the engine's last word: that
+/// is up to a throttle interval old, and VLCKit's does not move at all on a
+/// seek made while paused, so re-seating there would undo the seek.
+Future<void> reseatAfterTrackSwitch(VlcPlayerController controller) async {
+  final value = controller.value;
+  if (value.isLive || !value.isSeekable) return;
+  final position = controller.playbackClock.position;
+  if (position <= Duration.zero) return;
+  try {
+    await controller.seekTo(position);
+  } on Object {
+    // A refused seek costs the immediacy, not the track change, which has
+    // already happened.
   }
 }
 

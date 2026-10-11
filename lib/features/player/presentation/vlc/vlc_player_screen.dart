@@ -57,6 +57,7 @@ import 'next_episode_countdown.dart';
 import 'player_startup_view.dart';
 import 'panel/player_panel.dart';
 import 'panel/player_panel_labels.dart' show sourceFactsOf;
+import 'panel/player_tracks_tab.dart' show reseatAfterTrackSwitch;
 import 'player_value_selector.dart';
 import 'resume_hint.dart';
 import 'side_car_fetch.dart';
@@ -520,6 +521,57 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// rendition step-down - is the same film, so the pick still means something.
   RememberedTrack? _rememberedAudio;
   RememberedTrack? _rememberedSubtitle;
+
+  /// The audio track the viewer put on from the Audio tab, for this content.
+  ///
+  /// The one audio choice that is the viewer's own. [_rememberedAudio] is
+  /// whatever was playing - the engine's default, a reopen's restore, the
+  /// audio language setting's pick - and the setting outranks it on each
+  /// media it opens; this outranks the setting wherever it goes back on
+  /// ([_viewerAudioOutranks]), and the setting is what is left where it does
+  /// not. Set only by a row the viewer picks ([_onAudioPicked]), never by
+  /// opening the panel, and cleared with the content by [_startEpisode].
+  RememberedTrack? _viewerAudio;
+
+  /// The source [_viewerAudio] was picked on, by its URL: the copy of the
+  /// film on which a pick that names no language still means a track.
+  String? _viewerAudioCopy;
+
+  /// The source of the media the engine was last handed, by its URL - what is
+  /// playing, through the setup of the next attempt as well.
+  String? _engineStreamUrl;
+
+  /// Whether [_audioToRestore] is the viewer's own pick, and goes back on
+  /// ahead of the audio language setting: the pick names its language, or
+  /// this media is the very copy it was picked on. Elsewhere a pick that
+  /// names none cannot be told - `Track 2` is any track at all on another
+  /// copy - so the setting goes first, and the pick is only put back where
+  /// the media lacks the language. Per attempt.
+  bool _viewerAudioOutranks = false;
+
+  /// What the media this attempt opened is put back on once it lists its
+  /// audio: the viewer's own pick, or failing one whatever was playing as it
+  /// opened. Taken per attempt, so that what this media plays meanwhile
+  /// cannot overwrite it, and spent by the first look.
+  RememberedTrack? _audioToRestore;
+
+  /// The audio track this screen put on - or found on and kept - for the
+  /// media this attempt opened ([_switchAudio]). Any other track playing is
+  /// libVLC's own choice. Cleared per attempt.
+  int? _audioPutOn;
+
+  /// The audio language setting, while it still owes the media this attempt
+  /// opened its look ([_pickPreferredAudio]). Armed per attempt, and spent
+  /// once the media is on its track in the language or on the viewer's own
+  /// pick - or the viewer picks one on it.
+  String? _preferredAudioToPick;
+
+  /// The track list revision the last look for [_preferredAudioToPick] read:
+  /// the next look waits for the list to change, not for the next tick.
+  int? _preferredAudioCheckedRevision;
+
+  /// Set while a look for [_preferredAudioToPick] is in flight.
+  bool _pickingPreferredAudio = false;
 
   /// The subtitle [_restoreTracks] came to put back and did not find: the new
   /// media had not listed it yet - a reopened MKV lists its audio first. It
@@ -1180,10 +1232,30 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     _viewerChoseSubtitle = false;
     _subtitleToRestore = null;
     _subtitleRestoreRevision = null;
+    // The audio language setting speaks for every media this screen opens, a
+    // reopen included - see [_pickPreferredAudio]. A track the viewer picked
+    // on this content outranks it wherever that track goes back on, and the
+    // setting is the fallback where it does not. Read here for the reason the
+    // subtitle default is: a change in Settings reaches the next media, not
+    // the one on screen.
+    final audioLanguage =
+        _read(playerSettingsProvider).asData?.value.preferredAudioLanguage ??
+        '';
+    _preferredAudioToPick = audioLanguage.isNotEmpty ? audioLanguage : null;
+    _preferredAudioCheckedRevision = null;
+    _pickingPreferredAudio = false;
+    _audioPutOn = null;
     // Whatever the viewer was listening to and reading goes back on once the
     // new media has published its tracks. A reopen restores the position; it
-    // has no business also changing the language.
-    _restorePending = _rememberedAudio != null || _rememberedSubtitle != null;
+    // has no business also changing the language. Under the setting the audio
+    // half is its look's to do: the viewer's own pick first where it can be
+    // told on this media, and otherwise this goes back only where the media
+    // lacks the language.
+    _audioToRestore = _viewerAudio ?? _rememberedAudio;
+    _viewerAudioOutranks = _viewerAudioTellableOn(resolved.streams[index].url);
+    _restorePending =
+        (_preferredAudioToPick == null && _audioToRestore != null) ||
+        _rememberedSubtitle != null;
     // Every way back into playback goes through here - Start Over, a failover,
     // a hand-picked source - and none of them may leave the ended card up over
     // media that is opening.
@@ -1306,6 +1378,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
 
     _lastStreamUrl = stream.url;
     _isLive = isLiveSource(widget.item, stream.url);
+    final languageOption = _audioLanguageOption();
     await _controller.setMedia(
       VlcMediaSource(
         uri: mediaUri,
@@ -1317,11 +1390,15 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
         //
         // The rendition ceiling rides here only once it has been lowered from
         // the seeded value, which is already on the instance config.
+        //
+        // The audio language rides here whenever the setting speaks for this
+        // media - see [_audioLanguageOption].
         mediaOptions: <String>[
           if (_isLive) ':live-caching=$kNetworkCachingMs',
           if (_isLive) ':network-caching=$kNetworkCachingMs',
           if (_adaptiveMaxHeight != _deviceAdaptiveMaxHeight)
             ':adaptive-maxheight=$_adaptiveMaxHeight',
+          ?languageOption,
         ],
       ),
       autoPlay: true,
@@ -1332,6 +1409,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // handshake — and the deadline the watchdog enforces is on the engine
     // producing a frame, not on getting to setMedia.
     _handedToEngine = true;
+    _engineStreamUrl = stream.url;
     _startAttemptClock();
     if (!_isLive && looksLikeHls(mediaUri)) {
       _hlsMedia = (uri: mediaUri, headers: headers);
@@ -1483,8 +1561,16 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// RESTORING waits for the new media to publish tracks. `setAudioTrack`
   /// before they exist is refused, and libVLC 3 queues an added slave to the
   /// input thread, so the list arrives some ticks after the open completes.
-  /// A non-null active id is the proof that it has.
+  /// A non-null active id is the proof that it has. The audio language
+  /// setting's look waits on the same proof ([_maybePickPreferredAudio]).
+  ///
+  /// Neither job starts until the engine has been handed this attempt's media
+  /// ([_handedToEngine]). Before then every tick describes the media on its
+  /// way out - an episode advance plays the last one on through the whole of
+  /// the next one's resolve - and what it says is not this media's to
+  /// remember, restore or pick for.
   void _rememberTracks(VlcPlayerValue value) {
+    if (!_handedToEngine) return;
     final audioId = value.activeAudioTrackId;
     final subtitleId = value.activeSubtitleTrackId;
 
@@ -1496,6 +1582,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       return;
     }
 
+    _maybePickPreferredAudio(value);
     if (audioId != _seenAudioTrackId) {
       _seenAudioTrackId = audioId;
       if (audioId != null) unawaited(_snapshotAudio(audioId));
@@ -1509,10 +1596,220 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     }
   }
 
+  /// libVLC's `audio-language` option for the media this attempt opens, or
+  /// null while the audio language setting is on Auto.
+  ///
+  /// With it libVLC selects the language's track itself as the media's
+  /// streams are created - and again when they are recreated mid-stream -
+  /// wherever the source declares which track is in it, so nothing is
+  /// switched and nothing goes silent. It names, in the order the look puts
+  /// them on, the language of the viewer's own pick where that goes back on
+  /// ([_viewerAudioOutranks]), then the setting's - each by every code libVLC
+  /// may file it under ([vlcLanguageCodes]). [_pickPreferredAudio] still looks
+  /// once the tracks are listed, for the tracks whose language only their
+  /// name tells.
+  String? _audioLanguageOption() {
+    final preferred = _preferredAudioToPick;
+    if (preferred == null) return null;
+    final codes = <String>{
+      if (_viewerAudioOutranks) ...vlcLanguageCodes(_viewerAudio?.language),
+      ...vlcLanguageCodes(preferred),
+    };
+    if (codes.isEmpty) return null;
+    return ':audio-language=${codes.join(',')}';
+  }
+
+  /// Whether the viewer's own pick can be told among the tracks of the source
+  /// [url] names: by the language it is in, or - for a pick that names none -
+  /// on the very copy it was picked on, by its name and its number. See
+  /// [_viewerAudioOutranks].
+  bool _viewerAudioTellableOn(String? url) {
+    final viewer = _viewerAudio;
+    return viewer != null && (viewer.hasLanguage || _viewerAudioCopy == url);
+  }
+
+  /// Starts [_pickPreferredAudio] once the media has published its audio, and
+  /// again on each change to the list until the setting has its answer.
+  void _maybePickPreferredAudio(VlcPlayerValue value) {
+    final preferred = _preferredAudioToPick;
+    if (preferred == null ||
+        value.activeAudioTrackId == null ||
+        _pickingPreferredAudio ||
+        _preferredAudioCheckedRevision == value.trackRevision) {
+      return;
+    }
+    _preferredAudioCheckedRevision = value.trackRevision;
+    _pickingPreferredAudio = true;
+    final generation = _generation;
+    unawaited(
+      _pickPreferredAudio(preferred).whenComplete(() {
+        // A newer attempt has a latch of its own.
+        if (generation == _generation) _pickingPreferredAudio = false;
+      }),
+    );
+  }
+
+  /// The audio language setting's look at the media this attempt opened.
+  ///
+  /// A track the viewer picked on this content goes back on first, where it
+  /// can be told on this media ([_viewerAudioOutranks]), and that spends the
+  /// setting. A pick this media does not have leaves the setting to decide,
+  /// as though nobody had picked.
+  ///
+  /// The media's track in the language goes on - unless the one playing is in
+  /// it already, which stays: a source playing Hindi DD 5.1 is not moved to
+  /// its Hindi 2.0. That spends the setting for this media, and the pick is
+  /// not the viewer's: the next reopen asks the setting again rather than
+  /// putting this track back by number, which on another provider's copy is
+  /// another language.
+  ///
+  /// Media with no track in the language - not listed yet, or not at all - is
+  /// put back on what was playing before this reopen if it has that, and is
+  /// otherwise left on its own default. The setting goes on watching the list
+  /// meanwhile: the language can still arrive late, as a resumed MKV's tracks
+  /// do.
+  ///
+  /// A commentary or an audio description libVLC put on for itself is never
+  /// left playing, though. Asked for a language ([_audioLanguageOption]) it
+  /// takes the first track the source declares in it, commentary or film, so
+  /// one playing is no sign anybody chose it: the film's own track in the
+  /// language goes on instead, and where the language has nothing else, the
+  /// first track that is the film - the media's own default, as near as the
+  /// list can tell.
+  Future<void> _pickPreferredAudio(String preferred) async {
+    final generation = _generation;
+    bool superseded() =>
+        _disposed ||
+        generation != _generation ||
+        _preferredAudioToPick != preferred;
+    try {
+      final tracks = await _audioTracksWithLanguages();
+      if (superseded()) return;
+      if (_viewerAudioOutranks) {
+        final viewers = matchRememberedTrack(tracks, _audioToRestore);
+        if (viewers != null) {
+          await _switchAudio(viewers.id);
+          if (superseded()) return;
+          _preferredAudioToPick = null;
+          _audioToRestore = null;
+          return;
+        }
+        _viewerAudioOutranks = false;
+      }
+      final active = _controller.value.activeAudioTrackId;
+      final enginesCommentary =
+          active != _audioPutOn &&
+          tracks.any(
+            (track) => track.id == active && isCommentaryOrDescription(track),
+          );
+      final match = findPreferredAudioTrack(
+        tracks,
+        preferred,
+        activeId: enginesCommentary ? null : active,
+      );
+      if (match != null) {
+        await _switchAudio(match.id);
+        if (superseded()) return;
+        // Spent once the engine has taken it: a refusal is looked at again
+        // with the next change to the list.
+        _preferredAudioToPick = null;
+        _audioToRestore = null;
+        return;
+      }
+      final carried = _audioToRestore;
+      _audioToRestore = null;
+      final back =
+          matchRememberedTrack(tracks, carried) ??
+          (enginesCommentary
+              ? tracks
+                    .where((track) => !isCommentaryOrDescription(track))
+                    .firstOrNull
+              : null);
+      if (back != null) await _switchAudio(back.id);
+    } on Object {
+      // An engine that will not list or set keeps its own choice, which is
+      // where the viewer would have been without the setting.
+    }
+  }
+
+  /// Puts audio track [id] on, and plays it from where the picture is
+  /// ([reseatAfterTrackSwitch]) - unless it is on already, which needs
+  /// neither the switch nor the rebuffer. Throws the engine's refusal.
+  Future<void> _switchAudio(int id) async {
+    _audioPutOn = id;
+    if (id == _controller.value.activeAudioTrackId) return;
+    final generation = _generation;
+    await _controller.setAudioTrack(id);
+    if (_disposed || generation != _generation) return;
+    await reseatAfterTrackSwitch(_controller);
+  }
+
+  /// The engine's audio tracks, each with the language it is in - which no
+  /// native reports on the track itself - read off `getMediaInfo` and the
+  /// track's name. See [withTrackLanguages].
+  Future<List<VlcTrackDescription>> _audioTracksWithLanguages() async {
+    final tracks = await _controller.getAudioTracks();
+    List<VlcMediaTrackInfo> info = const [];
+    try {
+      info = (await _controller.getMediaInfo()).audioTracks;
+    } on Object {
+      // The names are often enough on their own: libVLC names a track
+      // `Track 2 - [Hindi]`.
+    }
+    return withTrackLanguages(tracks, info);
+  }
+
+  /// The engine's subtitle tracks, each with the language it is in, read the
+  /// way [_audioTracksWithLanguages] reads the audio: a subtitle carried to
+  /// another provider's copy follows its language there, not its name or its
+  /// number, which on that copy can be another language's.
+  Future<List<VlcTrackDescription>> _subtitleTracksWithLanguages() async {
+    final tracks = await _controller.getSubtitleTracks();
+    List<VlcMediaTrackInfo> info = const [];
+    try {
+      info = (await _controller.getMediaInfo()).subtitleTracks;
+    } on Object {
+      // As for the audio: libVLC names a track `Track 3 - [English]`.
+    }
+    return withTrackLanguages(tracks, info);
+  }
+
+  /// The viewer picked [track] from the Audio tab - see [_viewerAudio].
+  /// Reported before the engine is asked for it.
+  ///
+  /// It stands for the rest of this content: nothing still due to this media
+  /// - the setting's look, a reopen's restore - may undo it, and each later
+  /// reopen puts it back.
+  ///
+  /// A pick made while this attempt's media is still opening was made on the
+  /// media on its way out - a panel left up over a failover lists that
+  /// media's tracks until the new one has its own. Nothing has been heard of
+  /// the new media yet, so the pick is carried to it as a reopen carries one,
+  /// with the setting still its fallback, rather than leaving it with
+  /// neither.
+  void _onAudioPicked(VlcTrackDescription track) {
+    if (_disposed) return;
+    final pick = RememberedTrack.of(track);
+    _viewerAudio = pick;
+    _viewerAudioCopy = _engineStreamUrl;
+    if (!_handedToEngine) {
+      _audioToRestore = pick;
+      _viewerAudioOutranks = _viewerAudioTellableOn(_attemptStreamUrl);
+      if (_preferredAudioToPick == null) _restorePending = true;
+      return;
+    }
+    _preferredAudioToPick = null;
+    _audioToRestore = null;
+  }
+
+  /// The source this attempt opens, by its URL; null before there is one.
+  String? get _attemptStreamUrl =>
+      _resolved?.streams.elementAtOrNull(_attemptIndex)?.url;
+
   Future<void> _snapshotAudio(int id) async {
     final generation = _generation;
     try {
-      final tracks = await _controller.getAudioTracks();
+      final tracks = await _audioTracksWithLanguages();
       if (_disposed || generation != _generation) return;
       _rememberedAudio = RememberedTrack.of(
         tracks.where((t) => t.id == id).firstOrNull,
@@ -1526,7 +1823,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   Future<void> _snapshotSubtitle(int id) async {
     final generation = _generation;
     try {
-      final tracks = await _controller.getSubtitleTracks();
+      final tracks = await _subtitleTracksWithLanguages();
       if (_disposed || generation != _generation) return;
       _rememberedSubtitle = RememberedTrack.of(
         tracks.where((t) => t.id == id).firstOrNull,
@@ -1543,21 +1840,26 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   Future<void> _restoreTracks() async {
     final generation = _generation;
     try {
-      final audio = _rememberedAudio;
+      // Under the audio language setting the audio half is its look's.
+      final audio = _preferredAudioToPick == null ? _audioToRestore : null;
       if (audio != null) {
         final match = matchRememberedTrack(
-          await _controller.getAudioTracks(),
+          await _audioTracksWithLanguages(),
           audio,
         );
         if (_disposed || generation != _generation) return;
-        if (match != null) await _controller.setAudioTrack(match.id);
+        // Unless the viewer has picked meanwhile: theirs stands.
+        if (_audioToRestore == audio) {
+          _audioToRestore = null;
+          if (match != null) await _switchAudio(match.id);
+        }
       }
 
       final subtitle = _rememberedSubtitle;
       if (subtitle != null) {
         if (_disposed || generation != _generation) return;
         final match = matchRememberedTrack(
-          await _controller.getSubtitleTracks(),
+          await _subtitleTracksWithLanguages(),
           subtitle,
         );
         if (_disposed || generation != _generation) return;
@@ -1605,7 +1907,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
         _viewerChoseSubtitle ||
         _sideCars.active != null;
     try {
-      final tracks = await _controller.getSubtitleTracks();
+      final tracks = await _subtitleTracksWithLanguages();
       if (superseded()) return;
       final match = matchRememberedTrack(tracks, wanted);
       if (match == null) return;
@@ -1692,9 +1994,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     final preferred = languageCodeOf(_read(subtitleLanguageProvider));
     if (preferred != null) {
       try {
-        final tracks = (await _controller.getSubtitleTracks())
-            .where((track) => track.id >= 0)
-            .toList();
+        final listed = await _controller.getSubtitleTracks();
         if (superseded()) return;
         List<VlcMediaTrackInfo> info = const [];
         try {
@@ -1704,6 +2004,9 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           // `Track 1 - [English]`.
         }
         if (superseded()) return;
+        // Each with the language it is in, read as the audio is - see
+        // [withTrackLanguages].
+        final tracks = withTrackLanguages(listed, info);
         if (kDebugMode) {
           debugPrint(
             'Subtitles: Auto looks for $preferred in '
@@ -1712,16 +2015,8 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
           );
         }
         final matches = [
-          for (final (index, track) in tracks.indexed)
-            // Correlated by position, as the panel does: libVLC offers no
-            // other way.
-            if ((languageCodeOf(track.language) ??
-                    languageCodeOf(
-                      index < info.length ? info[index].language : null,
-                    ) ??
-                    languageCodeOf(track.name)) ==
-                preferred)
-              track,
+          for (final track in tracks)
+            if (languageCodeOf(track.language) == preferred) track,
         ];
         // A forced track carries only the lines in another language than
         // the film's, so a full one is the better answer where there is one.
@@ -2663,7 +2958,9 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // frame the viewer made it. See [_applySubtitleDefault].
     _subtitlesOffPending = false;
     // The same goes for Auto's pick: whatever the viewer does from here is
-    // theirs.
+    // theirs. Not for the audio language setting: audio is only ever chosen
+    // from a row, so it stands down when the viewer picks one
+    // ([_onAudioPicked]), and a panel opened for anything else leaves it be.
     _viewerChoseSubtitle = true;
     _autoPickPending = false;
     _subtitleToRestore = null;
@@ -2688,6 +2985,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
       // answered from here, one row at a time as the list builds them.
       episodeProgress: _episodeProgressFor,
       onPickFile: (file) => unawaited(_applyTorrentFile(file)),
+      onAudioPicked: _onAudioPicked,
       // Held so Back has something to close - see [_dismissOverlay].
       onOpened: (panelContext) => _sheetContext = panelContext,
     );
@@ -3058,6 +3356,11 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // would answer a question this viewer has not been asked yet.
     _rememberedAudio = null;
     _rememberedSubtitle = null;
+    _viewerAudio = null;
+    _viewerAudioCopy = null;
+    _viewerAudioOutranks = false;
+    _audioToRestore = null;
+    _preferredAudioToPick = null;
     _seenAudioTrackId = null;
     _seenSubtitleTrackId = null;
     _restorePending = false;

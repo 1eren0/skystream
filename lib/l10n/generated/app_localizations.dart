@@ -3235,6 +3235,24 @@ abstract class AppLocalizations {
   /// **'A video starts with no subtitle. You can still turn one on from the Subtitles menu in the player.'**
   String get subtitleDefaultOffDetail;
 
+  /// Player settings row: the language whose audio track a video starts on, when the video has one. A default for newly opened media only - it never stops the viewer choosing a track from the player's Audio menu. Also the title of the dialog the row opens, which lists Auto and then the languages by their English names.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio language'**
+  String get audioLanguage;
+
+  /// The first choice in the audioLanguage dialog, and the shipped default. 'Auto' means the app does not interfere: whatever audio track the source selects is what plays.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get audioLanguageAuto;
+
+  /// Explanatory line under the 'Auto' choice in the audioLanguage dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'A video starts with the audio its source selects.'**
+  String get audioLanguageAutoDetail;
+
   /// Title of the player setting controlling how much of a network stream is held in memory ahead of and behind playback.
   ///
   /// In en, this message translates to:

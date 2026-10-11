@@ -10,6 +10,7 @@ import 'package:skystream/core/network/doh_service.dart';
 import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/core/storage/storage_service.dart';
 import 'package:skystream/core/providers/device_info_provider.dart';
+import 'package:skystream/features/player/domain/track_language.dart';
 import 'package:skystream/features/player/presentation/player_platform_service.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/features/settings/presentation/widgets/settings_dialogs.dart';
@@ -44,6 +45,23 @@ class _RecordingPlayerSettings extends PlayerSettingsNotifier {
   @override
   Future<void> setSubtitleDefault(SubtitleDefault value) async {
     subtitleDefaults.add(value);
+  }
+}
+
+/// Captures the preference selected by a remote without opening Hive.
+class _RecordingAudioLanguage extends PlayerSettingsNotifier {
+  _RecordingAudioLanguage(this.initial, this.chosen);
+
+  final String initial;
+  final List<String> chosen;
+
+  @override
+  Future<PlayerSettings> build() async =>
+      PlayerSettings(preferredAudioLanguage: initial);
+
+  @override
+  Future<void> setPreferredAudioLanguage(String language) async {
+    chosen.add(language);
   }
 }
 
@@ -524,6 +542,140 @@ void main() {
 
       expect(chosen, <SubtitleDefault>[SubtitleDefault.off]);
       expect(find.text(l10n.subtitleDefaultAutoDetail), findsNothing);
+    });
+  });
+
+  /// The audio language a video starts in.
+  ///
+  /// A list as long as the app's language picker, so on a television it has
+  /// to open on the choice in force - focused and on screen - or a remote
+  /// starts forty rows away from it.
+  group('showPreferredAudioLanguageDialog', () {
+    late AppLocalizations l10n;
+
+    setUpAll(() async {
+      l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    });
+
+    Future<List<String>> open(
+      WidgetTester tester,
+      String current, {
+      DeviceProfile profile = const DeviceProfile(),
+    }) async {
+      final List<String> chosen = <String>[];
+      await _pumpOpener(
+        tester,
+        profile: profile,
+        settings: () => _RecordingAudioLanguage(current, chosen),
+        open: (context, ref) =>
+            showPreferredAudioLanguageDialog(context, ref, current),
+      );
+      return chosen;
+    }
+
+    /// Every row's title, in order, whether or not it is scrolled into view.
+    List<String?> rowTitles(WidgetTester tester) => tester
+        .widgetList<ListTile>(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(ListTile, skipOffstage: false),
+          ),
+        )
+        .map((ListTile tile) => (tile.title! as Text).data)
+        .toList();
+
+    testWidgets('offers Auto, saying what it does, then the player\'s '
+        'languages in their order', (tester) async {
+      await open(tester, '');
+
+      expect(find.text(l10n.audioLanguage), findsOneWidget);
+      expect(rowTitles(tester), <String?>[
+        l10n.audioLanguageAuto,
+        ...playerLanguages.keys,
+      ]);
+      expect(find.text(l10n.audioLanguageAutoDetail), findsOneWidget);
+    });
+
+    testWidgets('on a television opens on the language in force, focused and '
+        'on screen', (tester) async {
+      await open(tester, 'sv', profile: const DeviceProfile(isTv: true));
+
+      expect(_focusedRowTitle(), 'Swedish');
+      final Rect viewport = tester.getRect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      final Rect row = tester.getRect(
+        find.ancestor(
+          of: find.text('Swedish'),
+          matching: find.byType(ListTile),
+        ),
+      );
+      final Rect first = tester.getRect(
+        find.ancestor(
+          of: find.text(l10n.audioLanguageAuto),
+          matching: find.byType(ListTile),
+        ),
+      );
+      expect(
+        row.bottom - first.top,
+        greaterThan(viewport.height),
+        reason: 'the list must overflow for the scroll to matter',
+      );
+      expect(
+        viewport.contains(row.topLeft) &&
+            viewport.contains(row.bottomRight - const Offset(1, 1)),
+        isTrue,
+        reason: 'row $row is not inside viewport $viewport',
+      );
+    });
+
+    testWidgets('a language reaches the setter as its code and closes the '
+        'dialog', (tester) async {
+      final List<String> chosen = await open(tester, '');
+
+      await tester.ensureVisible(find.text('Swedish'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Swedish'));
+      await tester.pumpAndSettle();
+
+      expect(chosen, <String>['sv']);
+      expect(find.text(l10n.audioLanguage), findsNothing);
+    });
+
+    testWidgets('Auto clears the language in force', (tester) async {
+      final List<String> chosen = await open(tester, 'sv');
+
+      await tester.ensureVisible(find.text(l10n.audioLanguageAuto));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.audioLanguageAuto));
+      await tester.pumpAndSettle();
+
+      expect(chosen, <String>['']);
+    });
+
+    test('is in Hindi and Kannada, not English', () async {
+      for (final Locale locale in const <Locale>[Locale('hi'), Locale('kn')]) {
+        final AppLocalizations translated = await AppLocalizations.delegate
+            .load(locale);
+        expect(translated.audioLanguage, isNot(l10n.audioLanguage));
+        expect(translated.audioLanguageAuto, isNot(l10n.audioLanguageAuto));
+        expect(
+          translated.audioLanguageAutoDetail,
+          isNot(l10n.audioLanguageAutoDetail),
+        );
+        expect(
+          preferredAudioLanguageLabel('', translated),
+          translated.audioLanguageAuto,
+        );
+      }
+    });
+
+    test('names a language as the subtitle search does, in English', () {
+      expect(preferredAudioLanguageLabel('kn', l10n), 'Kannada');
+      expect(preferredAudioLanguageLabel('', l10n), l10n.audioLanguageAuto);
     });
   });
 

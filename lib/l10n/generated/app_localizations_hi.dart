@@ -1769,6 +1769,16 @@ class AppLocalizationsHi extends AppLocalizations {
       'वीडियो बिना किसी उपशीर्षक के शुरू होता है। आप प्लेयर के उपशीर्षक मेन्यू से इसे कभी भी चालू कर सकते हैं।';
 
   @override
+  String get audioLanguage => 'ऑडियो भाषा';
+
+  @override
+  String get audioLanguageAuto => 'स्वतः';
+
+  @override
+  String get audioLanguageAutoDetail =>
+      'वीडियो उसी ऑडियो के साथ शुरू होता है जो उसका स्रोत चुनता है।';
+
+  @override
   String get networkBuffer => 'नेटवर्क बफ़र';
 
   @override

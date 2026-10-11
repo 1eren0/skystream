@@ -98,6 +98,9 @@ Set<PlayerPanelTab> availablePanelTabs({
 /// seen. It is a function rather than data because the panel has no
 /// `ProviderScope` to read the repositories from and because the answer must
 /// not be computed for rows nobody scrolled to.
+///
+/// [onAudioPicked] hears of each audio track the viewer puts on from the Audio
+/// tab - see [PlayerTracksTab.onAudioPicked].
 Future<void> showPlayerPanel(
   BuildContext context, {
   required VlcPlayerController controller,
@@ -111,6 +114,7 @@ Future<void> showPlayerPanel(
   ValueChanged<BuildContext>? onOpened,
   EpisodeProgressLookup? episodeProgress,
   SideCarSubtitles? sideCars,
+  ValueChanged<VlcTrackDescription>? onAudioPicked,
 }) {
   return Navigator.of(context).push<void>(
     _PlayerPanelRoute(
@@ -128,6 +132,7 @@ Future<void> showPlayerPanel(
           onPickFile: onPickFile,
           episodeProgress: episodeProgress,
           sideCars: sideCars,
+          onAudioPicked: onAudioPicked,
           onClose: () => Navigator.of(routeContext).pop(),
         );
       },
@@ -237,6 +242,7 @@ class PlayerPanel extends StatefulWidget {
     this.onPickFile,
     this.episodeProgress,
     this.sideCars,
+    this.onAudioPicked,
     super.key,
   });
 
@@ -268,6 +274,10 @@ class PlayerPanel extends StatefulWidget {
   /// [data], because a file's progress is not something to republish the
   /// whole panel over.
   final SideCarSubtitles? sideCars;
+
+  /// Each audio track the viewer puts on from the Audio tab - see
+  /// [PlayerTracksTab.onAudioPicked].
+  final ValueChanged<VlcTrackDescription>? onAudioPicked;
 
   @override
   State<PlayerPanel> createState() => _PlayerPanelState();
@@ -851,6 +861,7 @@ class _PlayerPanelState extends State<PlayerPanel> {
           onTracksChanged: _reloadTracks,
           onOpenPage: _openPage,
           searchFocusNode: isAudio ? null : _searchRow,
+          onAudioPicked: isAudio ? widget.onAudioPicked : null,
         );
       },
     );

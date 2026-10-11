@@ -201,6 +201,34 @@ void main() {
       },
     );
 
+    test(
+      'holds the next reply back while acting on the call at once',
+      () async {
+        engine.audio = <Map<String, Object?>>[
+          <String, Object?>{'id': 1, 'name': 'English'},
+          <String, Object?>{'id': 2, 'name': 'Hindi'},
+        ];
+        final controller = await engine.attach();
+        final reply = engine.holdNextReply('setAudioTrack');
+
+        var answered = false;
+        final set = controller.setAudioTrack(2).then((_) => answered = true);
+        await pumpEventQueue();
+
+        expect(engine.activeAudioId, 2, reason: 'the engine has done it');
+        expect(answered, isFalse, reason: 'and not yet said so');
+
+        reply.complete();
+        await set;
+        expect(answered, isTrue);
+
+        // Only the next call was held.
+        await controller.setAudioTrack(1);
+        expect(engine.activeAudioId, 1);
+        controller.dispose();
+      },
+    );
+
     test('emit honours the caller\'s overrides and the throttle', () async {
       final controller = await engine.attach(
         eventThrottleInterval: const Duration(milliseconds: 250),

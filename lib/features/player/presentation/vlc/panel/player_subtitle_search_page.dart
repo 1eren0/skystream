@@ -11,6 +11,7 @@ import '../../../../../shared/focus/text_field_keys.dart';
 import '../../../../../shared/widgets/desktop_scroll_wrapper.dart';
 import '../../../domain/entity/subtitle_model.dart';
 import '../../../domain/subtitle_search_target.dart';
+import '../../../domain/track_language.dart';
 import '../../subtitle_search_provider.dart';
 import '../../widgets/hotstar_player_style.dart';
 import 'player_panel_metrics.dart';
@@ -89,7 +90,7 @@ class _SubtitleSearchPageState extends ConsumerState<SubtitleSearchPage> {
   /// on the one searched in, and a node never moves between chips - one that
   /// did would take focus with it.
   final Map<String, FocusNode> _languageNodes = {
-    for (final code in subtitleLanguages.values)
+    for (final code in playerLanguages.values)
       code: FocusNode(debugLabel: 'subtitle language $code'),
   };
 
@@ -409,7 +410,7 @@ class _SubtitleSearchPageState extends ConsumerState<SubtitleSearchPage> {
             child: Row(
               children: [
                 for (final MapEntry(key: name, value: code)
-                    in subtitleLanguages.entries)
+                    in playerLanguages.entries)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: _LanguageChip(

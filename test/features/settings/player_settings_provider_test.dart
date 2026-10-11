@@ -559,4 +559,109 @@ void main() {
       );
     });
   });
+
+  /// The audio language a video starts in. Like the subtitle default, it acts
+  /// before the viewer has touched anything, so an install that never opened
+  /// the row must read back Auto, and a stored value nothing can match must
+  /// read back Auto too rather than a choice no row offers.
+  group('the audio language', () {
+    late Directory dir;
+    late StorageService storage;
+
+    setUp(() async {
+      dir = Directory.systemTemp.createTempSync('player_settings_audio');
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (MethodCall call) async => dir.path,
+      );
+      storage = StorageService();
+      await storage.init();
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        null,
+      );
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    });
+
+    ProviderContainer boot() {
+      final ProviderContainer container = ProviderContainer(
+        overrides: [storageServiceProvider.overrideWithValue(storage)],
+      );
+      addTearDown(container.dispose);
+      return container;
+    }
+
+    test('is Auto on a fresh install', () async {
+      final PlayerSettings settings = await boot().read(
+        playerSettingsProvider.future,
+      );
+      expect(settings.preferredAudioLanguage, isEmpty);
+    });
+
+    test('a choice survives the next launch, and Auto clears it', () async {
+      final ProviderContainer first = boot();
+      await first.read(playerSettingsProvider.future);
+      await first
+          .read(playerSettingsProvider.notifier)
+          .setPreferredAudioLanguage('kn');
+
+      expect(
+        first.read(playerSettingsProvider).requireValue.preferredAudioLanguage,
+        'kn',
+        reason: 'the setter has to move the state, not only the box',
+      );
+      expect(storage.getPlayerSetting<String>('player_audio_language'), 'kn');
+
+      final ProviderContainer second = boot();
+      expect(
+        (await second.read(playerSettingsProvider.future))
+            .preferredAudioLanguage,
+        'kn',
+      );
+
+      await second
+          .read(playerSettingsProvider.notifier)
+          .setPreferredAudioLanguage('');
+      expect(
+        (await boot().read(playerSettingsProvider.future))
+            .preferredAudioLanguage,
+        isEmpty,
+      );
+    });
+
+    test('is stored as the language\'s code, however it was named', () async {
+      final ProviderContainer container = boot();
+      await container.read(playerSettingsProvider.future);
+      await container
+          .read(playerSettingsProvider.notifier)
+          .setPreferredAudioLanguage('Kannada');
+
+      expect(storage.getPlayerSetting<String>('player_audio_language'), 'kn');
+    });
+
+    test('a stored value that names no language reads back as Auto', () async {
+      await storage.setPlayerSetting('player_audio_language', 'not-a-language');
+      expect(
+        (await boot().read(playerSettingsProvider.future))
+            .preferredAudioLanguage,
+        isEmpty,
+      );
+    });
+
+    test('copyWith carries it', () {
+      const PlayerSettings chosen = PlayerSettings(
+        preferredAudioLanguage: 'kn',
+      );
+      expect(chosen.copyWith(subtitleSize: 30).preferredAudioLanguage, 'kn');
+      expect(
+        chosen.copyWith(preferredAudioLanguage: '').preferredAudioLanguage,
+        isEmpty,
+      );
+    });
+  });
 }

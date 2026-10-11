@@ -64,49 +64,6 @@ List<int> _decompressGzip(Uint8List bytes) {
   return const GZipDecoder().decodeBytes(bytes);
 }
 
-const Map<String, String> subtitleLanguages = {
-  'English': 'en',
-  'Hindi': 'hi',
-  'Bengali': 'bn',
-  'Telugu': 'te',
-  'Marathi': 'mr',
-  'Tamil': 'ta',
-  'Gujarati': 'gu',
-  'Kannada': 'kn',
-  'Malayalam': 'ml',
-  'Punjabi': 'pa',
-  'Arabic': 'ar',
-  'Assamese': 'as',
-  'Belarusian': 'be',
-  'Bulgarian': 'bg',
-  'Czech': 'cs',
-  'German': 'de',
-  'Greek': 'el',
-  'Spanish': 'es',
-  'Finnish': 'fi',
-  'French': 'fr',
-  'Hebrew': 'he',
-  'Croatian': 'hr',
-  'Hungarian': 'hu',
-  'Indonesian': 'id',
-  'Italian': 'it',
-  'Japanese': 'ja',
-  'Korean': 'ko',
-  'Latvian': 'lv',
-  'Macedonian': 'mk',
-  'Dutch': 'nl',
-  'Polish': 'pl',
-  'Portuguese': 'pt',
-  'Romanian': 'ro',
-  'Russian': 'ru',
-  'Swedish': 'sv',
-  'Turkish': 'tr',
-  'Ukrainian': 'uk',
-  'Urdu': 'ur',
-  'Vietnamese': 'vi',
-  'Chinese': 'zh',
-};
-
 /// How the results currently in [SubtitleSearch]'s state were found.
 ///
 /// The notifier walks a chain of passes and stops at the first one that
