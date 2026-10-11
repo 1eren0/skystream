@@ -54,7 +54,7 @@ String buildSourceDetail(Iterable<String?> parts, {String fallback = ''}) {
   return out.join(' · ');
 }
 
-    
+
 /// A stream's declared audio language as a short source-card badge.
 ///
 /// This deliberately never infers audio from the movie's title or filename:
