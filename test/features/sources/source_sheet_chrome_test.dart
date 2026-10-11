@@ -69,6 +69,13 @@ void main() {
       expect(find.byType(DpadSourceButton), findsWidgets);
       expect(find.byType(QualityBadge), findsWidgets);
     });
+
+    testWidgets('Nuvio source with a language shows a separate audio tag', (
+      tester,
+    ) async {
+      await _pumpSheet(tester);
+      expect(find.text('HINDI'), findsOneWidget);
+    });
   });
 
   /// A `ShaderMask` fades its child through an offscreen surface the size of
@@ -195,6 +202,7 @@ class _FakeNuvioService implements NuvioStreamService {
           title: 'Movie ALPHA',
           url: 'https://cdn.test/alpha.mkv',
           quality: '1080p',
+          language: 'Hindi',
         ),
       ],
       completedCount: 1,
