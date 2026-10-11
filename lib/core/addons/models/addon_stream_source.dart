@@ -130,6 +130,9 @@ class AddonStreamSource {
   final String? title;
   final String? description;
 
+  /// Audio language explicitly advertised by the stream, if any.
+  final String? audioLanguage;
+
   /// Torrent trackers advertised by the add-on (`tracker:udp://…`).
   final List<String> sources;
 
@@ -150,6 +153,7 @@ class AddonStreamSource {
     this.name,
     this.title,
     this.description,
+    this.audioLanguage,
     this.sources = const [],
     this.proxyHeaders,
     this.bingeGroup,
@@ -205,6 +209,14 @@ class AddonStreamSource {
       }
     }
 
+    // Do not infer audio tracks from a title/filename: a film called
+    // "The English Patient" says nothing about the dubbed audio.
+    String? languageField(Object? raw) {
+      if (raw is! String) return null;
+      final value = raw.trim();
+      return value.isEmpty ? null : value;
+    }
+
     return AddonStreamSource(
       addonId: addonId,
       addonName: addonName,
@@ -217,6 +229,12 @@ class AddonStreamSource {
       name: json['name'] as String?,
       title: json['title'] as String?,
       description: json['description'] as String?,
+      audioLanguage:
+          languageField(json['audioLanguage']) ??
+          languageField(json['language']) ??
+          languageField(json['lang']) ??
+          languageField(hints['audioLanguage']) ??
+          languageField(hints['language']),
       sources: sources,
       proxyHeaders: headers,
       bingeGroup: hints['bingeGroup'] as String?,
