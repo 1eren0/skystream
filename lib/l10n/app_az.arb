@@ -618,7 +618,6 @@
   "showPip": "Şəkil içində şəkil düyməsi",
   "showResize": "Ölçü düyməsi",
   "showPlaybackSpeed": "Oxutma sürəti düyməsi",
-  "showEpisodes": "Epizodlar düyməsi",
   "playerSourceReachable": "Əlçatan",
   "playerFinished": "{title} sona çatdı",
   "@playerFinished": {

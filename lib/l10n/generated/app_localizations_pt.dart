@@ -1414,7 +1414,10 @@ class AppLocalizationsPt extends AppLocalizations {
   String get showPlaybackSpeed => 'Playback speed button';
 
   @override
-  String get showEpisodes => 'Episodes button';
+  String get showVolume => 'Volume button';
+
+  @override
+  String get showEpisodeNavigation => 'Previous / next episode buttons';
 
   @override
   String get playerNoProviderSelected => 'No provider selected.';
@@ -3550,9 +3553,6 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get showPlaybackSpeed => 'Playback speed button';
-
-  @override
-  String get showEpisodes => 'Episodes button';
 
   @override
   String get sourcesSearching => 'Pesquisando nos scrapers…';

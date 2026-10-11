@@ -2691,11 +2691,17 @@ abstract class AppLocalizations {
   /// **'Playback speed button'**
   String get showPlaybackSpeed;
 
-  /// No description provided for @showEpisodes.
+  /// Player Controls toggle for the volume button. Does not disable volume gestures or keyboard shortcuts.
   ///
   /// In en, this message translates to:
-  /// **'Episodes button'**
-  String get showEpisodes;
+  /// **'Volume button'**
+  String get showVolume;
+
+  /// Player Controls toggle for previous and next episode transport buttons. The Episodes tab in Options remains available.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous / next episode buttons'**
+  String get showEpisodeNavigation;
 
   /// Playback cannot start because no extension is selected to resolve the link.
   ///

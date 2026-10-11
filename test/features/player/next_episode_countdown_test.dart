@@ -435,15 +435,15 @@ void main() {
       expect(
         card,
         const Rect.fromLTRB(
-          612 - HotstarPlayerStyle.trackEndInset,
+          960 - (HotstarPlayerStyle.edgeInset + HotstarPlayerStyle.trackEndInset) - 300,
           92,
-          912 - HotstarPlayerStyle.trackEndInset,
+          960 - (HotstarPlayerStyle.edgeInset + HotstarPlayerStyle.trackEndInset),
           540 - _kTvClearance,
         ),
         reason:
             'bottom on the clearance the chrome token sets, top on the 92 dp '
-            'the top bar occupies, right on the trailing line - the overscan '
-            'inset plus the optical one the track and the last utility button '
+            'the top bar occupies, right on the trailing line - the edge '
+            'inset plus the one the track and the last utility pill '
             'share - and 300 dp wide, the width the longest action label '
             'needs rather than a height solve',
       );

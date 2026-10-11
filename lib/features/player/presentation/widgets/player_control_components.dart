@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../../../shared/widgets/custom_widgets.dart';
 import 'hotstar_player_style.dart';
 import 'player_activation.dart';
+import 'player_matte_pill.dart';
 import '../../../../shared/focus/app_focus.dart';
 
 /// Top zone: back button + title/subtitle. Paints its own top scrim.
@@ -28,18 +29,9 @@ class PlayerTopBar extends StatelessWidget {
   /// back button. [PlayerBackButtonSlot] reads the same numbers, so Back does
   /// not move when the controls take over from a screen shown before the
   /// video.
-  static EdgeInsets paddingOf(BuildContext context, {required bool isTv}) {
-    final padding = MediaQuery.viewPaddingOf(context);
-    final edge = isTv
-        ? HotstarPlayerStyle.tvEdgeInset
-        : HotstarPlayerStyle.edgeInset;
-    final double leftPadding = isTv
-        ? edge
-        : (padding.left > edge ? padding.left : edge);
-    final double rightPadding = isTv
-        ? edge
-        : (padding.right > edge ? padding.right : edge);
-    return EdgeInsets.fromLTRB(leftPadding, 14, rightPadding, 24);
+  static EdgeInsets paddingOf(BuildContext context) {
+    final side = HotstarPlayerStyle.sideInsetOf(context);
+    return EdgeInsets.fromLTRB(side, 14, side, 24);
   }
 
   @override
@@ -51,7 +43,7 @@ class PlayerTopBar extends StatelessWidget {
         right: false,
         bottom: false,
         child: Padding(
-          padding: paddingOf(context, isTv: isTv),
+          padding: paddingOf(context),
           child: Row(
             children: [
               PlayerBackButton(
@@ -156,7 +148,7 @@ class PlayerBackButtonSlot extends StatelessWidget {
       right: false,
       bottom: false,
       child: Padding(
-        padding: PlayerTopBar.paddingOf(context, isTv: isTv),
+        padding: PlayerTopBar.paddingOf(context),
         // Start, not left: the bar is a Row, which puts Back on the right in
         // a right-to-left locale.
         child: Align(
@@ -242,16 +234,7 @@ class PlayerBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final padding = MediaQuery.viewPaddingOf(context);
-    final edge = isTv
-        ? HotstarPlayerStyle.tvEdgeInset
-        : HotstarPlayerStyle.edgeInset;
-    final double leftPadding = isTv
-        ? edge
-        : (padding.left > edge ? padding.left : edge);
-    final double rightPadding = isTv
-        ? edge
-        : (padding.right > edge ? padding.right : edge);
+    final side = HotstarPlayerStyle.sideInsetOf(context);
     // A gradient is paint, not a compositing layer, so the scrim costs nothing
     // over the platform view. Without it a reveal on a bright scene puts white
     // glyphs on white.
@@ -264,7 +247,7 @@ class PlayerBottomBar extends StatelessWidget {
         right: false,
         top: false,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(leftPadding, 2, rightPadding, 6),
+          padding: EdgeInsets.fromLTRB(side, 2, side, 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -291,23 +274,43 @@ class PlayerBottomBar extends StatelessWidget {
       children: leading,
     );
 
+    // The pills are the line's visible ends, so the line is held in to the
+    // track's painted ends - the column the Back button and every overlay
+    // above the bar answer to.
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: HotstarPlayerStyle.trackInset,
+      ),
+      child: _line(transport),
+    );
+  }
+
+  Widget _line(Widget transport) {
     return Row(
       children: [
         transport,
+        if (leading.isNotEmpty && actions.isNotEmpty) const SizedBox(width: 8),
         Expanded(
           // Touch: one line, right-anchored, finger-scrolled, with an edge
-          // hint. No [LayoutBuilder] and no width threshold — a threshold is
-          // what produced the second run.
-          child: scrollingActions
-              ? PlayerActionStrip(actions: actions)
-              // A television has no pointer to drag a strip with, so overflow
-              // is laid out rather than scrolled: extra runs go above the
-              // first and the bar grows upwards.
-              : Wrap(
-                  alignment: WrapAlignment.end,
-                  runAlignment: WrapAlignment.end,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: actions,
+          // hint, at every width. No width threshold on the run — a threshold
+          // is what produced the second run.
+          child: actions.isEmpty
+              ? const SizedBox.shrink()
+              : Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: PlayerMattePill(
+                    child: scrollingActions
+                        ? PlayerActionStrip(actions: actions)
+                        // A television has no pointer to drag a strip with, so overflow
+                        // is laid out rather than scrolled: extra runs go above the
+                        // first and the bar grows upwards.
+                        : Wrap(
+                            alignment: WrapAlignment.end,
+                            runAlignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: actions,
+                          ),
+                  ),
                 ),
         ),
       ],
@@ -319,7 +322,7 @@ class PlayerBottomBar extends StatelessWidget {
 ///
 /// Right-anchored means the overflow slides off the left edge, so the buttons
 /// at the end of the list survive a squeeze and the ones at the start vanish.
-/// A 360 dp portrait phone can leave this 70 dp of the bar's 320, so when —
+/// A portrait phone can leave this little more than one button, so when —
 /// and only when — content is hidden to the left, a scrim-to-clear gradient
 /// with a chevron is painted over that edge. It is [IgnorePointer]: a hint,
 /// not a control, and it must never eat the tap meant for the half-visible
@@ -379,34 +382,18 @@ class _PlayerActionStripState extends State<PlayerActionStrip> {
         child: Stack(
           children: [
             ScrollConfiguration(
-              behavior: ScrollConfiguration.of(
-                context,
-              ).copyWith(dragDevices: _dragDevices, scrollbars: false),
-              // The [LayoutBuilder] reads the viewport's width to give the
-              // row a floor, and nothing else. It is not the width *threshold*
-              // this class's header warns about - there is still one layout at
-              // every width, and no branch for it to pick.
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  reverse: true,
-                  // `reverse` alone right-anchors the row only while it
-                  // overflows; the moment the buttons fit, the viewport lays
-                  // them out from its leading edge and the whole group floats
-                  // off the right margin - 500 dp adrift of the scrubber's end
-                  // on a wide window. Holding the row to the viewport's width
-                  // and packing it to the end fixes both cases with one rule:
-                  // narrower than the viewport it is stretched and the buttons
-                  // sit against the right edge, wider and the floor does
-                  // nothing and `reverse` shows the end of the row.
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: widget.actions,
-                    ),
-                  ),
+              behavior: ScrollConfiguration.of(context)
+                  .copyWith(dragDevices: _dragDevices, scrollbars: false),
+              // Shrink to the button row when it fits; use the available
+              // width when it overflows. The enclosing Align anchors the
+              // whole pill at the trailing edge in either case.
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: widget.actions,
                 ),
               ),
             ),
@@ -494,9 +481,13 @@ class _PlayerIconButtonState extends State<PlayerIconButton> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final double glyph = widget.iconSize ?? (widget.isTv ? 28 : 26);
     final double box = glyph + (widget.isTv ? 20 : 18);
 
+    // The accent is "on" (Speed off 1x, stats shown) and the pointer's hover;
+    // focus is the button's own wash, and on a television its ring, inside
+    // the bar's pill as anywhere else.
     Color iconColor;
     if (_hovered) {
       iconColor = HotstarPlayerStyle.accent;
@@ -512,6 +503,14 @@ class _PlayerIconButtonState extends State<PlayerIconButton> {
         label: widget.tooltip,
         child: Tooltip(
           message: widget.tooltip,
+          decoration: HotstarPlayerStyle.tooltipDecoration,
+          textStyle: theme.textTheme.bodySmall?.merge(
+            HotstarPlayerStyle.tooltipTextStyle,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          constraints: const BoxConstraints(minHeight: 28),
+          preferBelow: false,
+          verticalOffset: box / 2 + 8,
           // The button's declared box is its footprint. [CustomButton]
           // renders a Material 3 [TextButton], which brings
           // `minimumSize: Size(64, 40)` and 12 dp of padding a side; at 960 dp
@@ -528,16 +527,26 @@ class _PlayerIconButtonState extends State<PlayerIconButton> {
             child: MouseRegion(
               onEnter: (_) => setState(() => _hovered = true),
               onExit: (_) => setState(() => _hovered = false),
-              child: CustomButton(
-                onPressed: widget.onPressed,
-                showFocusHighlight: widget.isTv,
-                focusNode: widget.focusNode,
-                autofocus: widget.autofocus,
-                shape: const CircleBorder(),
-                child: SizedBox(
-                  width: box,
-                  height: box,
-                  child: Icon(widget.icon, color: iconColor, size: glyph),
+              // The chrome is dark in either app theme, so focus is drawn in
+              // the player's own white rather than the theme's foreground,
+              // which is near-black in the light theme.
+              child: Theme(
+                data: theme.copyWith(
+                  colorScheme: theme.colorScheme.copyWith(
+                    onSurface: HotstarPlayerStyle.focusRing,
+                  ),
+                ),
+                child: CustomButton(
+                  onPressed: widget.onPressed,
+                  showFocusHighlight: widget.isTv,
+                  focusNode: widget.focusNode,
+                  autofocus: widget.autofocus,
+                  shape: const CircleBorder(),
+                  child: SizedBox(
+                    width: box,
+                    height: box,
+                    child: Icon(widget.icon, color: iconColor, size: glyph),
+                  ),
                 ),
               ),
             ),

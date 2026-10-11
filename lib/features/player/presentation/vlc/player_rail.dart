@@ -61,7 +61,12 @@ class PlayerRail extends StatelessWidget {
     return Align(
       alignment: onLeft ? Alignment.centerLeft : Alignment.centerRight,
       child: Padding(
-        padding: EdgeInsets.only(left: onLeft ? 28 : 0, right: onLeft ? 0 : 28),
+        // 12 inside the chrome's side inset, which clears a notch or camera
+        // cutout on either side.
+        padding: EdgeInsets.only(
+          left: onLeft ? HotstarPlayerStyle.sideInsetOf(context) + 12 : 0,
+          right: onLeft ? 0 : HotstarPlayerStyle.sideInsetOf(context) + 12,
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.62),

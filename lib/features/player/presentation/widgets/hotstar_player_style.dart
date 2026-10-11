@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Visual and layout tokens for the player chrome: colors, motion, gradients,
@@ -13,6 +15,29 @@ class HotstarPlayerStyle {
   static const Color accentAlt = Color(0xFFDD3EFF);
   static const Color primaryText = Color(0xF2FFFFFF);
   static const Color secondaryText = Color(0xA6FFFFFF);
+
+  /// Status on the panel's rows, in muted tones: they mark a row without
+  /// competing with its label, and the row's icon says the same thing for
+  /// whoever does not tell the colours apart.
+  static const Color statusGood = Color(0xFF8DBAA0);
+  static const Color statusWarning = Color(0xFFC5AD83);
+  static const Color statusBad = Color(0xFFCF9292);
+
+  /// A badge that is information, not a status: an episode's dub or sub.
+  static const Color badgeNeutral = Color(0xFFA0ADC5);
+
+  /// Quiet labels over the video, using the control surface's charcoal tone.
+  static const BoxDecoration tooltipDecoration = BoxDecoration(
+    color: Color(0xE620252B),
+    borderRadius: BorderRadius.all(Radius.circular(6)),
+  );
+  static const TextStyle tooltipTextStyle = TextStyle(
+    color: Color(0xDEFFFFFF),
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+    height: 1.25,
+    letterSpacing: 0.1,
+  );
 
   /// The smallest type in the chrome: panel secondary lines, torrent stats,
   /// the countdown's caption. Alpha 0x75 is the first step that clears WCAG AA
@@ -58,49 +83,57 @@ class HotstarPlayerStyle {
   static const Duration panelMotionDuration = Duration(milliseconds: 240);
 
   // --- Layout tokens ---
-  /// Horizontal edge inset for the chrome on touch/desktop.
-  static const double edgeInset = 20;
+  /// Horizontal edge inset for the chrome, the same on every device: one
+  /// player layout wherever it runs.
+  static const double edgeInset = 16;
 
-  /// Larger inset on TV to clear the overscan-unsafe border (~5% of edges
-  /// is clipped on many TVs). Keeps controls and focus rings fully visible.
-  static const double tvEdgeInset = 48;
+  /// Kept clear of a television's edges by the Options drawer: many sets cut
+  /// off about 5 % of the picture (overscan), and the drawer's close button
+  /// and every row's badges would sit in that band. The controls do not use
+  /// it; their inset is [edgeInset] on every device.
+  static const double tvOverscanInset = 48;
 
   /// How far the scrubber's painted track is held inside the chrome's edge
-  /// inset, and with it everything that lines up against the track.
+  /// inset, and with it everything that lines up against the track: the
+  /// control line's pills, the Back button's arrow, and every floating overlay
+  /// anchored to the same edge - the resume hint on the left, the up-next card
+  /// and the skip chip on the right.
   ///
-  /// Optical, not geometric. The control row is icon glyphs, and a glyph does
-  /// not fill its button: the button centres it and the font leaves its own
-  /// padding inside that, so the ink of the first control starts about this
-  /// far in. The track is inset to match, and so is every floating overlay
-  /// anchored to the same edge — the resume hint on the left, the up-next card
-  /// and the skip chip on the right. Without that they sit a clear 16 dp
-  /// outside the column everything else is in.
-  ///
-  /// The trailing number is the smaller of the two because the trailing glyph
-  /// is smaller: a 26 dp utility icon whose 44 dp box is itself centred inside
-  /// a 48 dp tap target off a television.
+  /// The arrow's ink starts about this far into its button, so the track and
+  /// the pills, held in by the same amount, start where the arrow does.
   static const double trackInset = 16;
-  static const double trackEndInset = 14;
 
-  /// The chrome's edge inset plus the optical one, which is the vertical line
-  /// the whole player answers to on the leading side.
-  static double leadingLineOf({required bool isTv}) =>
-      (isTv ? tvEdgeInset : edgeInset) + trackInset;
+  /// The same at the far end: the pills' edges are the line's ends there too.
+  static const double trackEndInset = trackInset;
 
-  /// The same on the trailing side.
-  static double trailingLineOf({required bool isTv}) =>
-      (isTv ? tvEdgeInset : edgeInset) + trackEndInset;
+  /// How far the chrome stays from each side of the screen: [edgeInset], or
+  /// the safe inset of a notch or camera cutout where that is larger.
+  ///
+  /// The larger of the two sides, on both, as iOS reports them in landscape.
+  /// Android reports a cutout on its own side only, and padding just that
+  /// side would push the controls off the centre of a centred picture and
+  /// move them across the screen whenever the phone is turned the other way
+  /// up. The picture itself still runs under the cutout.
+  static double sideInsetOf(BuildContext context) {
+    final padding = MediaQuery.viewPaddingOf(context);
+    return math.max(edgeInset, math.max(padding.left, padding.right));
+  }
+
+  /// The vertical line the whole player answers to on each side: the side
+  /// inset plus the track's.
+  static double lineOf(BuildContext context) =>
+      sideInsetOf(context) + trackInset;
 
   /// Height of the bottom chrome on a phone, a tablet or a desktop window,
   /// excluding the safe-area bottom inset.
   ///
   /// A ceiling, not an average, because everything anchored off a number
-  /// smaller than the bar's real height lands *on* the bar. Measured: 92 dp on
-  /// a handset, where the transport cluster is in the middle of the frame and
-  /// the tallest thing in the bar is a 48 dp icon button, and 102 on a desktop
-  /// window, which keeps a 58 dp play/pause. `controls_focus_test` holds the
-  /// real bar under this on every form factor - raise this rather than the
-  /// overlays if a row ever grows.
+  /// smaller than the bar's real height lands *on* the bar. Measured: 88 dp on
+  /// a handset, where the transport cluster is in the middle of the frame, and
+  /// 88 on a desktop window too, whose play/pause is in the bar at the height
+  /// of every other button.
+  /// `controls_focus_test` holds the real bar under this on every form factor
+  /// - raise this rather than the overlays if a row ever grows.
   ///
   /// It came down from 148 when the clock moved off the scrubber and into the
   /// transport row: the bar lost a whole text row, and the overlays were
@@ -111,12 +144,12 @@ class HotstarPlayerStyle {
   static const double bottomChromeHeight = 108;
 
   /// The same on a television, where every rung of the ramp is bigger and the
-  /// bar measures 116 dp.
+  /// bar measures 100 dp.
   ///
   /// Its own number rather than one ceiling over both, because a single value
   /// would have to clear the ten-foot bar and would then float every handset
   /// overlay 24 dp above nothing.
-  static const double tvBottomChromeHeight = 124;
+  static const double tvBottomChromeHeight = 112;
 
   /// The clearance for this form factor. Every overlay that floats above the
   /// bottom bar asks this rather than picking one of the two.

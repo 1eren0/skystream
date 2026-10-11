@@ -1432,7 +1432,10 @@ class AppLocalizationsKn extends AppLocalizations {
   String get showPlaybackSpeed => 'Playback speed button';
 
   @override
-  String get showEpisodes => 'Episodes button';
+  String get showVolume => 'ಧ್ವನಿಮಟ್ಟದ ಬಟನ್';
+
+  @override
+  String get showEpisodeNavigation => 'ಹಿಂದಿನ / ಮುಂದಿನ ಸಂಚಿಕೆಯ ಬಟನ್‌ಗಳು';
 
   @override
   String get playerNoProviderSelected => 'No provider selected.';

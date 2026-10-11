@@ -255,7 +255,7 @@ void main() {
         // sits visibly outside the column everything else is in.
         expect(
           content.left - hint.left,
-          HotstarPlayerStyle.leadingLineOf(isTv: isTv),
+          (HotstarPlayerStyle.edgeInset + HotstarPlayerStyle.trackInset),
           reason: 'the hint starts where the track starts',
         );
 

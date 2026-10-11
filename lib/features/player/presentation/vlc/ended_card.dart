@@ -192,13 +192,9 @@ class _EndedCardState extends State<EndedCard> {
           child: FocusTraversalGroup(
             policy: ReadingOrderTraversalPolicy(),
             child: SafeArea(
-              // The overscan token applies on a television, and this surface
+              // The chrome's own inset, the same on every device; this surface
               // is full-bleed by construction.
-              minimum: EdgeInsets.all(
-                widget.isTv
-                    ? HotstarPlayerStyle.tvEdgeInset
-                    : HotstarPlayerStyle.edgeInset,
-              ),
+              minimum: const EdgeInsets.all(HotstarPlayerStyle.edgeInset),
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

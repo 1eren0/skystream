@@ -340,9 +340,7 @@ class _NextEpisodeCountdownState extends State<NextEpisodeCountdown>
     final size = MediaQuery.sizeOf(context);
     final compact = !widget.isTv && size.shortestSide < 600;
     final padding = MediaQuery.viewPaddingOf(context);
-    final edge = widget.isTv
-        ? HotstarPlayerStyle.tvEdgeInset
-        : HotstarPlayerStyle.edgeInset;
+    const edge = HotstarPlayerStyle.edgeInset;
 
     final double width = compact
         ? _kCompactWidth
@@ -356,14 +354,9 @@ class _NextEpisodeCountdownState extends State<NextEpisodeCountdown>
         alignment: Alignment.bottomRight,
         child: Padding(
           padding: EdgeInsets.only(
-            // The trailing line: the bar's own right padding plus the optical
-            // inset the track's far end and the last utility button both
-            // answer to. See `HotstarPlayerStyle.trackEndInset`.
-            right:
-                (widget.isTv
-                    ? edge
-                    : (padding.right > edge ? padding.right : edge)) +
-                HotstarPlayerStyle.trackEndInset,
+            // The trailing line the track's far end and the last utility pill
+            // both answer to, clear of a notch. See `HotstarPlayerStyle.lineOf`.
+            right: HotstarPlayerStyle.lineOf(context),
             bottom:
                 _bottomClearance(size, padding, edge: edge, isTv: widget.isTv) +
                 padding.bottom,

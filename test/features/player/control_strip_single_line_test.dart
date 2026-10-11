@@ -155,15 +155,15 @@ void main() {
       );
       expect(
         strip.left,
-        moreOrLessEquals(transport.right, epsilon: 0.5),
-        reason: 'and it starts where the transport group ends, on that line',
+        moreOrLessEquals(transport.right + 11, epsilon: 0.5),
+        reason: 'and it starts after the 8 dp group gap and 3 dp pill inset, on that line',
       );
 
-      // 8 of scrubber, 48 of controls and the bar's own 2+6 of padding is 64.
+      // 8 of scrubber, 54 of controls including the pill and the bar's own 2+6 of padding is 70.
       // A second run costs another 48.
       expect(
         tester.getSize(find.byType(PlayerBottomBar)).height,
-        64,
+        70,
         reason:
             'the bar is chrome over the video - on Android over the '
             'AndroidView platform view itself - and a second run costs the '
@@ -230,7 +230,7 @@ void main() {
       );
 
       expect(runCount(rowRects(tester)), 1);
-      expect(tester.getSize(find.byType(PlayerBottomBar)).height, 64);
+      expect(tester.getSize(find.byType(PlayerBottomBar)).height, 70);
       expect(
         tester.getRect(find.byType(PlayerActionStrip)).width,
         greaterThan(400),
@@ -259,7 +259,7 @@ void main() {
       );
 
       expect(runCount(rowRects(tester)), 1);
-      expect(tester.getSize(find.byType(PlayerBottomBar)).height, 64);
+      expect(tester.getSize(find.byType(PlayerBottomBar)).height, 70);
     });
   });
 
@@ -269,13 +269,14 @@ void main() {
   group('the non-touch action row is unchanged', () {
     for (final (String name, Size size, bool isTv) in <(String, Size, bool)>[
       ('a 960x540 television', const Size(960, 540), true),
-      ('a narrow 800x600 desktop window', const Size(800, 600), false),
+      // The line is held in to the track's ends, 32 dp between them.
+      ('a narrow 820x600 desktop window', const Size(820, 600), false),
     ]) {
       testWidgets('$name lays ten utilities on one run', (tester) async {
         await pumpBar(tester, size: size, isTv: isTv, scrollingActions: false);
 
         expect(runCount(rowRects(tester)), 1);
-        expect(tester.getSize(find.byType(PlayerBottomBar)).height, 64);
+        expect(tester.getSize(find.byType(PlayerBottomBar)).height, 70);
         expect(
           find.byType(PlayerActionStrip),
           findsNothing,
@@ -303,7 +304,7 @@ void main() {
         );
         expect(
           tester.getSize(find.byType(PlayerBottomBar)).height,
-          112,
+          118,
           reason: 'the bar grows upwards by exactly one run',
         );
         expect(tester.takeException(), isNull);

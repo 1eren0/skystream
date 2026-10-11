@@ -21,7 +21,7 @@
 /// OVERSCAN. Consumer sets clip roughly 5 % of the picture, and a
 /// right-anchored drawer puts the close button and every row's badges exactly
 /// there. [PlayerPanelMetrics.drawerEdgeInset] - the app's own
-/// `HotstarPlayerStyle.tvEdgeInset` - is what keeps them out of that band.
+/// `HotstarPlayerStyle.tvOverscanInset` - is what keeps them out of that band.
 ///
 /// It is applied to the drawer's *contents*, never to the drawer. Inset the
 /// surface and the panel stops being attached to anything: it floats in the

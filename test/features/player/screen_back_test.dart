@@ -69,6 +69,36 @@ void main() {
 
   group('Back on a television', () {
     testWidgets(
+      'once the bars have hidden, controller A summons them onto play/pause',
+      variant: texturePlatform,
+      (tester) async {
+        await pumpPlayer(tester, pushed: true);
+        await sendFirstFrame(tester);
+        expectBarsShown(tester);
+        await tester.pump(const Duration(seconds: 4));
+        expectBarsHidden(tester, reason: 'the hide timer has run out');
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'player-key-sink',
+        );
+
+        await tester.sendKeyEvent(
+          LogicalKeyboardKey.gameButtonA,
+          platform: 'android',
+          physicalKey: PhysicalKeyboardKey.gameButtonA,
+        );
+        await tester.pump();
+        expectBarsShown(tester);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'player-play-pause',
+        );
+
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+
+    testWidgets(
       'with the bars down, a Back key then popRoute leaves the player',
       variant: texturePlatform,
       (tester) async {
@@ -235,17 +265,17 @@ void main() {
   });
 
   group('Back over the panel on a television', () {
-    /// Opens the panel from the bottom bar's Subtitles button, the way a
+    /// Opens the panel from the bottom bar's Options button, the way a
     /// remote does, and waits out the slide-in.
     Future<void> openPanel(WidgetTester tester) async {
       final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await tester.tap(find.byTooltip(l10n.subtitles));
+      await tester.tap(find.byTooltip(l10n.options));
       await settle(tester);
       expect(find.byType(PlayerPanel), findsOneWidget);
     }
 
     testWidgets(
-      'Subtitles opens the panel; Back closes the panel and not the player',
+      'Options opens the panel; Back closes the panel and not the player',
       variant: texturePlatform,
       (tester) async {
         // The panel is a route on top of the player, so the Navigator pops

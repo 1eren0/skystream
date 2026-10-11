@@ -1438,7 +1438,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get showPlaybackSpeed => 'Playback speed button';
 
   @override
-  String get showEpisodes => 'Episodes button';
+  String get showVolume => 'Volume button';
+
+  @override
+  String get showEpisodeNavigation => 'Previous / next episode buttons';
 
   @override
   String get playerNoProviderSelected => 'No provider selected.';

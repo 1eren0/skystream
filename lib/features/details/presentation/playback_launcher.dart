@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/domain/entity/multimedia_item.dart';
+import '../../../core/logger/app_logger.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/external_player_service.dart';
 import '../../../core/extensions/extension_manager.dart';
@@ -35,6 +37,16 @@ class PlaybackLauncher {
 
   PlaybackLauncher(this._ref);
 
+  /// Whether a player is already up over the screen [context] belongs to: a
+  /// Details action under it - a key that reached a covered button - must not
+  /// launch a second one. Logged when it happens, so a report shows how a
+  /// covered button was reached.
+  static bool _playerAlreadyUp(BuildContext context) {
+    if (!playerRouteIsOnTop(GoRouter.of(context))) return false;
+    talker.info('Playback: ignored a launch from under the playing player');
+    return true;
+  }
+
   Future<void> play(
     BuildContext context,
     String url, {
@@ -42,6 +54,8 @@ class PlaybackLauncher {
     MultimediaItem? detailedItem,
     Episode? episode,
   }) async {
+    // Ignore a covered Details action before download lookup or resolution.
+    if (_playerAlreadyUp(context)) return;
     final settings = await _ref.read(playerSettingsProvider.future);
     if (!context.mounted) return;
 
@@ -101,6 +115,7 @@ class PlaybackLauncher {
     Episode? episode,
     List<StreamResult> streams = const <StreamResult>[],
   }) async {
+    if (_playerAlreadyUp(context)) return;
     // Read through the snapshot when the provider is already warm. Callers pop
     // themselves before handing over, and an await here would resume against a
     // context on its way out.
@@ -145,6 +160,8 @@ class PlaybackLauncher {
     Episode? episode,
     List<StreamResult> preloadedStreams = const <StreamResult>[],
   }) {
+    // Recheck after asynchronous lookups and external-player fallbacks.
+    if (_playerAlreadyUp(context)) return Future<void>.value();
     return PlayerRoute(
       $extra: PlayerRouteExtra(
         item: item,

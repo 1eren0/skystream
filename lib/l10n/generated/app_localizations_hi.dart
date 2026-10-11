@@ -1422,7 +1422,10 @@ class AppLocalizationsHi extends AppLocalizations {
   String get showPlaybackSpeed => 'Playback speed button';
 
   @override
-  String get showEpisodes => 'Episodes button';
+  String get showVolume => 'आवाज़ का बटन';
+
+  @override
+  String get showEpisodeNavigation => 'पिछले / अगले एपिसोड के बटन';
 
   @override
   String get playerNoProviderSelected => 'No provider selected.';

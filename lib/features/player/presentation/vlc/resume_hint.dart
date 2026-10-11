@@ -131,23 +131,16 @@ class _ResumeHintState extends State<ResumeHint>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final padding = MediaQuery.viewPaddingOf(context);
-    final edge = widget.isTv
-        ? HotstarPlayerStyle.tvEdgeInset
-        : HotstarPlayerStyle.edgeInset;
 
     return Align(
       alignment: Alignment.bottomLeft,
       child: Padding(
         padding: EdgeInsets.only(
-          // The bar's own left padding plus the optical inset the track and
-          // the first control are both held by: a hint flush to the chrome's
-          // padding sits a clear 16 dp outside the column everything else in
-          // the player lines up on. See `HotstarPlayerStyle.trackInset`.
-          left:
-              (widget.isTv
-                  ? edge
-                  : (padding.left > edge ? padding.left : edge)) +
-              HotstarPlayerStyle.trackInset,
+          // The line the track and the first control start on: the chrome's
+          // side inset (clear of a notch) plus the track's. A hint flush to the
+          // chrome's padding sits a clear 16 dp outside the column everything
+          // else in the player lines up on. See `HotstarPlayerStyle.lineOf`.
+          left: HotstarPlayerStyle.lineOf(context),
           // Anchored off the same chrome token the bottom bar is sized by, so
           // the hint clears the scrubber instead of guessing at it. Left of
           // the next-episode card, which anchors bottom-right — the two are

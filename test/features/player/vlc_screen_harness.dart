@@ -39,6 +39,7 @@ import 'package:skystream/core/providers/device_info_provider.dart';
 import 'package:skystream/features/library/presentation/history_provider.dart';
 import 'package:skystream/features/player/presentation/vlc/side_car_fetch.dart';
 import 'package:skystream/features/player/presentation/vlc/vlc_player_screen.dart';
+import 'package:skystream/features/player/presentation/vlc/vlc_player_controls.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/features/tracking/data/sync_manager.dart';
 import 'package:skystream/features/tracking/data/tracking_service.dart';
@@ -308,6 +309,22 @@ Future<void> sendEvent(WidgetTester tester, Map<String, Object?> event) async {
 /// screen accepts as proof that a frame exists.
 Future<void> sendFirstFrame(WidgetTester tester) =>
     sendEvent(tester, snapshot());
+
+/// Reveals the controls as a viewer would, if they have hidden, and advances
+/// their fade off zero.
+Future<void> revealPlayerControls(WidgetTester tester) async {
+  final controls = tester.widget<VlcPlayerControls>(
+    find.byType(VlcPlayerControls),
+  );
+  if (controls.chrome!.value) return;
+  await tester.sendKeyEvent(
+    LogicalKeyboardKey.select,
+    platform: 'android',
+    physicalKey: PhysicalKeyboardKey.enter,
+  );
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 1));
+}
 
 /// Back as the system delivers it, which the framework turns into a `popRoute`
 /// on the navigation channel for PopScope to catch.

@@ -25,6 +25,11 @@
 - **Volume and brightness swipes like VLC** – Both follow your finger with no lag. The volume boost above 100% shows in orange, and a swipe from below 100% stops there first: swipe up again to go past it.
 - **Volume keys** – On Android the volume keys change the video's volume even while it is paused. On a desktop keyboard, holding a volume key keeps stepping.
 - **Orientation** – Leaving the player returns to your device's orientation, with the rotation lock respected.
+- **New player controls** – Frosted controls, and one Options button for sources, audio, subtitles and episodes. The volume and episode buttons can be hidden in Player Controls (PR #121 by @likhithkrishna1103-tech).
+- **Held keys** – Holding left or right on a keyboard or a TV remote, or J/L on a keyboard, keeps seeking (PR #121 by @likhithkrishna1103-tech).
+
+#### 🖥️ Interface
+- **Navigation bar** – A new frosted navigation bar on phones (PR #121 by @likhithkrishna1103-tech).
 
 #### 🔐 Accounts
 - **MyAnimeList and AniList sign-in inside SkyStream** – Signing in happens in the app, on every platform.
@@ -40,6 +45,9 @@
 - 🛠️ **Fixed: on Linux, the screen stopped going to sleep after playback** until SkyStream was closed.
 - 🛠️ **Fixed: on Linux, opening some streams, such as Internet Archive's, froze the app.**
 - 🛠️ **Fixed: on TV, the search screen's scope selector and first result ignored the D-pad.**
+- 🛠️ **Fixed: on Windows, macOS and Linux, Clear cache could delete other apps' temporary files** – It now clears only SkyStream's own.
+- 🛠️ **Fixed: the Linux .deb didn't install the VLC and WebKitGTK it needs** – apt now installs them with SkyStream.
+- 🛠️ **Fixed: the Linux x64 build didn't start on Ubuntu 22.04, Debian 12 and other systems older than Ubuntu 24.04** (PR #121 by @likhithkrishna1103-tech).
 
 
 ### ⚙️ Improvements

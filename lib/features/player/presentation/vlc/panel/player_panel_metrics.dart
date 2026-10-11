@@ -66,7 +66,7 @@ class PlayerPanelMetrics {
   /// Kept clear between the drawer and the right edge of the screen.
   ///
   /// Zero everywhere but a television, where it is
-  /// [HotstarPlayerStyle.tvEdgeInset]: ~5 % of the edges of a consumer panel is
+  /// [HotstarPlayerStyle.tvOverscanInset]: ~5 % of the edges of a consumer panel is
   /// clipped, and without this the close button and every row's right-hand
   /// badges sit in the band that gets cut off.
   final double drawerEdgeInset;
@@ -219,7 +219,7 @@ class PlayerPanelMetrics {
   static const PlayerPanelMetrics tv = PlayerPanelMetrics(
     drawerMinWidth: 460,
     drawerMaxWidth: 480,
-    drawerEdgeInset: HotstarPlayerStyle.tvEdgeInset,
+    drawerEdgeInset: HotstarPlayerStyle.tvOverscanInset,
     drawerVerticalInset: 24,
     rowLabelSize: 17,
     rowDetailSize: 14,

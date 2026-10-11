@@ -138,6 +138,7 @@ void main() {
     tester,
   ) async {
     await pumpPhone(tester);
+    // The controls start hidden; a viewer brings them up to reach the arrow.
     await sendFirstFrame(tester);
     final arrow = find.byTooltip('Back');
     expect(arrow.hitTestable(), findsOneWidget, reason: 'the bars are up');

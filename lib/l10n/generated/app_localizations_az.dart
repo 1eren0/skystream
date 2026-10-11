@@ -1426,7 +1426,10 @@ class AppLocalizationsAz extends AppLocalizations {
   String get showPlaybackSpeed => 'Oxutma sürəti düyməsi';
 
   @override
-  String get showEpisodes => 'Epizodlar düyməsi';
+  String get showVolume => 'Volume button';
+
+  @override
+  String get showEpisodeNavigation => 'Previous / next episode buttons';
 
   @override
   String get playerNoProviderSelected => 'No provider selected.';

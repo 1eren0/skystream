@@ -347,7 +347,7 @@ jobs:
           # "Bundle CloudStream's Java Runtime" step); "" means none, as
           # Android compiles the engine in and iOS embeds its own VM.
           ANDROID='{"name":"Android","os":"ubuntu-latest","build":"flutter build apk --debug","smoke":"","torrserver":"","out":"build/app/outputs/flutter-apk","java_arch":""}'
-          LINUX='{"name":"Linux","os":"ubuntu-latest","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-amd64","out":"build/linux/x64/debug/bundle","java_arch":"x64"}'
+          LINUX='{"name":"Linux","os":"ubuntu-22.04","build":"flutter build linux --debug","smoke":"linux","torrserver":"TorrServer-linux-amd64","out":"build/linux/x64/debug/bundle","java_arch":"x64"}'
           # windows-2022, not windows-latest: the release and preview workflows
           # both pin windows-2022 (MSVC 17). On windows-latest the gate would
           # compile the vendored vlc_player C++ with Visual Studio 2026 / MSVC
