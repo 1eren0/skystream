@@ -497,7 +497,7 @@ class AppLocalizationsHi extends AppLocalizations {
   String get selectSeekDuration => 'सीक अवधि चुनें';
 
   @override
-  String get subtitleSettings => 'उपशीर्षಕ सेटिंग्स';
+  String get subtitleSettings => 'उपशीर्षक सेटिंग्स';
 
   @override
   String size(int size) {

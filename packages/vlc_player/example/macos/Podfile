@@ -29,6 +29,10 @@ flutter_macos_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # vlc_player needs VLCKit 3.7.4, which CocoaPods trunk does not carry: use
+  # the app's podspec, as the app does (why: the comment in macos/Podfile).
+  pod 'VLCKit', :podspec => '../../../../macos/vendor/VLCKit.podspec.json'
+
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths
