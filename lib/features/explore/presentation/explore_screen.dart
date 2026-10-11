@@ -277,16 +277,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen>
                   right: LayoutConstants.spacingMd,
                 ),
                 child: CardsWrapper(
-                  onTap: () {
-                    unawaited(
-                      showSearch<void>(
-                        context: context,
-                        delegate: ExploreSearchDelegate(),
-                        useRootNavigator: false,
-                        maintainState: true,
-                      ),
-                    );
-                  },
+                  onTap: () => unawaited(showExploreSearch(context)),
                   borderRadius: BorderRadius.circular(50),
                   child: CircleAvatar(
                     backgroundColor: Theme.of(context).colorScheme.onSurface

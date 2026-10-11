@@ -77,7 +77,22 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(inField(), isTrue);
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('an iPad\'s shortcuts bar leaves the arrows their way out', (
+    tester,
+  ) async {
+    // Flutter reports the bar an iPad shows over a hardware keyboard as a
+    // docked keyboard. Only Android's keyboards use the arrows.
+    await pumpField(tester);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 69);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(focusedButton(), 'Save');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('Select brings the keyboard back once it is put away', (
     tester,
@@ -89,6 +104,20 @@ void main() {
     expect(tester.testTextInput.isVisible, isFalse);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(inField(), isTrue);
+  });
+
+  testWidgets('controller A reopens a dismissed TV keyboard', (tester) async {
+    // Flutter maps a remote's OK (DPAD_CENTER) to Select; some remotes send
+    // BUTTON_A instead, which arrives as gameButtonA.
+    await pumpField(tester);
+    tester.testTextInput.hide();
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.gameButtonA);
     await tester.pump();
 
     expect(tester.testTextInput.isVisible, isTrue);

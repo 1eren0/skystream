@@ -17,6 +17,7 @@ import 'widgets/bouncy_entry_animation.dart';
 import 'widgets/check_section.dart';
 import '../../../shared/widgets/cards_wrapper.dart';
 import '../../../shared/widgets/loading_indicator.dart';
+import '../../../shared/focus/text_field_keys.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -58,17 +59,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     // list", and the pill is reached by going right.
     _focusNode.onKeyEvent = (node, event) {
       if (event is! KeyDownEvent) return KeyEventResult.ignored;
-      final key = event.logicalKey;
+
+      // A TV IME uses all four D-pad directions to select letters. In
+      // particular, moving focus to the result list on Down while the
+      // keyboard is visible prevents users from typing complete searches.
+      if (deferToSoftKeyboard(node)) return KeyEventResult.ignored;
 
       // Do NOT handle left/right here. Android TV leanback keyboards use those
       // to move between letter keys; stealing them left users stuck mid-word.
       // Clear / scope pills stay reachable via the clear icon and Up from results.
-
-      if (key == LogicalKeyboardKey.arrowDown) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
         return _focusBelowBar();
       }
-      // Enter / select submit is handled by TextField.onSubmitted.
-      return KeyEventResult.ignored;
+      // Select - OK on a remote - or a game controller's A brings back a
+      // keyboard put away with Back. Enter still submits, through
+      // TextField.onSubmitted.
+      return reopenTextFieldKeyboard(node, event);
     };
 
     _clearButtonFocusNode.onKeyEvent = (node, event) {
@@ -149,32 +155,42 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   /// Leaves the bar downwards: into the panel if it has rows, else into the
   /// results. Reports whether there was anywhere to go, so a press with
   /// nothing below it falls through rather than being swallowed.
+  ///
+  /// Only to a target in the tree. A node out of it takes a request for the
+  /// focus as one to keep, and takes the focus whenever it is put in one: a
+  /// suggestion still on its way, or a first result scrolled out of its row,
+  /// would pull the focus out of the field when it arrived - mid-word.
   KeyEventResult _focusBelowBar() {
     // Recents count as panel rows, so down lands on one whether the field is
-    // empty or mid-query.
+    // empty or mid-query. While the panel is open its rows are what is below
+    // the bar, so down waits for them rather than reaching past it.
     if (_panelHasRows()) {
+      if (!_canFocusNow(_firstSuggestionFocusNode)) {
+        return KeyEventResult.ignored;
+      }
       _firstSuggestionFocusNode.requestFocus();
       return KeyEventResult.handled;
     }
     // The checks the search met sit between the bar and the results.
-    if (_checksShown) {
-      _checksFocusNode.requestFocus();
-      return KeyEventResult.handled;
-    }
-    final resultsState = ref.read(searchResultsProvider).asData?.value;
-    final hasResults =
-        resultsState != null &&
-        resultsState.results.any((r) => r.results.isNotEmpty);
-    if (hasResults) {
-      _firstResultFocusNode.requestFocus();
-      return KeyEventResult.handled;
+    for (final below in [_checksFocusNode, _firstResultFocusNode]) {
+      if (_canFocusNow(below)) {
+        below.requestFocus();
+        return KeyEventResult.handled;
+      }
     }
     return KeyEventResult.ignored;
   }
 
-  /// Whether the check section is on screen. A node keeps its last context
-  /// after it leaves the tree, so the context alone doesn't say.
-  bool get _checksShown => _checksFocusNode.context?.mounted ?? false;
+  /// Whether the check section is on screen.
+  bool get _checksShown => _canFocusNow(_checksFocusNode);
+
+  /// Whether [node] is in the tree and free to take the focus. A node keeps
+  /// its last context after it leaves the tree, so the context alone doesn't
+  /// say: its place in the focus tree does.
+  static bool _canFocusNow(FocusNode node) =>
+      node.parent != null &&
+      (node.context?.mounted ?? false) &&
+      node.canRequestFocus;
 
   void _onTextChanged() {
     if (!mounted) return;
@@ -216,10 +232,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 
-  /// Whether the panel currently has anything focusable in it.
+  /// Whether the panel is up with rows in it, or with suggestions on their
+  /// way to it.
   ///
   /// Read by the D-pad handlers to decide whether pressing down should land
-  /// in the panel or skip past it to the results grid.
+  /// in the panel - or wait for its rows - or skip past it to the results.
   bool _panelHasRows() {
     if (!_isPanelOpen) return false;
     final suggestionState = ref.read(searchSuggestionControllerProvider);

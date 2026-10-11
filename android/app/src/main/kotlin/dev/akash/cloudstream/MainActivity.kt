@@ -7,6 +7,7 @@ import android.net.Uri
 import android.widget.FrameLayout
 import io.flutter.embedding.android.FlutterEngineConfigurator
 import io.flutter.embedding.android.FlutterFragment
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
@@ -35,6 +36,7 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity(), FlutterEngineCon
     private val CHANNEL = "dev.akash.skystream.player/pip"
     private val TV_CHANNEL = "dev.akash.skystream/tv_channel"
     private val PLAYER_CHANNEL = "dev.akash.skystream/external_player"
+    private val TEXT_INPUT_CHANNEL = "dev.akash.skystream/text_input"
 
     private var isPlaying = false
 
@@ -50,6 +52,20 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity(), FlutterEngineCon
         GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         
+        // Whether a Flutter text field has focus, for the televisions that give
+        // a keyboard a session only for a text editor - see TextEditorProxy.
+        val textEditing = TextEditingReports(resources) { flutterViewIn(flutterFragment?.view) }
+        MethodChannel(messenger, TEXT_INPUT_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "needed" -> result.success(textEditing.needed())
+                "editing" -> {
+                    textEditing.editing(call.arguments == true)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         // PiP Channel
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "enterPip") {
@@ -235,6 +251,13 @@ class MainActivity : com.lagradost.cloudstream3.MainActivity(), FlutterEngineCon
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {}
+
+    private fun flutterViewIn(view: android.view.View?): FlutterView? = when (view) {
+        is FlutterView -> view
+        is android.view.ViewGroup ->
+            (0 until view.childCount).firstNotNullOfOrNull { flutterViewIn(view.getChildAt(it)) }
+        else -> null
+    }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         switchLaunchThemeForNormalTheme()

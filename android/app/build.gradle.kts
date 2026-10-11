@@ -78,6 +78,17 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric's Android 16 sets up file descriptors through the
+            // JDK's internal access, which JDK 17+ closes to it by default.
+            // The app's own resources are left out: the tests here need none,
+            // and including them would package Flutter's assets into a task
+            // that does not wait for them.
+            all { it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED") }
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -108,10 +119,17 @@ configurations.configureEach {
     // reflection-heavy kind of artifact that AGP 9's strictFullModeForKeepRules
     // will complain about. If a build ever fails resolving an androidx.test
     // symbol, the package started using it and this exclude must go.
+    //
+    // Only from the app's own classpaths, which are what ship. The unit
+    // tests' classpaths extend them, so excluding everywhere took it from the
+    // tests too, and Robolectric's runner cannot start without it.
+    if (name.contains("Test") || !name.endsWith("Classpath")) return@configureEach
     exclude(group = "androidx.test", module = "monitor")
 }
 
 dependencies {
     implementation("androidx.tvprovider:tvprovider:1.0.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

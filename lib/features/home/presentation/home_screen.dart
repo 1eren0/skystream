@@ -196,16 +196,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             padding: const EdgeInsets.only(right: LayoutConstants.spacingSm),
             child: CardsWrapper(
               focusNode: _firstActionFocusNode,
-              onTap: () {
-                unawaited(
-                  showSearch<void>(
-                    context: context,
-                    delegate: HomeSearchDelegate(),
-                    useRootNavigator: false,
-                    maintainState: true,
-                  ),
-                );
-              },
+              onTap: () => unawaited(showHomeSearch(context)),
               borderRadius: BorderRadius.circular(50),
               child: CircleAvatar(
                 backgroundColor: Theme.of(context).colorScheme.onSurface

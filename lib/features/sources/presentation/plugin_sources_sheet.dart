@@ -21,6 +21,7 @@ import 'source_sheet_widgets.dart';
 import '../../../shared/focus/app_focus.dart';
 import '../../../shared/focus/row_traversal.dart';
 import '../../../shared/widgets/check_line.dart';
+import '../../../shared/focus/text_field_keys.dart';
 
 /// Why the source list came up empty, as far as the sheet can actually tell.
 ///
@@ -1211,7 +1212,9 @@ class _ManualSearchDialogState extends State<_ManualSearchDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialText);
-    _textFocusNode = FocusNode();
+    // A remote's way out of the field and back into its keyboard - see
+    // [remoteTextFieldKeys].
+    _textFocusNode = FocusNode(onKeyEvent: remoteTextFieldKeys);
   }
 
   @override
@@ -1233,26 +1236,16 @@ class _ManualSearchDialogState extends State<_ManualSearchDialog> {
             'Type a title or TMDB id (or tmdb:123) to re-point the Nuvio scrapers.',
           ),
           const SizedBox(height: 14),
-          Focus(
-            onKeyEvent: (node, event) {
-              if (event is KeyDownEvent &&
-                  event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                node.nextFocus();
-                return KeyEventResult.handled;
-              }
-              return KeyEventResult.ignored;
-            },
-            child: TextField(
-              controller: _controller,
-              focusNode: _textFocusNode,
-              autofocus: true,
-              textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Title or TMDB id',
-              ),
-              onSubmitted: (text) => Navigator.pop(context, text.trim()),
+          TextField(
+            controller: _controller,
+            focusNode: _textFocusNode,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Title or TMDB id',
             ),
+            onSubmitted: (text) => Navigator.pop(context, text.trim()),
           ),
         ],
       ),

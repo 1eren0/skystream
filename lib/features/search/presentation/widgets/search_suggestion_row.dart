@@ -4,22 +4,51 @@ import 'package:flutter/services.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../../../../shared/focus/app_focus.dart';
 
-/// Whether the caret is currently in a text field.
+/// Whether the caret is in the search field of [page], the search page a
+/// delegate was built into, while that page's route is the one on top.
 ///
 /// Used by the search delegates, which cannot attach a key callback to the
 /// field [SearchDelegate] builds for them and so watch the keyboard globally
-/// instead. They have to know whether a press belongs to the field before
-/// they act on it.
+/// instead. They have to know a press belongs to their own field before they
+/// act on it - not to a field on another screen, or on a page pushed over
+/// theirs while theirs stays built beneath it.
 ///
 /// The obvious test - `primaryFocus.context.widget is EditableText` - is
 /// always false. [EditableText] builds the `Focus` that owns its node as a
 /// DESCENDANT of itself, so the focused context's widget is that `Focus`,
-/// and the [EditableText] is above it. Walking up is what finds it.
-bool searchFieldHoldsFocus() {
+/// and the [EditableText] is above it. Walking up is what finds it, and the
+/// page further up.
+bool searchFieldHoldsFocus(BuildContext? page) {
   final context = FocusManager.instance.primaryFocus?.context;
-  if (context == null) return false;
-  if (context.widget is EditableText) return true;
-  return context.findAncestorWidgetOfExactType<EditableText>() != null;
+  if (context == null || page == null || !page.mounted) return false;
+  if (ModalRoute.isCurrentOf(page) != true) return false;
+  if (context.findAncestorWidgetOfExactType<EditableText>() == null) {
+    return false;
+  }
+  var inPage = false;
+  context.visitAncestorElements((element) {
+    inPage = element == page;
+    return !inPage;
+  });
+  return inPage;
+}
+
+/// Runs [release] once [page], the search page a delegate was built into, has
+/// left the tree: at once if it has or never was in one, else at the end of
+/// the frame that takes it out.
+///
+/// For the delegates' [SearchDelegate.dispose], which their screens call as
+/// the search closes. The page is still fading out then, with the delegate's
+/// rows and the base class's field in it, and their nodes and controller are
+/// still in use.
+void whenSearchPageGone(BuildContext? page, VoidCallback release) {
+  if (page == null || !page.mounted) {
+    release();
+    return;
+  }
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => whenSearchPageGone(page, release),
+  );
 }
 
 /// One row of a search panel: a recent search, or a network suggestion.

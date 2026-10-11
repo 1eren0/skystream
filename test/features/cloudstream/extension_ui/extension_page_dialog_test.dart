@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:challenge_browser/challenge_browser.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skystream/features/cloudstream/presentation/extension_ui/extension_page_dialog.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
@@ -68,5 +69,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Held'), findsNothing);
     expect(closed, [(accept: false, text: null)]);
+  });
+
+  // A prompt's field with a remote: the keys are a keyboard's while one is up; with it put away, Down reaches the
+  // buttons and Select - OK on a remote - brings the keyboard back.
+  FocusNode promptField(WidgetTester tester) => tester.widget<EditableText>(find.byType(EditableText)).focusNode;
+
+  testWidgets("a prompt's field keeps Down while a keyboard is up", (tester) async {
+    await show(tester, const PageDialog(id: 1, kind: DialogKind.prompt, message: 'Your name?'));
+    tester.view.viewInsets = const FakeViewPadding(bottom: 540);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(promptField(tester).hasFocus, isTrue);
+  });
+
+  testWidgets("with the keyboard put away, Down leaves a prompt's field for its buttons", (tester) async {
+    await show(tester, const PageDialog(id: 1, kind: DialogKind.prompt, message: 'Your name?'));
+    tester.testTextInput.hide();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(promptField(tester).hasFocus, isFalse);
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TextButton>(), isNotNull);
+  });
+
+  testWidgets("Select brings back a prompt's keyboard put away with Back", (tester) async {
+    await show(tester, const PageDialog(id: 1, kind: DialogKind.prompt, message: 'Your name?'));
+    tester.testTextInput.hide();
+    expect(tester.testTextInput.isVisible, isFalse);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(promptField(tester).hasFocus, isTrue);
   });
 }

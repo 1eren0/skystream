@@ -11,6 +11,7 @@ import '../../../../core/utils/image_fallbacks.dart';
 import '../../../search/presentation/search_history_provider.dart';
 import '../../../search/presentation/search_provider.dart';
 import '../../../search/presentation/widgets/search_suggestion_row.dart';
+import '../../../../shared/focus/text_field_keys.dart';
 
 import 'package:skystream/shared/widgets/multimedia_card.dart';
 
@@ -19,12 +20,27 @@ import '../../../../shared/widgets/check_line.dart';
 import '../../../../shared/widgets/loading_indicator.dart';
 import '../../../../core/utils/responsive_breakpoints.dart';
 
+/// Opens Home's search over [context], and disposes its delegate once the
+/// search has closed: nothing else would take its key handler away again.
+Future<void> showHomeSearch(BuildContext context) {
+  final delegate = HomeSearchDelegate();
+  return showSearch<void>(
+    context: context,
+    delegate: delegate,
+    useRootNavigator: false,
+    maintainState: true,
+  ).whenComplete(delegate.dispose);
+}
+
 class HomeSearchDelegate extends SearchDelegate<void> {
   final String? initialQuery;
 
   /// Where a D-pad press down from the search field lands.
   final FocusNode _firstSuggestionFocusNode = FocusNode();
   final FocusNode _firstResultFocusNode = FocusNode();
+
+  /// The search page this delegate was built into - see [buildLeading].
+  BuildContext? _page;
 
   HomeSearchDelegate({this.initialQuery})
     : super(
@@ -44,30 +60,41 @@ class HomeSearchDelegate extends SearchDelegate<void> {
   /// attached. It has to be global for a second reason too: an EditableText
   /// swallows arrow keys for its own cursor, so directional traversal never
   /// sees the press and focus would stay in the field forever.
+  ///
+  /// The rest of what [remoteTextFieldKeys] does for a field, done here for
+  /// the same reason: while a keyboard is up the keys are its own - a
+  /// television's walks its letter grid with the arrows - and Select, OK on a
+  /// remote, brings back a keyboard put away with Back.
   bool _handleKeyEvent(KeyEvent event) {
-    if (event is! KeyDownEvent ||
-        event.logicalKey != LogicalKeyboardKey.arrowDown) {
-      return false;
-    }
-    if (!searchFieldHoldsFocus()) return false;
+    if (event is! KeyDownEvent || !searchFieldHoldsFocus(_page)) return false;
+    final field = FocusManager.instance.primaryFocus!;
+    if (deferToSoftKeyboard(field)) return false;
 
-    if (_firstSuggestionFocusNode.canRequestFocus) {
-      _firstSuggestionFocusNode.requestFocus();
-      return true;
+    if (event.logicalKey != LogicalKeyboardKey.arrowDown) {
+      return reopenTextFieldKeyboard(field, event) == KeyEventResult.handled;
     }
-    if (_firstResultFocusNode.canRequestFocus) {
-      _firstResultFocusNode.requestFocus();
-      return true;
+    // Only to a row in the tree. One that is not yet keeps the request and
+    // takes the focus whenever it is built - out of the field, mid-word.
+    for (final row in [_firstSuggestionFocusNode, _firstResultFocusNode]) {
+      if (row.parent != null && row.canRequestFocus) {
+        row.requestFocus();
+        return true;
+      }
     }
     return false;
   }
 
+  /// Called by [showHomeSearch] as the search closes, while its page is still
+  /// fading out with these nodes and the base class's field in it: the key
+  /// handler goes at once, the rest once the page has gone.
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
-    _firstSuggestionFocusNode.dispose();
-    _firstResultFocusNode.dispose();
-    super.dispose();
+    whenSearchPageGone(_page, () {
+      _firstSuggestionFocusNode.dispose();
+      _firstResultFocusNode.dispose();
+      super.dispose();
+    });
   }
 
   @override
@@ -116,6 +143,8 @@ class HomeSearchDelegate extends SearchDelegate<void> {
 
   @override
   Widget? buildLeading(BuildContext context) {
+    // The search page's own context, on every build of it.
+    _page = context;
     return IconButton(
       icon: const Icon(Icons.arrow_back_rounded),
       onPressed: () => close(context, null),

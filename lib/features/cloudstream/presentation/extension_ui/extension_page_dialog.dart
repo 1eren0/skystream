@@ -4,6 +4,7 @@ import 'package:challenge_browser/challenge_browser.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../../shared/focus/text_field_keys.dart';
 
 /// A page's own alert, confirm or prompt, which its extension's chrome client left to the app (Phase 7c's §8), shown
 /// as Android's WebView shows one: its message, a prompt's field with its default text, OK, and Cancel but for an alert.
@@ -49,6 +50,9 @@ class _PageDialogState extends State<_PageDialog> {
   /// A prompt's field, with its default text.
   TextEditingController? _field;
 
+  /// A remote's way out of a prompt's field and back into its keyboard - see [remoteTextFieldKeys].
+  final FocusNode _fieldFocus = FocusNode(onKeyEvent: remoteTextFieldKeys);
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +64,7 @@ class _PageDialogState extends State<_PageDialog> {
   @override
   void dispose() {
     _field?.dispose();
+    _fieldFocus.dispose();
     super.dispose();
   }
 
@@ -76,7 +81,7 @@ class _PageDialogState extends State<_PageDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(widget.dialog.message),
-          if (field != null) TextField(controller: field, autofocus: true, onSubmitted: (_) => _answer(true)),
+          if (field != null) TextField(controller: field, focusNode: _fieldFocus, autofocus: true, onSubmitted: (_) => _answer(true)),
         ],
       ),
       actions: [

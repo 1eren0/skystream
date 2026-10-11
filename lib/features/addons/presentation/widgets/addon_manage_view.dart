@@ -839,7 +839,9 @@ class _DebridApiKeyDialogState extends State<_DebridApiKeyDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialKey);
-    _textFocusNode = FocusNode();
+    // A remote's way out of the field and back into its keyboard - see
+    // [remoteTextFieldKeys].
+    _textFocusNode = FocusNode(onKeyEvent: remoteTextFieldKeys);
   }
 
   @override
@@ -867,37 +869,27 @@ class _DebridApiKeyDialogState extends State<_DebridApiKeyDialog> {
             'Paste your ${widget.provider.label} API key / token to enable instant debrid link resolving.',
           ),
           const SizedBox(height: 14),
-          Focus(
-            onKeyEvent: (node, event) {
-              if (event is KeyDownEvent &&
-                  event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                node.nextFocus();
-                return KeyEventResult.handled;
-              }
-              return KeyEventResult.ignored;
-            },
-            child: TextField(
-              controller: _controller,
-              focusNode: _textFocusNode,
-              autofocus: true,
-              obscureText: true,
-              decoration: InputDecoration(
-                border: const OutlineInputBorder(),
-                hintText: 'API Key / Token',
-                suffixIcon: IconButton(
-                  tooltip: 'Paste from clipboard',
-                  icon: const Icon(Icons.content_paste_rounded),
-                  onPressed: () async {
-                    final data = await Clipboard.getData('text/plain');
-                    final text = data?.text;
-                    if (text != null && mounted) {
-                      _controller.text = text.trim();
-                    }
-                  },
-                ),
+          TextField(
+            controller: _controller,
+            focusNode: _textFocusNode,
+            autofocus: true,
+            obscureText: true,
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              hintText: 'API Key / Token',
+              suffixIcon: IconButton(
+                tooltip: 'Paste from clipboard',
+                icon: const Icon(Icons.content_paste_rounded),
+                onPressed: () async {
+                  final data = await Clipboard.getData('text/plain');
+                  final text = data?.text;
+                  if (text != null && mounted) {
+                    _controller.text = text.trim();
+                  }
+                },
               ),
-              onSubmitted: (text) => Navigator.pop(context, text.trim()),
             ),
+            onSubmitted: (text) => Navigator.pop(context, text.trim()),
           ),
         ],
       ),

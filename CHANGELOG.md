@@ -38,6 +38,8 @@
 ---
 
 ### 🐞 *Bug Fixes & System Stability*
+- 🛠️ **Fixed: on TV, a keyboard closed with Back couldn't be opened again from its text field** – OK on the field opens it again, and Down moves on from the field to what is below it, in search on Home, Explore and the Search tab and in the text boxes of dialogs (PR #128 by @1eren0).
+- 🛠️ **Fixed: on some low-memory Google TV devices, the on-screen keyboard showed but typed nothing into SkyStream.**
 - 🛠️ **Fixed: on iPad, a video's sound stopped a second in** – The video went on playing silently until an audio track was picked again.
 - 🛠️ **Fixed: leaving the player could freeze the app on iPad.**
 - 🛠️ **Fixed: brightness swipes lagged on iPhone and iPad** – The brightness changed only after the finger stopped.

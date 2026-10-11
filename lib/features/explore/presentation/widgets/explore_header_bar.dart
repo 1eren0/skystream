@@ -158,16 +158,7 @@ class ExploreHeaderBar extends ConsumerWidget {
             child: CardsWrapper(
               scaleFactor: 1.01,
               focusNode: searchFocusNode,
-              onTap: () {
-                unawaited(
-                  showSearch<void>(
-                    context: context,
-                    delegate: ExploreSearchDelegate(),
-                    useRootNavigator: false,
-                    maintainState: true,
-                  ),
-                );
-              },
+              onTap: () => unawaited(showExploreSearch(context)),
               borderRadius: BorderRadius.circular(LayoutConstants.radiusPill),
               child: Container(
                 height: 38,

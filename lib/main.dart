@@ -54,6 +54,7 @@ import 'shared/widgets/tv_logical_scale.dart';
 import 'core/widgets/m3_toast_overlay.dart';
 import 'features/settings/presentation/general_settings_provider.dart';
 import 'features/settings/presentation/full_screen_mode_provider.dart';
+import 'shared/focus/android_text_editing.dart';
 import 'features/player/presentation/player_platform_service.dart'
     show immersiveRouteActive;
 
@@ -69,6 +70,10 @@ void main() async {
   // Before anything keeps the screen awake: Linux's wakelock leaked an
   // inhibitor on each repeated enable (see linux_wakelock.dart).
   installLinuxWakelock();
+
+  // The televisions that give a keyboard a session only for a text editor -
+  // see android_text_editing.dart.
+  unawaited(installAndroidTextEditing());
 
   // Cap Flutter's image cache. Default is 1000 entries / 100 MB which is too
   // generous for low-RAM TVs and even most phones — decoded TMDB posters fill

@@ -16,6 +16,8 @@ import 'package:skystream/l10n/generated/app_localizations.dart';
 /// focused card, and a probe landing under the user never moves the row they
 /// are standing on.
 void main() {
+  _manualSearchFieldTests();
+
   testWidgets('DOWN steps card to card, never onto an action button', (
     tester,
   ) async {
@@ -154,6 +156,54 @@ void main() {
 
     expect(_nameFinder('alpha'), findsNothing);
     expect(_focusedRect(), _cardRect(tester, 'beta'));
+  });
+}
+
+
+/// Search manually's field, with a remote: while a keyboard is up its keys are
+/// its own, and Select - OK on a remote - brings back a keyboard put away
+/// with Back.
+void _manualSearchFieldTests() {
+  Future<FocusNode> openManualSearch(WidgetTester tester) async {
+    await _pumpSheet(tester);
+    await tester.tap(find.byTooltip('Search manually'));
+    await _flush(tester);
+    final field = tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode;
+    expect(field.hasFocus, isTrue);
+    return field;
+  }
+
+  testWidgets('manual search: down stays with a visible keyboard', (
+    tester,
+  ) async {
+    final field = await openManualSearch(tester);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 540);
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pump();
+
+    await _press(tester, LogicalKeyboardKey.arrowDown);
+
+    expect(field.hasFocus, isTrue);
+  });
+
+  testWidgets('manual search: select reopens a keyboard put away with back', (
+    tester,
+  ) async {
+    final field = await openManualSearch(tester);
+    tester.testTextInput.hide();
+    expect(tester.testTextInput.isVisible, isFalse);
+
+    await _press(tester, LogicalKeyboardKey.select);
+
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(field.hasFocus, isTrue);
   });
 }
 

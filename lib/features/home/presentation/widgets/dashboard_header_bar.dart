@@ -90,16 +90,7 @@ class DashboardHeaderBar extends ConsumerWidget {
             child: CardsWrapper(
               scaleFactor: 1.01,
               focusNode: searchFocusNode,
-              onTap: () {
-                unawaited(
-                  showSearch<void>(
-                    context: context,
-                    delegate: HomeSearchDelegate(),
-                    useRootNavigator: false,
-                    maintainState: true,
-                  ),
-                );
-              },
+              onTap: () => unawaited(showHomeSearch(context)),
               borderRadius: BorderRadius.circular(LayoutConstants.radiusPill),
               child: Container(
                 height: 38,
