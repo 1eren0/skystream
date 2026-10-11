@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../core/network/dio_client_provider.dart';
+import '../../../core/storage/app_temp_directory.dart';
 import '../data/subtitle_providers.dart';
 import '../domain/entity/subtitle_model.dart';
 import '../domain/subtitle_archive.dart';
@@ -449,7 +449,7 @@ class SubtitleSearch extends _$SubtitleSearch {
     }
 
     try {
-      final tempDir = await getTemporaryDirectory();
+      final tempDir = await appTempDirectory();
       final savePath = p.join(
         tempDir.path,
         "temp_sub_${DateTime.now().millisecondsSinceEpoch}",

@@ -9,6 +9,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:io';
 import '../domain/entity/multimedia_item.dart';
+import 'app_temp_directory.dart';
 
 part 'storage_service.g.dart';
 
@@ -892,15 +893,8 @@ class StorageService {
         if (kDebugMode) debugPrint("Error clearing cache manager: $e");
       }
 
-      // Clear Temporary Directory (torrent cache, stream temp files)
-      try {
-        final tempDir = await getTemporaryDirectory();
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      } catch (e) {
-        if (kDebugMode) debugPrint("Error clearing temp dir: $e");
-      }
+      // SkyStream's own temporary files (downloaded subtitles and plugins).
+      await _clearAppTemp();
     } catch (e) {
       if (kDebugMode) debugPrint('Error clearing preferences: $e');
     }
@@ -972,9 +966,9 @@ class StorageService {
     if (kIsWeb) return 0;
     var total = 0;
     try {
-      final tempDir = await getTemporaryDirectory();
-      if (await tempDir.exists()) {
-        await for (final entity in tempDir.list(
+      for (final dir in await appCacheDirectories()) {
+        if (!await dir.exists()) continue;
+        await for (final entity in dir.list(
           recursive: true,
           followLinks: false,
         )) {
@@ -998,11 +992,15 @@ class StorageService {
     } catch (e) {
       if (kDebugMode) debugPrint('Error clearing image cache: $e');
     }
+    await _clearAppTemp();
+  }
+
+  /// Deletes SkyStream's own temporary files ([appTempDirectory]), and on the
+  /// desktops nothing else in the temporary directory.
+  Future<void> _clearAppTemp() async {
     try {
-      final tempDir = await getTemporaryDirectory();
-      if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
-      }
+      final dir = await appTempDirectory();
+      if (await dir.exists()) await dir.delete(recursive: true);
     } catch (e) {
       if (kDebugMode) debugPrint('Error clearing temp dir: $e');
     }

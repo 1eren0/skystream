@@ -26,10 +26,10 @@ void main() {
   late final Directory scratch;
   late StorageService service;
 
-  // Deliberately NOT `dir`. `clearPreferences` empties the temporary directory
-  // wholesale, and if path_provider pointed at the Hive directory the boxes
-  // would vanish with it and the assertions below would pass without the
-  // delete ever running.
+  // Deliberately NOT `dir`. `clearPreferences` deletes SkyStream's temporary
+  // folder (on Android and iOS the whole temporary directory), and if
+  // path_provider pointed at the Hive directory the boxes could vanish with it
+  // and the assertions below would pass without the delete ever running.
   //
   // One directory for the whole file: the cache manager the reset empties is a
   // singleton that keeps the path it was first built with, so a per-test

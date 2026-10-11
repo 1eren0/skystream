@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:convert';
 import '../models/extension_repository.dart';
 import '../models/extension_plugin.dart';
+import '../../storage/app_temp_directory.dart';
 
 class RepositoryService {
   final Dio _dio;
@@ -262,7 +263,7 @@ class RepositoryService {
   Future<File?> downloadPlugin(String url) async {
     try {
       final normalizedUrl = _normalizeUrl(url);
-      final tempDir = Directory.systemTemp;
+      final tempDir = await appTempDirectory();
       final tempFile = File(
         '${tempDir.path}/temp_${DateTime.now().millisecondsSinceEpoch}.sky',
       );
