@@ -15,6 +15,7 @@ import '../../../core/addons/models/addon_manifest.dart';
 import '../../../core/addons/models/addon_meta.dart';
 import '../../../core/addons/models/addon_stream_source.dart';
 import '../../../core/domain/entity/multimedia_item.dart';
+import '../../../core/utils/source_text.dart';
 import '../../../core/network/clearance/clearance.dart';
 import '../../../core/network/clearance/site_checks.dart';
 import '../../../core/services/download_service.dart';
@@ -1052,6 +1053,7 @@ class _SourceRowState extends State<_SourceRow> {
     final onDownload = widget.onDownload;
 
     final size = stream.sizeLabel;
+    final languageTag = sourceAudioLanguageTag(stream.audioLanguage);
 
     return DpadFocusable(
       focusNode: _cardFocusNode,
@@ -1092,6 +1094,12 @@ class _SourceRowState extends State<_SourceRow> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         QualityBadge(resolution: stream.qualityLabel),
+                        if (languageTag != null)
+                          SourceTag(
+                            text: languageTag,
+                            container: cs.surfaceContainerHighest,
+                            onContainer: cs.onSurfaceVariant,
+                          ),
                         SourceTag(
                           text: 'STREMIO',
                           container: cs.primaryContainer,
